@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "register": "node src/register-commands.js",
-    "check": "node --check src/index.js && node --check src/register-commands.js"
+    "check": "node --check src/index.js && node --check src/register-commands.js",
+    "import:data": "node scripts/import-maimai-data.js"
   },
   "engines": {
     "node": ">=20"
