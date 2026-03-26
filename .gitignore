@@ -3,6 +3,8 @@ node_modules/
 .env.local
 .env.*.local
 data/*.json
+data/import/
+data/assets/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

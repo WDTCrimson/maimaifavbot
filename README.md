@@ -70,6 +70,33 @@ All bot replies are ephemeral (private).
 - If selectors differ on your target page, adjust logic in `extension/content.js` and `src/bookmarklet.js`.
 - Review maimai terms/rules before using automation.
 
+## Import song data + logos + jackets
+
+Run:
+
+```bash
+npm run import:data
+```
+
+This imports:
+
+- Source JSON datasets into `data/import/sources/`
+- A normalized merged song dataset into `data/import/songs.normalized.json`
+- Logos into `data/assets/logo/otoge-db/`
+- Jackets into:
+  - `data/assets/jacket/otoge-db/`
+  - `data/assets/jacket/dxrating/`
+- Import summary report into `data/import/import-report.json`
+
+Optional flags:
+
+```bash
+node scripts/import-maimai-data.js --concurrency=10 --retries=3 --force
+node scripts/import-maimai-data.js --skip-jackets
+node scripts/import-maimai-data.js --skip-logos
+node scripts/import-maimai-data.js --skip-data
+```
+
 ## Run as a systemd service
 
 1. Copy the provided unit file:
