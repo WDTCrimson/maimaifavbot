@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Maimai Loadout</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        padding: 12px;
+        width: 360px;
+        font-family: "Segoe UI", Tahoma, sans-serif;
+        background: #f5f7fb;
+        color: #1f2937;
+      }
+      h1 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+      p {
+        margin: 0 0 8px;
+        font-size: 12px;
+        color: #374151;
+      }
+      textarea {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 120px;
+        padding: 8px;
+        border: 1px solid #c7cedb;
+        border-radius: 6px;
+        resize: vertical;
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      button {
+        margin-top: 8px;
+        width: 100%;
+        border: 0;
+        border-radius: 6px;
+        background: #1e6ae8;
+        color: #fff;
+        font-weight: 600;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1758c3;
+      }
+      #status {
+        margin-top: 8px;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Maimai Loadout Payload</h1>
+    <p>Paste payload from Discord (`/loadout payload`), then click apply.</p>
+    <textarea id="payload" placeholder="Paste payload here..."></textarea>
+    <button id="apply">Apply To Current Tab</button>
+    <div id="status"></div>
+    <script src="popup.js"></script>
+  </body>
+</html>

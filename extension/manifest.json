@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Maimai Loadout Applier",
+  "description": "Apply maimai favorite loadout payloads to the current maimaidxnet page.",
+  "version": "0.1.0",
+  "permissions": ["activeTab"],
+  "host_permissions": [
+    "https://maimaidx.jp/*",
+    "https://*.maimaidx.jp/*",
+    "https://maimaidx-eng.com/*",
+    "https://*.maimaidx.net/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://maimaidx.jp/*",
+        "https://*.maimaidx.jp/*",
+        "https://maimaidx-eng.com/*",
+        "https://*.maimaidx.net/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
