@@ -17,9 +17,12 @@ Discord bot to manage maimai favorite-song loadouts (up to 30 songs each), plus 
 - `/loadout list`
 - `/loadout show name:<text>`
 - `/loadout add name:<text> song_id:<id>`
+- `/loadout add-song name:<text> song_query:<text>`
 - `/loadout remove name:<text> song_id:<id>`
 - `/loadout payload name:<text>`
 - `/loadout bookmarklet`
+- `/song search query:<text>`
+- `/song info query:<text>`
 
 All bot replies are ephemeral (private).
 
@@ -46,6 +49,7 @@ All bot replies are ephemeral (private).
 - `DISCORD_CLIENT_ID` (required)
 - `DISCORD_GUILD_ID` (optional but recommended for fast command updates)
 - `DATA_FILE` (optional, default `./data/loadouts.json`)
+- `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
 
 ## Using bookmarklet flow
 

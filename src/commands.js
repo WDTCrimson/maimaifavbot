@@ -16,7 +16,7 @@ export const loadoutCommand = new SlashCommandBuilder()
       .setName('delete')
       .setDescription('Delete a loadout')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true)
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
@@ -24,7 +24,7 @@ export const loadoutCommand = new SlashCommandBuilder()
       .setName('add')
       .setDescription('Add a song ID to a loadout')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true)
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
       )
       .addStringOption((option) =>
         option.setName('song_id').setDescription('Numeric song ID').setRequired(true)
@@ -32,10 +32,25 @@ export const loadoutCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('add-song')
+      .setDescription('Add a song to a loadout by title/artist')
+      .addStringOption((option) =>
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('song_query')
+          .setDescription('Song title, artist, or numeric ID')
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('remove')
       .setDescription('Remove a song ID from a loadout')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true)
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
       )
       .addStringOption((option) =>
         option.setName('song_id').setDescription('Numeric song ID').setRequired(true)
@@ -46,7 +61,7 @@ export const loadoutCommand = new SlashCommandBuilder()
       .setName('show')
       .setDescription('Show all songs in a loadout')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true)
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
@@ -57,7 +72,7 @@ export const loadoutCommand = new SlashCommandBuilder()
       .setName('payload')
       .setDescription('Generate a payload for bookmarklet/extension')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true)
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
@@ -66,4 +81,32 @@ export const loadoutCommand = new SlashCommandBuilder()
       .setDescription('Get the bookmarklet install URL')
   );
 
-export const commands = [loadoutCommand.toJSON()];
+export const songCommand = new SlashCommandBuilder()
+  .setName('song')
+  .setDescription('Search song metadata imported for this bot')
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('search')
+      .setDescription('Search songs by title, artist, or ID')
+      .addStringOption((option) =>
+        option
+          .setName('query')
+          .setDescription('Song title, artist, or numeric ID')
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('info')
+      .setDescription('Show details for one song')
+      .addStringOption((option) =>
+        option
+          .setName('query')
+          .setDescription('Song title, artist, or numeric ID')
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
+  );
+
+export const commands = [loadoutCommand.toJSON(), songCommand.toJSON()];

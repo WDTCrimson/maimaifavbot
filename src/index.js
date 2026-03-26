@@ -1,10 +1,14 @@
 import { AttachmentBuilder, Client, Events, GatewayIntentBits } from 'discord.js';
 import { config, limits } from './config.js';
 import { createInstallMessage, createPayloadMessage } from './bookmarklet.js';
+import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
 
 const store = new LoadoutStore(config.dataFile, limits);
 await store.ensureReady();
+
+const songCatalog = new SongCatalog(config.songCatalogFile);
+await songCatalog.ensureReady();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -12,19 +16,108 @@ const client = new Client({
 
 client.once(Events.ClientReady, (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
+  if (songCatalog.available) {
+    console.log(`Loaded song catalog: ${songCatalog.count} songs`);
+  } else {
+    console.warn(`Song catalog unavailable at ${config.songCatalogFile}`);
+  }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand() || interaction.commandName !== 'loadout') {
+  if (interaction.isAutocomplete()) {
+    try {
+      await handleAutocomplete(interaction);
+    } catch (error) {
+      console.error('Autocomplete error:', error);
+      try {
+        await interaction.respond([]);
+      } catch {
+        // ignored
+      }
+    }
+    return;
+  }
+
+  if (!interaction.isChatInputCommand()) {
     return;
   }
 
   try {
-    await handleLoadoutCommand(interaction);
+    switch (interaction.commandName) {
+      case 'loadout':
+        await handleLoadoutCommand(interaction);
+        return;
+      case 'song':
+        await handleSongCommand(interaction);
+        return;
+      default:
+        return;
+    }
   } catch (error) {
     await replySafely(interaction, `Error: ${error.message}`);
   }
 });
+
+async function handleAutocomplete(interaction) {
+  if (interaction.commandName === 'loadout') {
+    await handleLoadoutAutocomplete(interaction);
+    return;
+  }
+
+  if (interaction.commandName === 'song') {
+    await handleSongAutocomplete(interaction);
+    return;
+  }
+
+  await interaction.respond([]);
+}
+
+async function handleLoadoutAutocomplete(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  const focused = interaction.options.getFocused(true);
+  const focusedValue = String(focused.value || '');
+
+  if (focused.name === 'name') {
+    const choices = getLoadoutNameChoices(interaction.user.id, focusedValue);
+    await interaction.respond(choices);
+    return;
+  }
+
+  if (subcommand === 'add-song' && focused.name === 'song_query') {
+    if (!songCatalog.available) {
+      await interaction.respond([]);
+      return;
+    }
+    const choices = songCatalog.autocomplete(focusedValue, 25);
+    await interaction.respond(choices);
+    return;
+  }
+
+  await interaction.respond([]);
+}
+
+async function handleSongAutocomplete(interaction) {
+  if (!songCatalog.available) {
+    await interaction.respond([]);
+    return;
+  }
+
+  const focusedValue = String(interaction.options.getFocused(true).value || '');
+  const choices = songCatalog.autocomplete(focusedValue, 25);
+  await interaction.respond(choices);
+}
+
+function getLoadoutNameChoices(userId, query) {
+  const normalizedQuery = query.trim().toLowerCase();
+  return store
+    .listLoadouts(userId)
+    .filter((loadout) => !normalizedQuery || loadout.name.toLowerCase().includes(normalizedQuery))
+    .slice(0, 25)
+    .map((loadout) => ({
+      name: `${loadout.name} (${loadout.songs.length}/30)`,
+      value: loadout.name
+    }));
+}
 
 async function handleLoadoutCommand(interaction) {
   const subcommand = interaction.options.getSubcommand();
@@ -60,11 +153,8 @@ async function handleLoadoutCommand(interaction) {
     case 'show': {
       const name = interaction.options.getString('name', true);
       const loadout = store.getLoadout(userId, name);
-      const songs = loadout.songs.length ? loadout.songs.join(', ') : '(empty)';
-      await replySafely(
-        interaction,
-        `**${loadout.name}** (${loadout.songs.length}/30)\nSong IDs: ${songs}`
-      );
+      const songs = formatLoadoutSongs(loadout.songs);
+      await replySafely(interaction, `**${loadout.name}** (${loadout.songs.length}/30)\n${songs}`);
       return;
     }
 
@@ -75,6 +165,24 @@ async function handleLoadoutCommand(interaction) {
       await replySafely(
         interaction,
         `Added song ID **${songId}** to **${loadout.name}** (${loadout.songs.length}/30).`
+      );
+      return;
+    }
+
+    case 'add-song': {
+      songCatalog.requireAvailable();
+      const name = interaction.options.getString('name', true);
+      const songQuery = interaction.options.getString('song_query', true);
+      const song = songCatalog.resolveSong(songQuery);
+
+      if (!song) {
+        throw new Error(`No matching song found for "${songQuery}".`);
+      }
+
+      const loadout = await store.addSong(userId, name, song.favoriteId);
+      await replySafely(
+        interaction,
+        `Added **${song.title}** (\`${song.favoriteId}\`) to **${loadout.name}** (${loadout.songs.length}/30).`
       );
       return;
     }
@@ -115,6 +223,113 @@ async function handleLoadoutCommand(interaction) {
     default:
       await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
   }
+}
+
+async function handleSongCommand(interaction) {
+  songCatalog.requireAvailable();
+
+  const subcommand = interaction.options.getSubcommand();
+  const query = interaction.options.getString('query', true);
+
+  switch (subcommand) {
+    case 'search': {
+      const songs = songCatalog.search(query, 10);
+      if (!songs.length) {
+        await replySafely(interaction, `No songs found for "${query}".`);
+        return;
+      }
+
+      const lines = songs.map(
+        (song, index) => `${index + 1}. [${song.favoriteId}] ${song.title} - ${song.artist}`
+      );
+      await replySafely(interaction, `Top matches for "${query}":\n${lines.join('\n')}`);
+      return;
+    }
+
+    case 'info': {
+      const song = songCatalog.resolveSong(query);
+      if (!song) {
+        await replySafely(interaction, `No song found for "${query}".`);
+        return;
+      }
+
+      const levelSummary = formatSongLevels(song);
+      const lines = [
+        `ID: ${song.favoriteId}`,
+        `Title: ${song.title}`,
+        `Artist: ${song.artist}`,
+        `Category: ${song.category || 'Unknown'}`,
+        `BPM: ${song.bpm ?? 'Unknown'}`,
+        `Levels: ${levelSummary}`
+      ];
+      await replySafely(interaction, lines.join('\n'));
+      return;
+    }
+
+    default:
+      await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
+  }
+}
+
+function formatLoadoutSongs(songIds) {
+  if (!songIds.length) {
+    return 'Songs: (empty)';
+  }
+
+  const lines = songIds.map((songId) => {
+    if (!songCatalog.available) {
+      return `- ${songId}`;
+    }
+
+    const song = songCatalog.getByFavoriteId(songId);
+    if (!song) {
+      return `- ${songId}`;
+    }
+
+    return `- ${songId} | ${song.title} - ${song.artist}`;
+  });
+
+  return `Songs:\n${lines.join('\n')}`;
+}
+
+function formatSongLevels(song) {
+  if (!song.difficultyLevels?.length) {
+    return 'Unknown';
+  }
+
+  const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+  const labels = {
+    basic: 'BASIC',
+    advanced: 'ADV',
+    expert: 'EXP',
+    master: 'MAS',
+    remaster: 'Re:MAS'
+  };
+
+  const buckets = new Map();
+  for (const difficulty of order) {
+    buckets.set(difficulty, new Set());
+  }
+
+  for (const levelInfo of song.difficultyLevels) {
+    const difficulty = String(levelInfo.difficulty || '').toLowerCase();
+    const level = String(levelInfo.level || '').trim();
+    if (!buckets.has(difficulty) || !level) {
+      continue;
+    }
+    buckets.get(difficulty).add(level);
+  }
+
+  const pieces = [];
+  for (const difficulty of order) {
+    const levels = [...buckets.get(difficulty)];
+    if (!levels.length) {
+      continue;
+    }
+    pieces.push(`${labels[difficulty]} ${levels.join('/')}`);
+  }
+
+  return pieces.join(', ') || 'Unknown';
 }
 
 async function replySafely(interaction, content) {
