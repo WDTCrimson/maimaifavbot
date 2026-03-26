@@ -69,3 +69,23 @@ All bot replies are ephemeral (private).
 - The page automation is heuristic-based because maimaidxnet has no public API for favorites.
 - If selectors differ on your target page, adjust logic in `extension/content.js` and `src/bookmarklet.js`.
 - Review maimai terms/rules before using automation.
+
+## Run as a systemd service
+
+1. Copy the provided unit file:
+   ```bash
+   sudo cp maimai-fav-bot.service /etc/systemd/system/maimai-fav-bot.service
+   ```
+2. Reload systemd:
+   ```bash
+   sudo systemctl daemon-reload
+   ```
+3. Enable and start the bot:
+   ```bash
+   sudo systemctl enable --now maimai-fav-bot
+   ```
+4. Check status/logs:
+   ```bash
+   sudo systemctl status maimai-fav-bot
+   sudo journalctl -u maimai-fav-bot -f
+   ```
