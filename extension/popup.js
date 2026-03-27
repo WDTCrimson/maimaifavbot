@@ -1,9 +1,12 @@
 const payloadInput = document.getElementById('payload');
 const status = document.getElementById('status');
 const applyButton = document.getElementById('apply');
+const strictInput = document.getElementById('strict');
 const storageKey = 'maimai_loadout_payload';
+const strictKey = 'maimai_loadout_strict';
 
 payloadInput.value = localStorage.getItem(storageKey) || '';
+strictInput.checked = localStorage.getItem(strictKey) === '1';
 
 function setStatus(text, color = '#1f2937') {
   status.textContent = text;
@@ -65,6 +68,7 @@ applyButton.addEventListener('click', async () => {
   }
 
   localStorage.setItem(storageKey, payload);
+  localStorage.setItem(strictKey, strictInput.checked ? '1' : '0');
   setStatus('Applying loadout...', '#1e6ae8');
 
   try {
@@ -77,7 +81,8 @@ applyButton.addEventListener('click', async () => {
     try {
       response = await sendMessageToTab(tab.id, {
         type: 'APPLY_LOADOUT',
-        payload
+        payload,
+        strict: strictInput.checked
       });
     } catch (error) {
       const msg = String(error?.message || '').toLowerCase();
@@ -89,7 +94,8 @@ applyButton.addEventListener('click', async () => {
       await injectContentScript(tab.id);
       response = await sendMessageToTab(tab.id, {
         type: 'APPLY_LOADOUT',
-        payload
+        payload,
+        strict: strictInput.checked
       });
     }
 

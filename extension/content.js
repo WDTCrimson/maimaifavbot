@@ -262,6 +262,23 @@ function favoriteState(control, row) {
     return Boolean(rowCheckbox.checked);
   }
 
+  const visualToggle = row.querySelector('.favorite_checkbox, .favorite_checkbox_frame');
+  if (visualToggle) {
+    const sig = [
+      visualToggle.className || '',
+      visualToggle.getAttribute('style') || '',
+      getComputedStyle(visualToggle).backgroundImage || ''
+    ]
+      .join(' ')
+      .toLowerCase();
+    if (/favorite_on|favo_on|_on\.|on\.png|checked|active|selected/.test(sig)) {
+      return true;
+    }
+    if (/favorite_off|favo_off|_off\.|off\.png|unchecked|inactive|empty/.test(sig)) {
+      return false;
+    }
+  }
+
   if (control instanceof HTMLInputElement && control.type === 'checkbox') {
     return Boolean(control.checked);
   }
@@ -332,6 +349,7 @@ function clickFavoriteControl(row, control) {
       control.disabled = false;
     }
     control.click();
+    dispatchSyntheticClick(control);
     if (control.type === 'checkbox') {
       control.dispatchEvent(new Event('input', { bubbles: true }));
       control.dispatchEvent(new Event('change', { bubbles: true }));
@@ -341,16 +359,19 @@ function clickFavoriteControl(row, control) {
 
   if (control instanceof HTMLLabelElement) {
     control.click();
+    dispatchSyntheticClick(control);
     return true;
   }
 
   if (control.classList?.contains('favorite_checkbox')) {
     control.click();
+    dispatchSyntheticClick(control);
     return true;
   }
 
   if (control instanceof HTMLButtonElement || control instanceof HTMLAnchorElement) {
     control.click();
+    dispatchSyntheticClick(control);
     return true;
   }
 
@@ -370,12 +391,14 @@ function clickFavoriteControl(row, control) {
     );
     if (submitControl) {
       submitControl.click();
+      dispatchSyntheticClick(submitControl);
       return true;
     }
   }
 
   if (typeof control.click === 'function') {
     control.click();
+    dispatchSyntheticClick(control);
     return true;
   }
 
@@ -386,11 +409,50 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function applyLoadout(rawPayload) {
+function dispatchSyntheticClick(target) {
+  const events = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
+  for (const type of events) {
+    target.dispatchEvent(
+      new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        view: window
+      })
+    );
+  }
+}
+
+function showPageStatus(message, isError = false) {
+  const id = '__maimai_loadout_status__';
+  const existing = document.getElementById(id);
+  if (existing) {
+    existing.remove();
+  }
+
+  const box = document.createElement('div');
+  box.id = id;
+  box.style.position = 'fixed';
+  box.style.right = '14px';
+  box.style.bottom = '14px';
+  box.style.zIndex = '2147483647';
+  box.style.maxWidth = '520px';
+  box.style.whiteSpace = 'pre-wrap';
+  box.style.padding = '10px 12px';
+  box.style.borderRadius = '8px';
+  box.style.font = '12px/1.4 "Segoe UI",Tahoma,sans-serif';
+  box.style.color = '#fff';
+  box.style.background = isError ? 'rgba(185,28,28,0.95)' : 'rgba(6,95,70,0.95)';
+  box.textContent = message;
+  document.body.appendChild(box);
+
+  setTimeout(() => {
+    box.remove();
+  }, 12000);
+}
+
+async function applyLoadout(rawPayload, options = {}) {
   const payload = decodePayload(rawPayload);
-  const strict = confirm(
-    'Strict sync?\\nOK: also unfavorite songs not in payload.\\nCancel: only add missing songs.'
-  );
+  const strict = Boolean(options.strict);
 
   const rows = collectRows();
 
@@ -513,11 +575,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return;
   }
 
-  applyLoadout(message.payload)
+  applyLoadout(message.payload, {
+    strict: message.strict
+  })
     .then((report) => {
+      const missingText = report.missing.length ? report.missing.join(', ') : 'none';
+      showPageStatus(
+        [
+          `Loadout: ${report.name}`,
+          `Added: ${report.added}`,
+          `Removed: ${report.removed}`,
+          `Unknown state: ${report.unknown}`,
+          `Scanned rows: ${report.scannedRows ?? 0}`,
+          `Matched IDs: ${report.matchedRows ?? 0}`,
+          `Actionable controls: ${report.actionableRows ?? 0}`,
+          `Failed toggles: ${report.failedToggles ?? 0}`,
+          `Missing on page: ${missingText}`
+        ].join('\n')
+      );
       sendResponse({ ok: true, report });
     })
     .catch((error) => {
+      showPageStatus(`Failed: ${error.message || 'Unknown error.'}`, true);
       sendResponse({ ok: false, error: error.message || 'Unknown error.' });
     });
 
