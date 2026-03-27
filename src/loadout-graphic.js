@@ -631,18 +631,20 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     const textX = jacketX + jacketSize + 10;
     const textRight = x + cardWidth - contentInset;
     const lineMaxWidth = Math.max(40, textRight - textX);
-    const headerTextLeft = x + 70;
+    const titlePanelHorizontalInset = 8;
+    const headerTextLeft = x + 10 + titlePanelHorizontalInset;
 
     if (card) {
       const typeText = String(card.primaryChart?.type || '').toUpperCase();
       const hasTypeBadge = typeText === 'DX' || typeText === 'STD';
       const titlePanelRight = x + cardWidth - 10;
-      const indicatorEdgeGap = 8;
+      const indicatorEdgeGap = titlePanelHorizontalInset;
       const indicatorGap = 8;
       const badgeWidth = hasTypeBadge ? 40 : 0;
       const badgeHeight = 14;
-      const badgeX = titlePanelRight - indicatorEdgeGap - badgeWidth;
-      const badgeY = y + 14;
+      const badgeRightX = titlePanelRight - indicatorEdgeGap;
+      const badgeX = badgeRightX - badgeWidth;
+      const badgeY = titlePanelY + Math.round((titlePanelHeight - badgeHeight) / 2);
       const versionRightX = hasTypeBadge
         ? badgeX - indicatorGap
         : titlePanelRight - indicatorEdgeGap;
@@ -697,7 +699,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       if (diffBadge) {
         const diffBadgeW = 48;
         const diffBadgeH = 16;
-        drawImageContain(ctx, diffBadge, x + 14, y + 13, diffBadgeW, diffBadgeH);
+        drawImageContain(ctx, diffBadge, x + 14, y + 36, diffBadgeW, diffBadgeH);
       }
     } else {
       ctx.fillStyle = theme.artistColor;
