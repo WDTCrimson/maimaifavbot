@@ -5,6 +5,9 @@ import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 const FONT_EXTENSIONS = new Set(['.ttf', '.otf', '.woff', '.woff2']);
+const LOADOUT_SLOT_COUNT = 30;
+const GRID_COLUMNS = 6;
+const GRID_ROWS = 5;
 
 const loadedThemeFonts = new Map();
 
@@ -383,8 +386,9 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     ? `"${themeFontFamily}", ${theme.fontFamily}`
     : theme.fontFamily;
 
+  const selectedSongs = Array.isArray(songs) ? songs.slice(0, LOADOUT_SLOT_COUNT) : [];
   const cards = await Promise.all(
-    songs.map(async (song) => ({
+    selectedSongs.map(async (song) => ({
       title: song?.title || 'Unknown Song',
       artist: song?.artist || 'Unknown Artist',
       lines: buildDifficultyLines(song || {}),
@@ -392,17 +396,23 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       imagePath: await resolveSongImagePath(song || {})
     }))
   );
+  const slots = Array.from({ length: LOADOUT_SLOT_COUNT }, (_, index) => cards[index] || null);
 
-  const cardCount = cards.length;
-  const columns = cardCount <= 8 ? 2 : cardCount <= 18 ? 3 : 4;
-  const cardWidth = 360;
-  const cardHeight = 170;
-  const gap = 16;
-  const margin = 24;
-  const headerHeight = 120;
-  const rows = Math.max(1, Math.ceil(cardCount / columns));
-  const width = margin * 2 + columns * cardWidth + (columns - 1) * gap;
-  const height = headerHeight + margin + rows * cardHeight + (rows - 1) * gap + margin;
+  const width = 1920;
+  const height = 1080;
+  const horizontalMargin = 24;
+  const verticalMargin = 24;
+  const gapX = 14;
+  const gapY = 12;
+  const headerTop = 20;
+  const headerHeight = 96;
+  const gridTop = headerTop + headerHeight + 22;
+  const cardWidth = Math.floor(
+    (width - horizontalMargin * 2 - gapX * (GRID_COLUMNS - 1)) / GRID_COLUMNS
+  );
+  const cardHeight = Math.floor(
+    (height - gridTop - verticalMargin - gapY * (GRID_ROWS - 1)) / GRID_ROWS
+  );
 
   const canvas = new Canvas(width, height);
   const ctx = canvas.getContext('2d');
@@ -428,7 +438,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     ctx.restore();
   }
 
-  roundedRectPath(ctx, margin, 26, width - margin * 2, 78, 18);
+  roundedRectPath(ctx, horizontalMargin, headerTop, width - horizontalMargin * 2, headerHeight, 18);
   ctx.fillStyle = theme.headerFill;
   ctx.globalAlpha = 0.72;
   ctx.fill();
@@ -437,20 +447,39 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   const headerOverlay = await imageCache.get(assets.headerOverlay);
   if (headerOverlay) {
     ctx.save();
-    roundedRectPath(ctx, margin, 26, width - margin * 2, 78, 18);
+    roundedRectPath(ctx, horizontalMargin, headerTop, width - horizontalMargin * 2, headerHeight, 18);
     ctx.clip();
     ctx.globalAlpha = Number(theme.headerOverlayOpacity) || 0.95;
-    drawImageCover(ctx, headerOverlay, margin, 26, width - margin * 2, 78);
+    drawImageCover(
+      ctx,
+      headerOverlay,
+      horizontalMargin,
+      headerTop,
+      width - horizontalMargin * 2,
+      headerHeight
+    );
     ctx.restore();
   }
 
+  const logoWidth = 172;
+  const logoHeight = 76;
+  const logoX = width - horizontalMargin - logoWidth;
+  const logoY = headerTop + 10;
+  const dateRightX = logoX - 18;
+  const titleLeftX = horizontalMargin + 22;
+
   ctx.fillStyle = theme.titleColor;
-  ctx.font = `600 42px ${fontFamily}`;
-  ctx.fillText(trimText(loadoutName, 24), margin + 24, 66);
+  ctx.font = `600 40px ${fontFamily}`;
+  const safeName = trimTextToWidth(ctx, trimText(loadoutName, 48), dateRightX - titleLeftX - 20);
+  ctx.fillText(safeName, titleLeftX, headerTop + 46);
 
   ctx.fillStyle = theme.subtitleColor;
-  ctx.font = `600 20px ${fontFamily}`;
-  ctx.fillText('Favorite Loadout', margin + 24, 92);
+  ctx.font = `600 18px ${fontFamily}`;
+  ctx.fillText(
+    `Favorite Loadout (${selectedSongs.length}/${LOADOUT_SLOT_COUNT})`,
+    titleLeftX,
+    headerTop + 72
+  );
 
   const dateText = new Intl.DateTimeFormat('en-GB', {
     day: '2-digit',
@@ -459,25 +488,25 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   }).format(new Date());
 
   ctx.fillStyle = theme.versionColor;
-  ctx.font = `600 22px ${fontFamily}`;
+  ctx.font = `600 20px ${fontFamily}`;
   ctx.textAlign = 'right';
-  ctx.fillText(dateText, width - margin - 24, 92);
+  ctx.fillText(dateText, dateRightX, headerTop + 70);
   ctx.textAlign = 'left';
 
   const logoImage = await imageCache.get(assets.logo);
   if (logoImage) {
-    drawImageContain(ctx, logoImage, width - margin - 116, 32, 116, 66);
+    drawImageContain(ctx, logoImage, logoX, logoY, logoWidth, logoHeight);
   }
 
   const cardBgImage = await imageCache.get(assets.cardBg);
   const cardFrameImage = await imageCache.get(assets.cardFrame);
 
-  for (let index = 0; index < cards.length; index += 1) {
-    const card = cards[index];
-    const col = index % columns;
-    const row = Math.floor(index / columns);
-    const x = margin + col * (cardWidth + gap);
-    const y = headerHeight + margin + row * (cardHeight + gap);
+  for (let index = 0; index < slots.length; index += 1) {
+    const card = slots[index];
+    const col = index % GRID_COLUMNS;
+    const row = Math.floor(index / GRID_COLUMNS);
+    const x = horizontalMargin + col * (cardWidth + gapX);
+    const y = gridTop + row * (cardHeight + gapY);
 
     roundedRectPath(ctx, x, y, cardWidth, cardHeight, 16);
     ctx.fillStyle = theme.cardFill;
@@ -497,34 +526,49 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.restore();
     }
 
-    roundedRectPath(ctx, x + 14, y + 12, cardWidth - 28, 24, 8);
+    roundedRectPath(ctx, x + 10, y + 10, cardWidth - 20, 22, 8);
     ctx.fillStyle = theme.cardTitleBar;
     ctx.fill();
 
-    ctx.fillStyle = theme.titleColor;
-    ctx.font = `600 18px ${fontFamily}`;
-    const title = trimTextToWidth(ctx, trimText(card.title, 40), cardWidth - 170);
-    ctx.fillText(title, x + 122, y + 30);
+    const jacketX = x + 10;
+    const jacketY = y + 40;
+    const jacketSize = 90;
+    const textX = jacketX + jacketSize + 10;
+    const textRight = x + cardWidth - 10;
+    const lineMaxWidth = Math.max(40, textRight - textX);
 
-    ctx.fillStyle = theme.artistColor;
-    ctx.font = `500 14px ${fontFamily}`;
-    const artist = trimTextToWidth(ctx, trimText(card.artist, 42), cardWidth - 148);
-    ctx.fillText(artist, x + 122, y + 52);
-
-    if (card.version) {
+    if (card) {
       ctx.fillStyle = theme.versionColor;
-      ctx.font = `500 13px ${fontFamily}`;
-      ctx.textAlign = 'right';
-      ctx.fillText(card.version, x + cardWidth - 14, y + 28);
-      ctx.textAlign = 'left';
+      ctx.font = `500 12px ${fontFamily}`;
+      const versionText = card.version ? trimTextToWidth(ctx, card.version, 88) : '';
+      const versionWidth = versionText ? ctx.measureText(versionText).width : 0;
+
+      ctx.fillStyle = theme.titleColor;
+      ctx.font = `600 14px ${fontFamily}`;
+      const titleMaxWidth = Math.max(40, lineMaxWidth - (versionWidth ? versionWidth + 8 : 0));
+      const title = trimTextToWidth(ctx, trimText(card.title, 48), titleMaxWidth);
+      ctx.fillText(title, textX, y + 25);
+
+      if (versionText) {
+        ctx.fillStyle = theme.versionColor;
+        ctx.font = `500 12px ${fontFamily}`;
+        ctx.textAlign = 'right';
+        ctx.fillText(versionText, textRight, y + 25);
+        ctx.textAlign = 'left';
+      }
+
+      ctx.fillStyle = theme.artistColor;
+      ctx.font = `500 12px ${fontFamily}`;
+      const artist = trimTextToWidth(ctx, trimText(card.artist, 56), lineMaxWidth);
+      ctx.fillText(artist, textX, y + 42);
+    } else {
+      ctx.fillStyle = theme.artistColor;
+      ctx.font = `600 12px ${fontFamily}`;
+      ctx.fillText(`Slot ${index + 1}`, x + 16, y + 25);
     }
 
-    const jacketX = x + 14;
-    const jacketY = y + 44;
-    const jacketSize = 96;
-
-    const jacketImage = await imageCache.get(card.imagePath);
-    if (jacketImage) {
+    const jacketImage = card ? await imageCache.get(card.imagePath) : null;
+    if (card && jacketImage) {
       ctx.save();
       roundedRectPath(ctx, jacketX, jacketY, jacketSize, jacketSize, 12);
       ctx.clip();
@@ -534,21 +578,24 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       roundedRectPath(ctx, jacketX, jacketY, jacketSize, jacketSize, 12);
       ctx.fillStyle = '#2b2f55';
       ctx.fill();
-      ctx.fillStyle = '#b8bfd8';
+      ctx.fillStyle = '#c6cce3';
       ctx.textAlign = 'center';
-      ctx.font = `600 12px ${fontFamily}`;
-      ctx.fillText('NO', jacketX + jacketSize / 2, jacketY + 44);
-      ctx.fillText('IMAGE', jacketX + jacketSize / 2, jacketY + 60);
+      ctx.font = `600 11px ${fontFamily}`;
+      ctx.fillText(card ? 'NO' : 'EMPTY', jacketX + jacketSize / 2, jacketY + 42);
+      ctx.fillText(card ? 'IMAGE' : 'SLOT', jacketX + jacketSize / 2, jacketY + 57);
       ctx.textAlign = 'left';
     }
 
     ctx.fillStyle = theme.chartColor;
-    ctx.font = `500 16px ${fontFamily}`;
-    for (let lineIndex = 0; lineIndex < card.lines.length; lineIndex += 1) {
-      ctx.fillText(card.lines[lineIndex], x + 122, y + 78 + lineIndex * 20);
+    ctx.font = `500 13px ${fontFamily}`;
+    const lines = card ? card.lines : ['No song selected'];
+    const maxLines = 5;
+    for (let lineIndex = 0; lineIndex < Math.min(lines.length, maxLines); lineIndex += 1) {
+      const line = trimTextToWidth(ctx, lines[lineIndex], lineMaxWidth);
+      ctx.fillText(line, textX, y + 62 + lineIndex * 16);
     }
 
-    if (cardFrameImage) {
+    if (cardFrameImage && card) {
       ctx.save();
       ctx.globalAlpha = Number(theme.cardFrameOpacity) || 1;
       drawImageContain(ctx, cardFrameImage, x, y, cardWidth, cardHeight);

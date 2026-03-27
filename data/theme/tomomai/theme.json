@@ -20,6 +20,6 @@
   "watermarkOpacity": 0.06,
   "headerOverlayOpacity": 0.95,
   "cardBgOpacity": 0.25,
-  "cardFrameOpacity": 0.8,
+  "cardFrameOpacity": 0.2,
   "fontFamily": "FOT-NewRodin Pro, Inter, Murecho, Noto Sans JP, Arial, sans-serif"
 }
