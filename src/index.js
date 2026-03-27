@@ -95,6 +95,13 @@ async function handleLoadoutAutocomplete(interaction) {
     return;
   }
 
+  if (subcommand === 'remove' && focused.name === 'song_query') {
+    const loadoutName = interaction.options.getString('name');
+    const choices = getLoadoutSongChoices(interaction.user.id, loadoutName, focusedValue);
+    await interaction.respond(choices);
+    return;
+  }
+
   await interaction.respond([]);
 }
 
@@ -119,6 +126,54 @@ function getLoadoutNameChoices(userId, query) {
       name: `${loadout.name} (${loadout.songs.length}/30)`,
       value: loadout.name
     }));
+}
+
+function truncateChoiceName(value, maxLength = 100) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function getLoadoutSongChoices(userId, loadoutName, query) {
+  if (!loadoutName) {
+    return [];
+  }
+
+  let loadout = null;
+  try {
+    loadout = store.getLoadout(userId, loadoutName);
+  } catch {
+    return [];
+  }
+
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+
+  const entries = loadout.songs
+    .map((songId) => {
+      const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
+      const label = song ? `${song.title} - ${song.artist}` : songId;
+      return {
+        label,
+        songId
+      };
+    })
+    .filter((entry) => {
+      if (!normalizedQuery) {
+        return true;
+      }
+      return (
+        entry.songId.toLowerCase().includes(normalizedQuery) ||
+        entry.label.toLowerCase().includes(normalizedQuery)
+      );
+    })
+    .slice(0, 25)
+    .map((entry) => ({
+      name: truncateChoiceName(entry.label),
+      value: entry.songId
+    }));
+
+  return entries;
 }
 
 async function handleLoadoutCommand(interaction) {
@@ -202,12 +257,20 @@ async function handleLoadoutCommand(interaction) {
 
     case 'remove': {
       const name = interaction.options.getString('name', true);
-      const songId = interaction.options.getString('song_id', true);
+      const songQuery = interaction.options.getString('song_query', true);
+      const loadoutBefore = store.getLoadout(userId, name);
+      const songId = resolveSongIdInLoadout(loadoutBefore, songQuery);
       const loadout = await store.removeSong(userId, name, songId);
-      await replySafely(
-        interaction,
-        `Removed song ID **${songId}** from **${loadout.name}** (${loadout.songs.length}/30).`
-      );
+      const removedSong = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
+      if (removedSong) {
+        await replySafely(
+          interaction,
+          `Removed **${removedSong.title}** from **${loadout.name}** (${loadout.songs.length}/30).`
+        );
+        return;
+      }
+
+      await replySafely(interaction, `Removed song from **${loadout.name}** (${loadout.songs.length}/30).`);
       return;
     }
 
@@ -345,6 +408,44 @@ function formatSongLevels(song) {
   return pieces.join(', ') || 'Unknown';
 }
 
+function resolveSongIdInLoadout(loadout, songQuery) {
+  const query = String(songQuery || '').trim();
+  if (!query) {
+    throw new Error('Song query cannot be empty.');
+  }
+
+  if (/^\d{1,8}$/.test(query)) {
+    return query;
+  }
+
+  if (!songCatalog.available) {
+    throw new Error('Song catalog is unavailable. Use numeric song ID or import song data.');
+  }
+
+  const exact = songCatalog.resolveSong(query);
+  if (exact && loadout.songs.includes(exact.favoriteId)) {
+    return exact.favoriteId;
+  }
+
+  const normalizedQuery = query.toLowerCase();
+  const partial = loadout.songs.find((songId) => {
+    const song = songCatalog.getByFavoriteId(songId);
+    if (!song) {
+      return false;
+    }
+    return (
+      song.title.toLowerCase().includes(normalizedQuery) ||
+      song.artist.toLowerCase().includes(normalizedQuery)
+    );
+  });
+
+  if (partial) {
+    return partial;
+  }
+
+  throw new Error(`No matching song in this loadout for "${songQuery}".`);
+}
+
 function buildChartSummary(song) {
   if (!song.difficultyLevels?.length) {
     return ['No chart metadata available.'];
@@ -377,8 +478,7 @@ function buildChartSummary(song) {
       const difficultyText = difficultyLabel[difficulty] || String(chart.difficulty || 'UNKNOWN');
       const typeText = String(chart.type || 'UNK').toUpperCase();
       const levelText = `Lvl ${chart.level}`;
-      const internal =
-        typeof chart.internalLevelValue === 'number' ? chart.internalLevelValue : chart.internalLevelValue || '?';
+      const internal = formatInternalLevel(chart.internalLevelValue);
       const versionText = chart.version || 'Unknown version';
       return `${typeText} ${difficultyText} ${levelText} [${internal}] - ${versionText}`;
     });
@@ -403,6 +503,21 @@ function buildChartSummary(song) {
   }
 
   return limitedRows;
+}
+
+function formatInternalLevel(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value.toFixed(1) : String(value);
+  }
+
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return '?';
+  }
+  if (/^-?\d+$/.test(text)) {
+    return `${text}.0`;
+  }
+  return text;
 }
 
 async function resolveArtworkAttachment(song) {

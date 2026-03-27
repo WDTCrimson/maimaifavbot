@@ -48,12 +48,16 @@ export const loadoutCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('remove')
-      .setDescription('Remove a song ID from a loadout')
+      .setDescription('Remove a song from a loadout by name/artist')
       .addStringOption((option) =>
         option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
       )
       .addStringOption((option) =>
-        option.setName('song_id').setDescription('Numeric song ID').setRequired(true)
+        option
+          .setName('song_query')
+          .setDescription('Song title, artist, or numeric ID')
+          .setRequired(true)
+          .setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>

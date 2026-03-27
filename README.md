@@ -18,7 +18,7 @@ Discord bot to manage maimai favorite-song loadouts (up to 30 songs each), plus 
 - `/loadout show name:<text>`
 - `/loadout add name:<text> song_id:<id>`
 - `/loadout add-song name:<text> song_query:<text>`
-- `/loadout remove name:<text> song_id:<id>`
+- `/loadout remove name:<text> song_query:<text>`
 - `/loadout payload name:<text>`
 - `/loadout bookmarklet`
 - `/song search query:<text>`
