@@ -139,6 +139,46 @@ function getPrimaryVersion(song) {
   return withVersion[withVersion.length - 1];
 }
 
+function getPrimaryChart(song) {
+  const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+  const rank = new Map(order.map((difficulty, index) => [difficulty, index]));
+  const charts = Array.isArray(song.difficultyLevels) ? song.difficultyLevels : [];
+  let best = null;
+
+  for (const chart of charts) {
+    const difficulty = String(chart.difficulty || '').toLowerCase();
+    if (!rank.has(difficulty) || !chart.level) {
+      continue;
+    }
+    if (!best) {
+      best = chart;
+      continue;
+    }
+
+    const currentRank = rank.get(difficulty) ?? -1;
+    const bestRank = rank.get(String(best.difficulty || '').toLowerCase()) ?? -1;
+    if (currentRank > bestRank) {
+      best = chart;
+      continue;
+    }
+    if (currentRank === bestRank) {
+      if (levelToNumber(chart.internalLevelValue) > levelToNumber(best.internalLevelValue)) {
+        best = chart;
+      }
+    }
+  }
+
+  return best;
+}
+
+function resolveDifficultyBadgePath(difficulty) {
+  const normalized = String(difficulty || '').toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  return join(process.cwd(), 'data', 'assets', 'tomomai', 'res', 'songs', `song_${normalized}.png`);
+}
+
 async function fileExists(path) {
   try {
     const fileStat = await stat(path);
@@ -403,7 +443,8 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       artist: song?.artist || 'Unknown Artist',
       lines: buildDifficultyLines(song || {}),
       version: getPrimaryVersion(song || {}),
-      imagePath: await resolveSongImagePath(song || {})
+      imagePath: await resolveSongImagePath(song || {}),
+      primaryChart: getPrimaryChart(song || {})
     }))
   );
   const slots = Array.from({ length: LOADOUT_SLOT_COUNT }, (_, index) => cards[index] || null);
@@ -430,7 +471,8 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   const imageCache = createImageCache();
   await imageCache.prefetch([
     ...Object.values(assets),
-    ...cards.map((card) => card.imagePath)
+    ...cards.map((card) => card.imagePath),
+    ...cards.map((card) => resolveDifficultyBadgePath(card.primaryChart?.difficulty))
   ]);
 
   const backgroundImage = await imageCache.get(assets.background);
@@ -453,7 +495,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   if (headerOverlay) {
     const characterSize = 320;
     const characterX = width - characterSize - 220;
-    const characterY = -36;
+    const characterY = 8;
     ctx.save();
     ctx.globalAlpha = Number(theme.headerOverlayOpacity) || 0.95;
     drawImageContain(ctx, headerOverlay, characterX, characterY, characterSize, characterSize);
@@ -556,6 +598,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.font = `500 12px ${fontFamily}`;
       const versionText = card.version ? trimTextToWidth(ctx, card.version, 88) : '';
       const versionWidth = versionText ? ctx.measureText(versionText).width : 0;
+      const typeText = String(card.primaryChart?.type || '').toUpperCase();
 
       ctx.fillStyle = theme.titleColor;
       ctx.font = `600 14px ${fontFamily}`;
@@ -575,6 +618,29 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.font = `500 12px ${fontFamily}`;
       const artist = trimTextToWidth(ctx, trimText(card.artist, 56), lineMaxWidth);
       ctx.fillText(artist, textX, y + 42);
+
+      if (typeText === 'DX' || typeText === 'STD') {
+        const badgeWidth = 34;
+        const badgeHeight = 14;
+        const badgeX = textRight - badgeWidth;
+        const badgeY = y + 30;
+        roundedRectPath(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 7);
+        ctx.fillStyle = typeText === 'DX' ? '#f59e0b' : '#3b82f6';
+        ctx.fill();
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `700 10px ${fontFamily}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(typeText, badgeX + badgeWidth / 2, badgeY + 10.5);
+        ctx.textAlign = 'left';
+      }
+
+      const diffBadgePath = resolveDifficultyBadgePath(card.primaryChart?.difficulty);
+      const diffBadge = await imageCache.get(diffBadgePath);
+      if (diffBadge) {
+        const diffBadgeW = 48;
+        const diffBadgeH = 16;
+        drawImageContain(ctx, diffBadge, x + 14, y + 13, diffBadgeW, diffBadgeH);
+      }
     } else {
       ctx.fillStyle = theme.artistColor;
       ctx.font = `600 12px ${fontFamily}`;
@@ -615,10 +681,10 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       drawImageContain(
         ctx,
         cardFrameImage,
-        jacketX - 7,
-        jacketY - 7,
-        jacketSize + 14,
-        jacketSize + 14
+        jacketX - 11,
+        jacketY - 11,
+        jacketSize + 22,
+        jacketSize + 22
       );
       ctx.restore();
     }
