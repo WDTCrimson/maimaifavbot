@@ -231,7 +231,8 @@ async function handleLoadoutCommand(interaction) {
 
       const graphic = await renderLoadoutGraphic({
         loadoutName: loadout.name,
-        songs
+        songs,
+        themeDir: config.graphicThemeDir
       });
 
       const attachment = new AttachmentBuilder(graphic.buffer, {

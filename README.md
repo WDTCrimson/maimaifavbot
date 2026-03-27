@@ -53,6 +53,7 @@ All bot replies are ephemeral (private).
 - `DISCORD_GUILD_ID` (optional but recommended for fast command updates)
 - `DATA_FILE` (optional, default `./data/loadouts.json`)
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
+- `GRAPHIC_THEME_DIR` (optional, default `./data/theme`)
 
 ## Using bookmarklet flow
 
@@ -103,6 +104,25 @@ node scripts/import-maimai-data.js --skip-jackets
 node scripts/import-maimai-data.js --skip-logos
 node scripts/import-maimai-data.js --skip-data
 ```
+
+## Customize graphic assets
+
+`/loadout graphic` can use custom assets from `GRAPHIC_THEME_DIR` (default `data/theme/`).
+
+Drop files with these base names:
+
+- `background` (full background)
+- `header-overlay` (header image overlay)
+- `logo` (top-right logo)
+- `watermark` (global overlay)
+- `card-bg` (inside song cards)
+- `card-frame` (on top of song cards)
+
+Supported extensions: `.png`, `.jpg`, `.jpeg`, `.webp`
+
+Optional style tuning:
+
+- Create `data/theme/theme.json` using `data/theme/theme.json.example` as template.
 
 ## Run as a systemd service
 
