@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
 import { config, limits } from './config.js';
-import { createInstallMessage, createLoadoutPayload, createPayloadMessage } from './bookmarklet.js';
+import { createInstallMessage, createLoadoutPayload } from './bookmarklet.js';
 import { renderLoadoutGraphic } from './loadout-graphic.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -314,10 +314,13 @@ async function handleLoadoutCommand(interaction) {
     case 'payload': {
       const name = interaction.options.getString('name', true);
       const loadout = store.getLoadout(userId, name);
-      const message = createPayloadMessage(loadout, {
+      const payload = createLoadoutPayload(loadout, {
         songs: buildPayloadSongs(loadout)
       });
-      await replySafely(interaction, message);
+      await replyPayload(interaction, {
+        content: `Loadout: **${loadout.name}** (${loadout.songs.length}/30)\nPayload below (copy this message only):`
+      });
+      await replySafely(interaction, payload);
       return;
     }
 

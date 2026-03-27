@@ -4,10 +4,9 @@ export function createLoadoutPayload(loadout, options = {}) {
   const songs = Array.isArray(options.songs)
     ? options.songs
         .map((entry) => ({
-          id: String(entry?.id || '').trim(),
           title: String(entry?.title || '').trim()
         }))
-        .filter((entry) => /^\d{1,8}$/.test(entry.id))
+        .filter((entry) => entry.title)
     : [];
 
   const payload = {
