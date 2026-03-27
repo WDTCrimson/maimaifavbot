@@ -63,8 +63,7 @@ All bot replies are ephemeral (private).
 3. Run `/loadout payload name:<your-loadout>` and copy payload text.
 4. Open a maimai favorites/music page.
 5. Click bookmarklet and paste payload.
-6. Bookmarklet resets favorites, checks loadout songs, then shows a summary.
-7. Tap `DECIDE` on the page to save.
+6. Bookmarklet resets favorites, applies songs, and auto-submits `DECIDE`.
 
 ## Using extension flow
 

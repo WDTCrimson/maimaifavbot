@@ -371,7 +371,7 @@ async function handleLoadoutCommand(interaction) {
     case 'bookmarklet': {
       await replyPayload(interaction, {
         content:
-          'Copy the next message as your bookmark URL.\nThen run `/loadout payload`, open CHANGE FAVORITE SONGS, click bookmark, paste payload, and tap DECIDE.'
+          'Copy the next message as your bookmark URL.\nThen run `/loadout payload`, open CHANGE FAVORITE SONGS, click bookmark, and paste payload. It auto-submits DECIDE.'
       });
       await replySafely(interaction, createBookmarkletCode());
       return;
