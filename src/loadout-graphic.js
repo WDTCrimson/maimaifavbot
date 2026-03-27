@@ -655,7 +655,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       const versionWidth = versionText ? ctx.measureText(versionText).width : 0;
 
       const headerMaxWidth = Math.max(40, versionRightX - headerTextLeft - 6);
-      const titleMaxWidth = Math.max(20, headerMaxWidth * 0.62);
+      const titleMaxWidth = Math.max(20, headerMaxWidth);
       const titleRaw = trimText(card.title, 48);
       let titleFontSize = 14;
       while (titleFontSize > 10) {
@@ -677,20 +677,6 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.font = `600 ${titleFontSize}px ${fontFamily}`;
       const title = trimTextToWidth(ctx, titleRaw, titleMaxWidth);
       ctx.fillText(title, headerTextLeft, titleY);
-      const titleWidth = ctx.measureText(title).width;
-
-      const artistX = headerTextLeft + titleWidth + 6;
-      const artistMaxWidth = headerTextLeft + headerMaxWidth - artistX;
-      if (artistMaxWidth > 12) {
-        ctx.fillStyle = theme.artistColor;
-        ctx.font = `500 12px ${fontFamily}`;
-        const artistInline = trimTextToWidth(
-          ctx,
-          `- ${trimText(card.artist, 56)}`,
-          artistMaxWidth
-        );
-        ctx.fillText(artistInline, artistX, titleY);
-      }
       ctx.restore();
 
       if (versionText) {
