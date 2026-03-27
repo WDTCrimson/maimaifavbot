@@ -13,6 +13,30 @@ function normalizeSongId(songId) {
   return value;
 }
 
+function normalizeSongIds(songIds, maxSongsPerLoadout) {
+  if (!Array.isArray(songIds)) {
+    throw new Error('Song IDs must be an array.');
+  }
+
+  const unique = [];
+  const seen = new Set();
+
+  for (const songId of songIds) {
+    const normalized = normalizeSongId(songId);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    unique.push(normalized);
+  }
+
+  if (unique.length > maxSongsPerLoadout) {
+    throw new Error(`Loadout cannot exceed ${maxSongsPerLoadout} songs.`);
+  }
+
+  return unique;
+}
+
 function validateLoadoutName(name, maxNameLength) {
   const value = name.trim().replace(/\s+/g, ' ');
   if (!value) {
@@ -88,6 +112,12 @@ export class LoadoutStore {
     return loadout;
   }
 
+  hasLoadout(userId, name) {
+    const key = normalizeLoadoutName(name);
+    const user = this.getUser(userId);
+    return Boolean(user.loadouts[key]);
+  }
+
   async createLoadout(userId, name) {
     const displayName = validateLoadoutName(name, this.maxNameLength);
     const key = normalizeLoadoutName(displayName);
@@ -148,6 +178,26 @@ export class LoadoutStore {
     }
 
     loadout.songs = nextSongs;
+    loadout.updatedAt = new Date().toISOString();
+    await this.save();
+    return loadout;
+  }
+
+  async setSongs(userId, name, songIds, options = {}) {
+    const { createIfMissing = false } = options;
+    const normalizedSongs = normalizeSongIds(songIds, this.maxSongsPerLoadout);
+    let loadout = null;
+
+    try {
+      loadout = this.getLoadout(userId, name);
+    } catch (error) {
+      if (!createIfMissing) {
+        throw error;
+      }
+      loadout = await this.createLoadout(userId, name);
+    }
+
+    loadout.songs = normalizedSongs;
     loadout.updatedAt = new Date().toISOString();
     await this.save();
     return loadout;

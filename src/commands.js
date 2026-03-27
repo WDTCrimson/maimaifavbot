@@ -81,6 +81,34 @@ export const loadoutCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('share')
+      .setDescription('Generate a share code for this loadout')
+      .addStringOption((option) =>
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('import')
+      .setDescription('Import a loadout from share code/payload')
+      .addStringOption((option) =>
+        option.setName('name').setDescription('Target loadout name').setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('code')
+          .setDescription('Share code or payload text')
+          .setRequired(true)
+      )
+      .addBooleanOption((option) =>
+        option
+          .setName('replace')
+          .setDescription('Replace target loadout if it already exists')
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('bookmarklet')
       .setDescription('Get the bookmarklet install URL')
   );

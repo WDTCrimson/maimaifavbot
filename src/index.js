@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
 import { config, limits } from './config.js';
-import { createInstallMessage, createPayloadMessage } from './bookmarklet.js';
+import { createInstallMessage, createLoadoutPayload, createPayloadMessage } from './bookmarklet.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
 
@@ -210,8 +210,7 @@ async function handleLoadoutCommand(interaction) {
     case 'show': {
       const name = interaction.options.getString('name', true);
       const loadout = store.getLoadout(userId, name);
-      const songs = formatLoadoutSongs(loadout.songs);
-      await replySafely(interaction, `**${loadout.name}** (${loadout.songs.length}/30)\n${songs}`);
+      await replyLoadoutShow(interaction, loadout);
       return;
     }
 
@@ -282,6 +281,48 @@ async function handleLoadoutCommand(interaction) {
       return;
     }
 
+    case 'share': {
+      const name = interaction.options.getString('name', true);
+      const loadout = store.getLoadout(userId, name);
+      const shareCode = createLoadoutPayload(loadout);
+      const lines = [
+        `Share code for **${loadout.name}** (${loadout.songs.length}/30):`,
+        shareCode,
+        '',
+        'Use `/loadout import` with this code.'
+      ];
+      await replySafely(interaction, lines.join('\n'));
+      return;
+    }
+
+    case 'import': {
+      const name = interaction.options.getString('name', true);
+      const code = interaction.options.getString('code', true);
+      const replace = interaction.options.getBoolean('replace') || false;
+      const decoded = decodeLoadoutCode(code);
+
+      const exists = store.hasLoadout(userId, name);
+      if (exists && !replace) {
+        throw new Error(
+          `Loadout "${name}" already exists. Set \`replace:true\` in \`/loadout import\` to overwrite it.`
+        );
+      }
+
+      if (!exists) {
+        await store.createLoadout(userId, name);
+      }
+
+      const loadout = await store.setSongs(userId, name, decoded.songIds, {
+        createIfMissing: true
+      });
+
+      await replySafely(
+        interaction,
+        `Imported **${loadout.songs.length}** song(s) into **${loadout.name}** from "${decoded.name}".`
+      );
+      return;
+    }
+
     case 'bookmarklet': {
       const message = createInstallMessage();
       const attachment = new AttachmentBuilder(Buffer.from(`${message}\n`, 'utf8'), {
@@ -345,27 +386,6 @@ async function handleSongCommand(interaction) {
     default:
       await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
   }
-}
-
-function formatLoadoutSongs(songIds) {
-  if (!songIds.length) {
-    return 'Songs: (empty)';
-  }
-
-  const lines = songIds.map((songId) => {
-    if (!songCatalog.available) {
-      return `- ${songId}`;
-    }
-
-    const song = songCatalog.getByFavoriteId(songId);
-    if (!song) {
-      return `- ${songId}`;
-    }
-
-    return `- ${songId} | ${song.title} - ${song.artist}`;
-  });
-
-  return `Songs:\n${lines.join('\n')}`;
 }
 
 function formatSongLevels(song) {
@@ -446,6 +466,70 @@ function resolveSongIdInLoadout(loadout, songQuery) {
   throw new Error(`No matching song in this loadout for "${songQuery}".`);
 }
 
+function decodeLoadoutCode(rawCode) {
+  const code = String(rawCode || '').trim();
+  if (!code) {
+    throw new Error('Import code cannot be empty.');
+  }
+
+  let payload = null;
+
+  if (code.startsWith('{')) {
+    try {
+      payload = JSON.parse(code);
+    } catch {
+      throw new Error('Invalid JSON payload.');
+    }
+  } else {
+    const normalized = code.replace(/-/g, '+').replace(/_/g, '/');
+    const padLength = (4 - (normalized.length % 4)) % 4;
+    const padded = normalized + '='.repeat(padLength);
+    let decoded = null;
+
+    try {
+      decoded = Buffer.from(padded, 'base64').toString('utf8');
+    } catch {
+      throw new Error('Invalid base64/base64url share code.');
+    }
+
+    try {
+      payload = JSON.parse(decoded);
+    } catch {
+      throw new Error('Share code decoded but payload is not valid JSON.');
+    }
+  }
+
+  if (!payload || !Array.isArray(payload.songIds)) {
+    throw new Error('Payload must include `songIds` array.');
+  }
+
+  const seen = new Set();
+  const songIds = [];
+  for (const value of payload.songIds) {
+    const songId = String(value || '').trim();
+    if (!/^\d{1,8}$/.test(songId)) {
+      continue;
+    }
+    if (seen.has(songId)) {
+      continue;
+    }
+    seen.add(songId);
+    songIds.push(songId);
+  }
+
+  if (!songIds.length) {
+    throw new Error('Payload contains no valid song IDs.');
+  }
+  if (songIds.length > limits.maxSongsPerLoadout) {
+    throw new Error(`Payload exceeds ${limits.maxSongsPerLoadout} songs.`);
+  }
+
+  return {
+    name: String(payload.name || 'Imported Loadout').trim() || 'Imported Loadout',
+    songIds
+  };
+}
+
 function buildChartSummary(song) {
   if (!song.difficultyLevels?.length) {
     return ['No chart metadata available.'];
@@ -520,7 +604,17 @@ function formatInternalLevel(value) {
   return text;
 }
 
-async function resolveArtworkAttachment(song) {
+function buildSafeAttachmentName(prefix, filename) {
+  const safePrefix = String(prefix || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, '_');
+  if (!safePrefix) {
+    return filename;
+  }
+  return `${safePrefix}-${filename}`;
+}
+
+async function resolveArtworkAttachment(song, namePrefix = '') {
   const candidates = [
     song.jacket?.dxratingFile
       ? join(process.cwd(), 'data', 'assets', 'jacket', 'dxrating', song.jacket.dxratingFile)
@@ -536,7 +630,7 @@ async function resolveArtworkAttachment(song) {
       if (!fileStat.isFile()) {
         continue;
       }
-      const filename = basename(path);
+      const filename = buildSafeAttachmentName(namePrefix, basename(path));
       return {
         attachment: new AttachmentBuilder(path, { name: filename }),
         imageUrl: `attachment://${filename}`
@@ -550,21 +644,8 @@ async function resolveArtworkAttachment(song) {
 }
 
 async function replySongAdded(interaction, { loadout, song, songId }) {
-  const chartSummary = buildChartSummary(song);
   const artwork = await resolveArtworkAttachment(song);
-
-  const embed = new EmbedBuilder()
-    .setColor(0x4f46e5)
-    .setTitle(song.title)
-    .setDescription(song.artist || 'Unknown artist')
-    .addFields(
-      { name: 'Loadout', value: `${loadout.name} (${loadout.songs.length}/30)` },
-      { name: 'Charts', value: chartSummary.join('\n') }
-    );
-
-  if (artwork) {
-    embed.setThumbnail(artwork.imageUrl);
-  }
+  const embed = createSongEmbed(song, loadout, artwork?.imageUrl);
 
   const payload = {
     content: `Added **${song.title}** to **${loadout.name}**.`,
@@ -576,6 +657,93 @@ async function replySongAdded(interaction, { loadout, song, songId }) {
   }
 
   await replyPayload(interaction, payload);
+}
+
+function createSongEmbed(song, loadout, imageUrl) {
+  const chartSummary = buildChartSummary(song);
+  const embed = new EmbedBuilder()
+    .setColor(0x4f46e5)
+    .setTitle(song.title)
+    .setDescription(song.artist || 'Unknown artist')
+    .addFields(
+      { name: 'Loadout', value: `${loadout.name} (${loadout.songs.length}/30)` },
+      { name: 'Charts', value: chartSummary.join('\n') }
+    );
+
+  if (imageUrl) {
+    embed.setThumbnail(imageUrl);
+  }
+
+  return embed;
+}
+
+function chunkArray(values, size) {
+  const chunks = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
+}
+
+async function replyLoadoutShow(interaction, loadout) {
+  if (!loadout.songs.length) {
+    await replySafely(interaction, `**${loadout.name}** is empty.`);
+    return;
+  }
+
+  if (!songCatalog.available) {
+    await replySafely(
+      interaction,
+      `**${loadout.name}** (${loadout.songs.length}/30)\nSong catalog unavailable for embed view.`
+    );
+    return;
+  }
+
+  const entries = loadout.songs
+    .map((songId) => songCatalog.getByFavoriteId(songId))
+    .filter(Boolean);
+  const missingCount = loadout.songs.length - entries.length;
+
+  if (!entries.length) {
+    await replySafely(interaction, `**${loadout.name}** has no songs that match the local catalog.`);
+    return;
+  }
+
+  const chunks = chunkArray(entries, 10);
+  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
+    const chunk = chunks[chunkIndex];
+    const embeds = [];
+    const files = [];
+
+    for (let songIndex = 0; songIndex < chunk.length; songIndex += 1) {
+      const song = chunk[songIndex];
+      const artwork = await resolveArtworkAttachment(song, `show-${chunkIndex}-${songIndex}`);
+      const embed = createSongEmbed(song, loadout, artwork?.imageUrl);
+      embeds.push(embed);
+      if (artwork) {
+        files.push(artwork.attachment);
+      }
+    }
+
+    const payload = {
+      embeds
+    };
+
+    if (files.length) {
+      payload.files = files;
+    }
+
+    if (chunkIndex === 0) {
+      payload.content =
+        missingCount > 0
+          ? `**${loadout.name}** (${loadout.songs.length}/30) - ${missingCount} song(s) missing from catalog`
+          : `**${loadout.name}** (${loadout.songs.length}/30)`;
+    } else {
+      payload.content = `**${loadout.name}** (continued ${chunkIndex + 1}/${chunks.length})`;
+    }
+
+    await replyPayload(interaction, payload);
+  }
 }
 
 async function replySafely(interaction, content) {
