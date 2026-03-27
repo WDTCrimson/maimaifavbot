@@ -591,6 +591,9 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     const row = Math.floor(index / GRID_COLUMNS);
     const x = horizontalMargin + col * (cardWidth + gapX);
     const y = gridTop + row * (cardHeight + gapY);
+    if (!card) {
+      continue;
+    }
 
     roundedRectPath(ctx, x, y, cardWidth, cardHeight, 16);
     ctx.save();
@@ -634,81 +637,74 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     const titlePanelHorizontalInset = 8;
     const headerTextLeft = x + 10 + titlePanelHorizontalInset;
 
-    if (card) {
-      const typeText = String(card.primaryChart?.type || '').toUpperCase();
-      const hasTypeBadge = typeText === 'DX' || typeText === 'STD';
-      const titlePanelRight = x + cardWidth - 10;
-      const indicatorEdgeGap = titlePanelHorizontalInset;
-      const indicatorGap = 8;
-      const badgeWidth = hasTypeBadge ? 40 : 0;
-      const badgeHeight = 14;
-      const badgeRightX = titlePanelRight - indicatorEdgeGap;
-      const badgeX = badgeRightX - badgeWidth;
-      const badgeY = titlePanelY + Math.round((titlePanelHeight - badgeHeight) / 2);
-      const versionRightX = hasTypeBadge
-        ? badgeX - indicatorGap
-        : titlePanelRight - indicatorEdgeGap;
+    const typeText = String(card.primaryChart?.type || '').toUpperCase();
+    const hasTypeBadge = typeText === 'DX' || typeText === 'STD';
+    const titlePanelRight = x + cardWidth - 10;
+    const indicatorEdgeGap = titlePanelHorizontalInset;
+    const indicatorGap = 8;
+    const badgeWidth = hasTypeBadge ? 40 : 0;
+    const badgeHeight = 14;
+    const badgeRightX = titlePanelRight - indicatorEdgeGap;
+    const badgeX = badgeRightX - badgeWidth;
+    const badgeY = titlePanelY + Math.round((titlePanelHeight - badgeHeight) / 2);
+    const versionRightX = hasTypeBadge
+      ? badgeX - indicatorGap
+      : titlePanelRight - indicatorEdgeGap;
 
+    ctx.fillStyle = theme.versionColor;
+    ctx.font = `500 12px ${fontFamily}`;
+    const versionText = card.version ? trimTextToWidth(ctx, card.version, 68) : '';
+
+    const headerMaxWidth = Math.max(40, versionRightX - headerTextLeft - 6);
+    const titleMaxWidth = Math.max(20, headerMaxWidth);
+    const titleRaw = trimText(card.title, 48);
+    let titleFontSize = 14;
+    while (titleFontSize > 10) {
+      ctx.font = `600 ${titleFontSize}px ${fontFamily}`;
+      if (ctx.measureText(titleRaw).width <= titleMaxWidth) {
+        break;
+      }
+      titleFontSize -= 1;
+    }
+
+    const titleY = y + 25;
+    const rowClipWidth = Math.max(0, versionRightX - headerTextLeft - 4);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(headerTextLeft, titlePanelY + 2, rowClipWidth, titlePanelHeight - 4);
+    ctx.clip();
+
+    ctx.fillStyle = theme.titleColor;
+    ctx.font = `600 ${titleFontSize}px ${fontFamily}`;
+    const title = trimTextToWidth(ctx, titleRaw, titleMaxWidth);
+    ctx.fillText(title, headerTextLeft, titleY);
+    ctx.restore();
+
+    if (versionText) {
       ctx.fillStyle = theme.versionColor;
       ctx.font = `500 12px ${fontFamily}`;
-      const versionText = card.version ? trimTextToWidth(ctx, card.version, 68) : '';
-      const versionWidth = versionText ? ctx.measureText(versionText).width : 0;
+      ctx.textAlign = 'right';
+      ctx.fillText(versionText, versionRightX, y + 25);
+      ctx.textAlign = 'left';
+    }
 
-      const headerMaxWidth = Math.max(40, versionRightX - headerTextLeft - 6);
-      const titleMaxWidth = Math.max(20, headerMaxWidth);
-      const titleRaw = trimText(card.title, 48);
-      let titleFontSize = 14;
-      while (titleFontSize > 10) {
-        ctx.font = `600 ${titleFontSize}px ${fontFamily}`;
-        if (ctx.measureText(titleRaw).width <= titleMaxWidth) {
-          break;
-        }
-        titleFontSize -= 1;
-      }
+    if (hasTypeBadge) {
+      roundedRectPath(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 7);
+      ctx.fillStyle = typeText === 'DX' ? '#f59e0b' : '#3b82f6';
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `700 10px ${fontFamily}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(typeText, badgeX + badgeWidth / 2, badgeY + 10.5);
+      ctx.textAlign = 'left';
+    }
 
-      const titleY = y + 25;
-      const rowClipWidth = Math.max(0, versionRightX - headerTextLeft - 4);
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(headerTextLeft, titlePanelY + 2, rowClipWidth, titlePanelHeight - 4);
-      ctx.clip();
-
-      ctx.fillStyle = theme.titleColor;
-      ctx.font = `600 ${titleFontSize}px ${fontFamily}`;
-      const title = trimTextToWidth(ctx, titleRaw, titleMaxWidth);
-      ctx.fillText(title, headerTextLeft, titleY);
-      ctx.restore();
-
-      if (versionText) {
-        ctx.fillStyle = theme.versionColor;
-        ctx.font = `500 12px ${fontFamily}`;
-        ctx.textAlign = 'right';
-        ctx.fillText(versionText, versionRightX, y + 25);
-        ctx.textAlign = 'left';
-      }
-
-      if (hasTypeBadge) {
-        roundedRectPath(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 7);
-        ctx.fillStyle = typeText === 'DX' ? '#f59e0b' : '#3b82f6';
-        ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `700 10px ${fontFamily}`;
-        ctx.textAlign = 'center';
-        ctx.fillText(typeText, badgeX + badgeWidth / 2, badgeY + 10.5);
-        ctx.textAlign = 'left';
-      }
-
-      const diffBadgePath = resolveDifficultyBadgePath(card.primaryChart?.difficulty);
-      const diffBadge = await imageCache.get(diffBadgePath);
-      if (diffBadge) {
-        const diffBadgeW = 48;
-        const diffBadgeH = 16;
-        drawImageContain(ctx, diffBadge, x + 14, y + 36, diffBadgeW, diffBadgeH);
-      }
-    } else {
-      ctx.fillStyle = theme.artistColor;
-      ctx.font = `600 12px ${fontFamily}`;
-      ctx.fillText(`Slot ${index + 1}`, x + 16, y + 25);
+    const diffBadgePath = resolveDifficultyBadgePath(card.primaryChart?.difficulty);
+    const diffBadge = await imageCache.get(diffBadgePath);
+    if (diffBadge) {
+      const diffBadgeW = 48;
+      const diffBadgeH = 16;
+      drawImageContain(ctx, diffBadge, x + 14, y + 36, diffBadgeW, diffBadgeH);
     }
 
     const frameHeight = jacketSize + 22;
@@ -722,15 +718,15 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       height: frameHeight * (frameInnerHeight / frameSourceHeight)
     };
 
-    if (cardFrameImage && card) {
+    if (cardFrameImage) {
       ctx.save();
       ctx.globalAlpha = 1;
       ctx.drawImage(cardFrameImage, frameX, frameY, frameWidth, frameHeight);
       ctx.restore();
     }
 
-    const jacketImage = card ? await imageCache.get(card.imagePath) : null;
-    if (card && jacketImage) {
+    const jacketImage = await imageCache.get(card.imagePath);
+    if (jacketImage) {
       ctx.save();
       ctx.beginPath();
       ctx.rect(jacketWindow.x, jacketWindow.y, jacketWindow.width, jacketWindow.height);
@@ -752,14 +748,14 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.fillStyle = '#c6cce3';
       ctx.textAlign = 'center';
       ctx.font = `600 11px ${fontFamily}`;
-      ctx.fillText(card ? 'NO' : 'EMPTY', jacketWindow.x + jacketWindow.width / 2, jacketWindow.y + 37);
-      ctx.fillText(card ? 'IMAGE' : 'SLOT', jacketWindow.x + jacketWindow.width / 2, jacketWindow.y + 52);
+      ctx.fillText('NO', jacketWindow.x + jacketWindow.width / 2, jacketWindow.y + 37);
+      ctx.fillText('IMAGE', jacketWindow.x + jacketWindow.width / 2, jacketWindow.y + 52);
       ctx.textAlign = 'left';
     }
 
     ctx.fillStyle = theme.chartColor;
     ctx.font = `500 13px ${fontFamily}`;
-    const lineEntries = card ? card.lines : [{ difficulty: null, text: 'No song selected' }];
+    const lineEntries = card.lines;
     const maxLines = 5;
     const visibleLineCount = Math.max(1, Math.min(lineEntries.length, maxLines));
     const lineStep = 16;
