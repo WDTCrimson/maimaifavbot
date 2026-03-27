@@ -20,5 +20,6 @@
   "watermarkOpacity": 0.14,
   "headerOverlayOpacity": 0.95,
   "cardBgOpacity": 0.45,
-  "cardFrameOpacity": 1
+  "cardFrameOpacity": 1,
+  "fontFamily": "Inter, \"Noto Sans JP\", Arial, sans-serif"
 }

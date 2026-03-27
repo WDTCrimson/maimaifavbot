@@ -109,6 +109,11 @@ node scripts/import-maimai-data.js --skip-data
 
 `/loadout graphic` can use custom assets from `GRAPHIC_THEME_DIR` (default `data/theme/`).
 
+Tomomai assets copied locally in this project:
+
+- Full pack: `data/assets/tomomai/res/`
+- Ready preset: `data/theme/tomomai/` (set `GRAPHIC_THEME_DIR=./data/theme/tomomai`)
+
 Drop files with these base names:
 
 - `background` (full background)

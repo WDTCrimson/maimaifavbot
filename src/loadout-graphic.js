@@ -1,8 +1,12 @@
-import { readFile, stat } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
-import { createCanvas, loadImage } from '@napi-rs/canvas';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { extname, isAbsolute, join } from 'node:path';
+import { Buffer } from 'node:buffer';
+import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
+const FONT_EXTENSIONS = new Set(['.ttf', '.otf', '.woff', '.woff2']);
+
+const loadedThemeFonts = new Map();
 
 const defaultTheme = {
   backgroundStart: '#c96a84',
@@ -26,7 +30,8 @@ const defaultTheme = {
   watermarkOpacity: 0.14,
   headerOverlayOpacity: 0.95,
   cardBgOpacity: 0.45,
-  cardFrameOpacity: 1
+  cardFrameOpacity: 1,
+  fontFamily: 'Inter, "Noto Sans JP", Arial, sans-serif'
 };
 
 function trimText(text, maxLength) {
@@ -34,6 +39,19 @@ function trimText(text, maxLength) {
     return text;
   }
   return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function trimTextToWidth(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) {
+    return text;
+  }
+
+  let value = text;
+  while (value.length > 1 && ctx.measureText(`${value}…`).width > maxWidth) {
+    value = value.slice(0, -1);
+  }
+
+  return `${value}…`;
 }
 
 function levelToNumber(value) {
@@ -169,7 +187,34 @@ async function loadTheme(themeDir) {
     cardFrame: await resolveThemeAsset(resolvedDir, 'card-frame')
   };
 
-  return { theme, assets };
+  return { theme, assets, resolvedDir };
+}
+
+async function loadThemeFontFamily(themeDir) {
+  if (loadedThemeFonts.has(themeDir)) {
+    return loadedThemeFonts.get(themeDir);
+  }
+
+  const fontsDir = join(themeDir, 'fonts');
+  try {
+    const entries = await readdir(fontsDir, { withFileTypes: true });
+    const fontFiles = entries
+      .filter((entry) => entry.isFile() && FONT_EXTENSIONS.has(extname(entry.name).toLowerCase()))
+      .map((entry) => join(fontsDir, entry.name));
+
+    if (!fontFiles.length) {
+      loadedThemeFonts.set(themeDir, null);
+      return null;
+    }
+
+    const family = `MaimaiFavTheme-${Buffer.from(themeDir).toString('base64url').slice(0, 16)}`;
+    FontLibrary.use(family, fontFiles);
+    loadedThemeFonts.set(themeDir, family);
+    return family;
+  } catch {
+    loadedThemeFonts.set(themeDir, null);
+    return null;
+  }
 }
 
 async function resolveSongImagePath(song) {
@@ -255,19 +300,35 @@ function drawImageContain(ctx, image, x, y, width, height) {
   ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
 }
 
-function createImageLoader() {
+function createImageCache() {
   const cache = new Map();
-  return async (path) => {
+
+  async function get(path) {
     if (!path) {
       return null;
     }
+
     if (!cache.has(path)) {
       cache.set(
         path,
         loadImage(path).catch(() => null)
       );
     }
+
     return cache.get(path);
+  }
+
+  async function prefetch(paths) {
+    const unique = [...new Set(paths.filter(Boolean))];
+    await Promise.all(unique.map((path) => get(path)));
+  }
+
+  return {
+    get,
+    prefetch,
+    size() {
+      return cache.size;
+    }
   };
 }
 
@@ -316,7 +377,12 @@ function drawFallbackBackground(ctx, width, height, theme) {
 }
 
 export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
-  const { theme, assets } = await loadTheme(themeDir);
+  const { theme, assets, resolvedDir } = await loadTheme(themeDir);
+  const themeFontFamily = await loadThemeFontFamily(resolvedDir);
+  const fontFamily = themeFontFamily
+    ? `"${themeFontFamily}", ${theme.fontFamily}`
+    : theme.fontFamily;
+
   const cards = await Promise.all(
     songs.map(async (song) => ({
       title: song?.title || 'Unknown Song',
@@ -338,18 +404,23 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   const width = margin * 2 + columns * cardWidth + (columns - 1) * gap;
   const height = headerHeight + margin + rows * cardHeight + (rows - 1) * gap + margin;
 
-  const canvas = createCanvas(width, height);
+  const canvas = new Canvas(width, height);
   const ctx = canvas.getContext('2d');
-  const loadThemeImage = createImageLoader();
 
-  const backgroundImage = await loadThemeImage(assets.background);
+  const imageCache = createImageCache();
+  await imageCache.prefetch([
+    ...Object.values(assets),
+    ...cards.map((card) => card.imagePath)
+  ]);
+
+  const backgroundImage = await imageCache.get(assets.background);
   if (backgroundImage) {
     drawImageCover(ctx, backgroundImage, 0, 0, width, height);
   } else {
     drawFallbackBackground(ctx, width, height, theme);
   }
 
-  const watermarkImage = await loadThemeImage(assets.watermark);
+  const watermarkImage = await imageCache.get(assets.watermark);
   if (watermarkImage) {
     ctx.save();
     ctx.globalAlpha = Number(theme.watermarkOpacity) || 0.14;
@@ -363,7 +434,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   ctx.fill();
   ctx.globalAlpha = 1;
 
-  const headerOverlay = await loadThemeImage(assets.headerOverlay);
+  const headerOverlay = await imageCache.get(assets.headerOverlay);
   if (headerOverlay) {
     ctx.save();
     roundedRectPath(ctx, margin, 26, width - margin * 2, 78, 18);
@@ -374,11 +445,11 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   }
 
   ctx.fillStyle = theme.titleColor;
-  ctx.font = '600 42px Arial, sans-serif';
+  ctx.font = `600 42px ${fontFamily}`;
   ctx.fillText(trimText(loadoutName, 24), margin + 24, 66);
 
   ctx.fillStyle = theme.subtitleColor;
-  ctx.font = '600 20px Arial, sans-serif';
+  ctx.font = `600 20px ${fontFamily}`;
   ctx.fillText('Favorite Loadout', margin + 24, 92);
 
   const dateText = new Intl.DateTimeFormat('en-GB', {
@@ -388,18 +459,18 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   }).format(new Date());
 
   ctx.fillStyle = theme.versionColor;
-  ctx.font = '600 22px Arial, sans-serif';
+  ctx.font = `600 22px ${fontFamily}`;
   ctx.textAlign = 'right';
   ctx.fillText(dateText, width - margin - 24, 92);
   ctx.textAlign = 'left';
 
-  const logoImage = await loadThemeImage(assets.logo);
+  const logoImage = await imageCache.get(assets.logo);
   if (logoImage) {
     drawImageContain(ctx, logoImage, width - margin - 116, 32, 116, 66);
   }
 
-  const cardBgImage = await loadThemeImage(assets.cardBg);
-  const cardFrameImage = await loadThemeImage(assets.cardFrame);
+  const cardBgImage = await imageCache.get(assets.cardBg);
+  const cardFrameImage = await imageCache.get(assets.cardFrame);
 
   for (let index = 0; index < cards.length; index += 1) {
     const card = cards[index];
@@ -431,16 +502,18 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     ctx.fill();
 
     ctx.fillStyle = theme.titleColor;
-    ctx.font = '600 18px Arial, sans-serif';
-    ctx.fillText(trimText(card.title, 26), x + 122, y + 30);
+    ctx.font = `600 18px ${fontFamily}`;
+    const title = trimTextToWidth(ctx, trimText(card.title, 40), cardWidth - 170);
+    ctx.fillText(title, x + 122, y + 30);
 
     ctx.fillStyle = theme.artistColor;
-    ctx.font = '500 14px Arial, sans-serif';
-    ctx.fillText(trimText(card.artist, 30), x + 122, y + 52);
+    ctx.font = `500 14px ${fontFamily}`;
+    const artist = trimTextToWidth(ctx, trimText(card.artist, 42), cardWidth - 148);
+    ctx.fillText(artist, x + 122, y + 52);
 
     if (card.version) {
       ctx.fillStyle = theme.versionColor;
-      ctx.font = '500 13px Arial, sans-serif';
+      ctx.font = `500 13px ${fontFamily}`;
       ctx.textAlign = 'right';
       ctx.fillText(card.version, x + cardWidth - 14, y + 28);
       ctx.textAlign = 'left';
@@ -450,7 +523,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     const jacketY = y + 44;
     const jacketSize = 96;
 
-    const jacketImage = await loadThemeImage(card.imagePath);
+    const jacketImage = await imageCache.get(card.imagePath);
     if (jacketImage) {
       ctx.save();
       roundedRectPath(ctx, jacketX, jacketY, jacketSize, jacketSize, 12);
@@ -463,14 +536,14 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.fill();
       ctx.fillStyle = '#b8bfd8';
       ctx.textAlign = 'center';
-      ctx.font = '600 12px Arial, sans-serif';
+      ctx.font = `600 12px ${fontFamily}`;
       ctx.fillText('NO', jacketX + jacketSize / 2, jacketY + 44);
       ctx.fillText('IMAGE', jacketX + jacketSize / 2, jacketY + 60);
       ctx.textAlign = 'left';
     }
 
     ctx.fillStyle = theme.chartColor;
-    ctx.font = '500 16px Arial, sans-serif';
+    ctx.font = `500 16px ${fontFamily}`;
     for (let lineIndex = 0; lineIndex < card.lines.length; lineIndex += 1) {
       ctx.fillText(card.lines[lineIndex], x + 122, y + 78 + lineIndex * 20);
     }
@@ -484,7 +557,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   }
 
   return {
-    buffer: canvas.toBuffer('image/png'),
+    buffer: await canvas.toBuffer('png'),
     fileName: `${sanitizeFileName(loadoutName)}-loadout.png`
   };
 }

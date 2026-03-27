@@ -14,9 +14,9 @@
     "node": ">=20"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.97",
     "discord.js": "^14.25.1",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "skia-canvas": "^3.0.8"
   },
   "overrides": {
     "undici": "^6.23.1"

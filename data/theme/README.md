@@ -30,3 +30,16 @@ Examples:
 Create `theme.json` in this folder. Any missing keys fall back to defaults.
 
 See `theme.json.example` for available keys.
+
+## Optional custom fonts
+
+You can add a `fonts/` subfolder inside this theme directory.
+
+Supported font formats:
+
+- `.ttf`
+- `.otf`
+- `.woff`
+- `.woff2`
+
+All font files found in `fonts/` are registered automatically by the graphic renderer.
