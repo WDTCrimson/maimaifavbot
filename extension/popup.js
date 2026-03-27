@@ -3,6 +3,7 @@ const status = document.getElementById('status');
 const applyButton = document.getElementById('apply');
 const strictInput = document.getElementById('strict');
 const autoSubmitInput = document.getElementById('autoSubmit');
+const extApi = globalThis.browser || globalThis.chrome;
 const storageKey = 'maimai_loadout_payload';
 const strictKey = 'maimai_loadout_strict';
 const autoSubmitKey = 'maimai_loadout_auto_submit';
@@ -17,47 +18,69 @@ function setStatus(text, color = '#1f2937') {
   status.style.color = color;
 }
 
-function getActiveTab() {
+function readLastError() {
+  if (!globalThis.chrome?.runtime?.lastError) {
+    return null;
+  }
+  return globalThis.chrome.runtime.lastError;
+}
+
+function callApi(fn, ...args) {
+  if (globalThis.browser) {
+    return fn(...args);
+  }
+
   return new Promise((resolve, reject) => {
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      const tab = tabs[0];
-      if (!tab?.id) {
-        reject(new Error('No active tab found.'));
+    const callback = (value) => {
+      const error = readLastError();
+      if (error) {
+        reject(new Error(error.message || 'Extension API error.'));
         return;
       }
-      resolve(tab);
-    });
+      resolve(value);
+    };
+
+    try {
+      fn(...args, callback);
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)));
+    }
   });
+}
+
+function getActiveTab() {
+  return callApi(extApi.tabs.query.bind(extApi.tabs), { active: true, currentWindow: true }).then(
+    (tabs) => {
+      const tab = tabs?.[0];
+      if (!tab?.id) {
+        throw new Error('No active tab found.');
+      }
+      return tab;
+    }
+  );
 }
 
 function sendMessageToTab(tabId, message) {
-  return new Promise((resolve, reject) => {
-    chrome.tabs.sendMessage(tabId, message, (response) => {
-      if (chrome.runtime.lastError) {
-        reject(new Error(chrome.runtime.lastError.message));
-        return;
-      }
-      resolve(response);
-    });
-  });
+  return callApi(extApi.tabs.sendMessage.bind(extApi.tabs), tabId, message);
 }
 
-function injectContentScript(tabId) {
-  return new Promise((resolve, reject) => {
-    chrome.scripting.executeScript(
-      {
-        target: { tabId },
-        files: ['content.js']
-      },
-      () => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        resolve();
-      }
-    );
-  });
+async function injectContentScript(tabId) {
+  if (extApi.scripting?.executeScript) {
+    await callApi(extApi.scripting.executeScript.bind(extApi.scripting), {
+      target: { tabId },
+      files: ['content.js']
+    });
+    return;
+  }
+
+  if (extApi.tabs?.executeScript) {
+    await callApi(extApi.tabs.executeScript.bind(extApi.tabs), tabId, {
+      file: 'content.js'
+    });
+    return;
+  }
+
+  throw new Error('Content script injection is not supported in this browser.');
 }
 
 function isSupportedUrl(url) {
