@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
 import { config, limits } from './config.js';
 import { createInstallMessage, createLoadoutPayload, createPayloadMessage } from './bookmarklet.js';
+import { renderLoadoutGraphic } from './loadout-graphic.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
 
@@ -211,6 +212,42 @@ async function handleLoadoutCommand(interaction) {
       const name = interaction.options.getString('name', true);
       const loadout = store.getLoadout(userId, name);
       await replyLoadoutShow(interaction, loadout);
+      return;
+    }
+
+    case 'graphic': {
+      songCatalog.requireAvailable();
+      const name = interaction.options.getString('name', true);
+      const loadout = store.getLoadout(userId, name);
+      if (!loadout.songs.length) {
+        await replySafely(interaction, `**${loadout.name}** is empty. Add songs first.`);
+        return;
+      }
+
+      const songs = loadout.songs.map((songId) => songCatalog.getByFavoriteId(songId)).filter(Boolean);
+      if (!songs.length) {
+        throw new Error('No songs from this loadout are available in the local song catalog.');
+      }
+
+      const graphic = await renderLoadoutGraphic({
+        loadoutName: loadout.name,
+        songs
+      });
+
+      const attachment = new AttachmentBuilder(graphic.buffer, {
+        name: graphic.fileName
+      });
+
+      const missingCount = loadout.songs.length - songs.length;
+      const content =
+        missingCount > 0
+          ? `Generated loadout graphic for **${loadout.name}** (${songs.length} songs rendered, ${missingCount} missing in catalog).`
+          : `Generated loadout graphic for **${loadout.name}** (${songs.length} songs rendered).`;
+
+      await replyPayload(interaction, {
+        content,
+        files: [attachment]
+      });
       return;
     }
 

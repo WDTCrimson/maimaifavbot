@@ -14,3 +14,4 @@ build/
 coverage/
 .DS_Store
 *.service
+package-lock.json

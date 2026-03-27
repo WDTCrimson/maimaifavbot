@@ -69,6 +69,14 @@ export const loadoutCommand = new SlashCommandBuilder()
       )
   )
   .addSubcommand((subcommand) =>
+    subcommand
+      .setName('graphic')
+      .setDescription('Generate a Favorite Loadout graphic image')
+      .addStringOption((option) =>
+        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
     subcommand.setName('list').setDescription('List your loadouts')
   )
   .addSubcommand((subcommand) =>
