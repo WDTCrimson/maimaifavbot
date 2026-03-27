@@ -1,4 +1,6 @@
-import { AttachmentBuilder, Client, Events, GatewayIntentBits } from 'discord.js';
+import { stat } from 'node:fs/promises';
+import { basename, join } from 'node:path';
+import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
 import { config, limits } from './config.js';
 import { createInstallMessage, createPayloadMessage } from './bookmarklet.js';
 import { SongCatalog } from './song-catalog.js';
@@ -162,10 +164,20 @@ async function handleLoadoutCommand(interaction) {
       const name = interaction.options.getString('name', true);
       const songId = interaction.options.getString('song_id', true);
       const loadout = await store.addSong(userId, name, songId);
-      await replySafely(
-        interaction,
-        `Added song ID **${songId}** to **${loadout.name}** (${loadout.songs.length}/30).`
-      );
+      const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
+      if (!song) {
+        await replySafely(
+          interaction,
+          `Added song ID **${songId}** to **${loadout.name}** (${loadout.songs.length}/30).`
+        );
+        return;
+      }
+
+      await replySongAdded(interaction, {
+        loadout,
+        song,
+        songId
+      });
       return;
     }
 
@@ -180,10 +192,11 @@ async function handleLoadoutCommand(interaction) {
       }
 
       const loadout = await store.addSong(userId, name, song.favoriteId);
-      await replySafely(
-        interaction,
-        `Added **${song.title}** (\`${song.favoriteId}\`) to **${loadout.name}** (${loadout.songs.length}/30).`
-      );
+      await replySongAdded(interaction, {
+        loadout,
+        song,
+        songId: song.favoriteId
+      });
       return;
     }
 
@@ -332,35 +345,148 @@ function formatSongLevels(song) {
   return pieces.join(', ') || 'Unknown';
 }
 
+function buildChartSummary(song) {
+  if (!song.difficultyLevels?.length) {
+    return ['No chart metadata available.'];
+  }
+
+  const difficultyOrder = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+  const difficultyRank = new Map(difficultyOrder.map((difficulty, index) => [difficulty, index]));
+  const difficultyLabel = {
+    basic: 'BASIC',
+    advanced: 'ADV',
+    expert: 'EXP',
+    master: 'MAS',
+    remaster: 'Re:MAS'
+  };
+
+  const rows = [...song.difficultyLevels]
+    .filter((chart) => chart.level)
+    .sort((a, b) => {
+      const aDifficulty = String(a.difficulty || '').toLowerCase();
+      const bDifficulty = String(b.difficulty || '').toLowerCase();
+      const aRank = difficultyRank.get(aDifficulty) ?? 999;
+      const bRank = difficultyRank.get(bDifficulty) ?? 999;
+      if (aRank !== bRank) {
+        return aRank - bRank;
+      }
+      return String(a.type || '').localeCompare(String(b.type || ''));
+    })
+    .map((chart) => {
+      const difficulty = String(chart.difficulty || '').toLowerCase();
+      const difficultyText = difficultyLabel[difficulty] || String(chart.difficulty || 'UNKNOWN');
+      const typeText = String(chart.type || 'UNK').toUpperCase();
+      const levelText = `Lv${chart.level}`;
+      const internal =
+        typeof chart.internalLevelValue === 'number' ? chart.internalLevelValue : chart.internalLevelValue || '?';
+      const versionText = chart.version || 'Unknown version';
+      return `${typeText} ${difficultyText} ${levelText} (Int ${internal}) - ${versionText}`;
+    });
+
+  if (!rows.length) {
+    return ['No chart metadata available.'];
+  }
+
+  const maxFieldLength = 900;
+  const limitedRows = [];
+  let used = 0;
+  for (const row of rows) {
+    if (used + row.length + 1 > maxFieldLength) {
+      break;
+    }
+    limitedRows.push(row);
+    used += row.length + 1;
+  }
+
+  if (limitedRows.length < rows.length) {
+    limitedRows.push(`...and ${rows.length - limitedRows.length} more chart rows`);
+  }
+
+  return limitedRows;
+}
+
+async function resolveArtworkAttachment(song) {
+  const candidates = [
+    song.jacket?.dxratingFile
+      ? join(process.cwd(), 'data', 'assets', 'jacket', 'dxrating', song.jacket.dxratingFile)
+      : null,
+    song.jacket?.otogeFile
+      ? join(process.cwd(), 'data', 'assets', 'jacket', 'otoge-db', song.jacket.otogeFile)
+      : null
+  ].filter(Boolean);
+
+  for (const path of candidates) {
+    try {
+      const fileStat = await stat(path);
+      if (!fileStat.isFile()) {
+        continue;
+      }
+      const filename = basename(path);
+      return {
+        attachment: new AttachmentBuilder(path, { name: filename }),
+        imageUrl: `attachment://${filename}`
+      };
+    } catch {
+      // try next
+    }
+  }
+
+  return null;
+}
+
+async function replySongAdded(interaction, { loadout, song, songId }) {
+  const chartSummary = buildChartSummary(song);
+  const artwork = await resolveArtworkAttachment(song);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x4f46e5)
+    .setTitle(song.title)
+    .setDescription(song.artist || 'Unknown artist')
+    .addFields(
+      { name: 'Song ID', value: songId, inline: true },
+      { name: 'Loadout', value: `${loadout.name} (${loadout.songs.length}/30)`, inline: true },
+      { name: 'Charts', value: chartSummary.join('\n') }
+    );
+
+  if (artwork) {
+    embed.setThumbnail(artwork.imageUrl);
+  }
+
+  const payload = {
+    content: `Added **${song.title}** (\`${songId}\`) to **${loadout.name}**.`,
+    embeds: [embed]
+  };
+
+  if (artwork) {
+    payload.files = [artwork.attachment];
+  }
+
+  await replyPayload(interaction, payload);
+}
+
 async function replySafely(interaction, content) {
   if (content.length > 1900) {
     const attachment = new AttachmentBuilder(Buffer.from(`${content}\n`, 'utf8'), {
       name: 'loadout-response.txt'
     });
 
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp({
-        content: 'Response was too long, so it was attached as `loadout-response.txt`.',
-        files: [attachment],
-        ephemeral: true
-      });
-      return;
-    }
-
-    await interaction.reply({
+    await replyPayload(interaction, {
       content: 'Response was too long, so it was attached as `loadout-response.txt`.',
-      files: [attachment],
-      ephemeral: true
+      files: [attachment]
     });
     return;
   }
 
+  await replyPayload(interaction, { content });
+}
+
+async function replyPayload(interaction, payload) {
   if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ content, ephemeral: true });
+    await interaction.followUp({ ...payload, ephemeral: true });
     return;
   }
 
-  await interaction.reply({ content, ephemeral: true });
+  await interaction.reply({ ...payload, ephemeral: true });
 }
 
 process.on('unhandledRejection', (error) => {

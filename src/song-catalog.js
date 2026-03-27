@@ -104,6 +104,10 @@ export class SongCatalog {
           artist: artist || 'Unknown',
           bpm: sourceSong.bpm ?? null,
           category: sourceSong.category ?? null,
+          jacket: {
+            dxratingFile: sourceSong.jacket?.dxratingFile || null,
+            otogeFile: sourceSong.jacket?.otogeFile || null
+          },
           difficultyLevels: Array.isArray(sourceSong.difficultyLevels)
             ? sourceSong.difficultyLevels
             : [],
