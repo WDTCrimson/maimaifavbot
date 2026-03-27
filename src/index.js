@@ -361,9 +361,14 @@ async function handleLoadoutCommand(interaction) {
         createIfMissing: true
       });
 
+      const unresolvedSummary = formatUnresolvedTitleSummary(decoded.unresolvedTitles || []);
+      const unresolvedLine = unresolvedSummary
+        ? `\nSkipped unresolved titles: ${unresolvedSummary}`
+        : '';
+
       await replySafely(
         interaction,
-        `Imported **${loadout.songs.length}** song(s) into **${loadout.name}** from "${decoded.name}".`
+        `Imported **${loadout.songs.length}** song(s) into **${loadout.name}** from "${decoded.name}".${unresolvedLine}`
       );
       return;
     }
@@ -539,13 +544,13 @@ function decodeLoadoutCode(rawCode) {
     }
   }
 
-  if (!payload || !Array.isArray(payload.songIds)) {
-    throw new Error('Payload must include `songIds` array.');
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Payload is invalid.');
   }
 
   const seen = new Set();
   const songIds = [];
-  for (const value of payload.songIds) {
+  for (const value of Array.isArray(payload.songIds) ? payload.songIds : []) {
     const songId = String(value || '').trim();
     if (!/^\d{1,8}$/.test(songId)) {
       continue;
@@ -557,8 +562,44 @@ function decodeLoadoutCode(rawCode) {
     songIds.push(songId);
   }
 
+  const unresolvedTitles = [];
   if (!songIds.length) {
-    throw new Error('Payload contains no valid song IDs.');
+    const titles = extractSongTitlesFromPayload(payload);
+    if (titles.length) {
+      if (!songCatalog.available) {
+        throw new Error(
+          'Payload contains song titles only, but song catalog is unavailable. Set `SONG_CATALOG_FILE` and import song data first.'
+        );
+      }
+
+      for (const title of titles) {
+        const resolved = resolveSongIdFromImportedTitle(title);
+        if (!resolved.songId) {
+          unresolvedTitles.push(
+            resolved.reason === 'ambiguous'
+              ? `${title} (ambiguous match)`
+              : `${title} (not found)`
+          );
+          continue;
+        }
+
+        if (seen.has(resolved.songId)) {
+          continue;
+        }
+
+        seen.add(resolved.songId);
+        songIds.push(resolved.songId);
+      }
+    }
+  }
+
+  if (!songIds.length) {
+    if (unresolvedTitles.length) {
+      throw new Error(
+        `Payload titles could not be resolved to song IDs: ${formatUnresolvedTitleSummary(unresolvedTitles)}`
+      );
+    }
+    throw new Error('Payload contains no valid song IDs or resolvable song titles.');
   }
   if (songIds.length > limits.maxSongsPerLoadout) {
     throw new Error(`Payload exceeds ${limits.maxSongsPerLoadout} songs.`);
@@ -566,8 +607,61 @@ function decodeLoadoutCode(rawCode) {
 
   return {
     name: String(payload.name || 'Imported Loadout').trim() || 'Imported Loadout',
-    songIds
+    songIds,
+    unresolvedTitles
   };
+}
+
+function normalizeImportTitle(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractSongTitlesFromPayload(payload) {
+  return [
+    ...(Array.isArray(payload.songs) ? payload.songs.map((entry) => entry?.title) : []),
+    ...(Array.isArray(payload.songTitles) ? payload.songTitles : [])
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function resolveSongIdFromImportedTitle(title) {
+  const normalized = normalizeImportTitle(title);
+  if (!normalized) {
+    return { songId: null, reason: 'not_found' };
+  }
+
+  const exactMatches = songCatalog.songs.filter((song) => song.normTitle === normalized);
+  if (exactMatches.length === 1) {
+    return { songId: exactMatches[0].favoriteId, reason: 'exact' };
+  }
+  if (exactMatches.length > 1) {
+    return { songId: null, reason: 'ambiguous' };
+  }
+
+  const fallback = songCatalog.resolveSong(title);
+  if (!fallback) {
+    return { songId: null, reason: 'not_found' };
+  }
+
+  return { songId: fallback.favoriteId, reason: 'fuzzy' };
+}
+
+function formatUnresolvedTitleSummary(unresolvedTitles, maxItems = 5) {
+  if (!unresolvedTitles.length) {
+    return '';
+  }
+
+  const items = unresolvedTitles.slice(0, maxItems);
+  const extra = unresolvedTitles.length - items.length;
+  if (extra > 0) {
+    return `${items.join(', ')} (+${extra} more)`;
+  }
+  return items.join(', ');
 }
 
 function buildPayloadSongs(loadout) {

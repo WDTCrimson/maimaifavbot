@@ -71,12 +71,17 @@ All bot replies are ephemeral (private).
 2. Enable Developer mode.
 3. Click "Load unpacked" and select the `extension/` folder.
 4. On maimai page, click extension icon.
-5. Paste payload from `/loadout payload` and click apply.
+5. To apply an existing bot loadout:
+   Paste payload from `/loadout payload` and click apply.
+6. To import your current website favorites into the bot:
+   Click `Export Current Favorites`, then run:
+   `/loadout import name:<new_loadout_name> code:<paste_code> replace:true`
 
 ## Notes and limits
 
 - The page automation is heuristic-based because maimaidxnet has no public API for favorites.
 - If selectors differ on your target page, adjust logic in `extension/content.js` and `src/bookmarklet.js`.
+- Title-only import payloads require a local song catalog (`SONG_CATALOG_FILE`) so the bot can resolve titles to song IDs.
 - Review maimai terms/rules before using automation.
 
 ## Import song data + logos + jackets

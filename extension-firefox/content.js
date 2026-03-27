@@ -31,6 +31,16 @@ function decodeBase64UrlJsonUtf8(raw) {
   return JSON.parse(jsonText);
 }
 
+function encodeBase64UrlJsonUtf8(payload) {
+  const jsonText = JSON.stringify(payload);
+  const bytes = new TextEncoder().encode(jsonText);
+  let binary = '';
+  for (const value of bytes) {
+    binary += String.fromCharCode(value);
+  }
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
 function normalizeTitleLoose(value) {
   const base = normalizeTitle(value)
     .replace(/[|｜].*$/u, '')
@@ -212,6 +222,53 @@ function hasApplicableRows() {
   return allCheckboxEntries().length > 0;
 }
 
+function exportCurrentFavorites(options = {}) {
+  const form = getFavoriteForm();
+  if (!form) {
+    throw new Error('Open the CHANGE FAVORITE SONGS page first.');
+  }
+
+  const checkedRows = allCheckboxEntries().filter((entry) => entry.input.checked);
+  if (!checkedRows.length) {
+    throw new Error('No favorited songs found on this page.');
+  }
+
+  const seen = new Set();
+  const songs = [];
+  for (const row of checkedRows) {
+    const title = String(row.title || '').trim();
+    if (!title) {
+      continue;
+    }
+    const key = normalizeTitle(title);
+    if (!key || seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    songs.push({ title });
+  }
+
+  if (!songs.length) {
+    throw new Error('No readable song titles were found on checked favorites.');
+  }
+
+  if (songs.length > 30) {
+    songs.length = 30;
+  }
+
+  const payload = {
+    version: 2,
+    name: String(options.name || 'Imported Favorites').trim() || 'Imported Favorites',
+    songs
+  };
+
+  return {
+    name: payload.name,
+    count: songs.length,
+    code: encodeBase64UrlJsonUtf8(payload)
+  };
+}
+
 async function applyLoadout(rawPayload, options = {}) {
   const payload = decodePayload(rawPayload);
   const strict = Boolean(options.strict);
@@ -328,6 +385,18 @@ async function applyLoadout(rawPayload, options = {}) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.type === 'EXPORT_FAVORITES') {
+    try {
+      const exported = exportCurrentFavorites({ name: message.name });
+      showPageStatus(`Exported ${exported.count} favorites as import code.`);
+      sendResponse({ ok: true, exported });
+    } catch (error) {
+      showPageStatus(`Failed: ${error.message || 'Unknown error.'}`, true);
+      sendResponse({ ok: false, error: error.message || 'Unknown error.' });
+    }
+    return;
+  }
+
   if (message?.type !== 'APPLY_LOADOUT') {
     return;
   }
