@@ -106,6 +106,10 @@ applyButton.addEventListener('click', async () => {
         `Added: ${report.added}`,
         `Removed: ${report.removed}`,
         `Unknown state: ${report.unknown}`,
+        `Scanned rows: ${report.scannedRows ?? 0}`,
+        `Matched IDs: ${report.matchedRows ?? 0}`,
+        `Actionable controls: ${report.actionableRows ?? 0}`,
+        `Failed toggles: ${report.failedToggles ?? 0}`,
         `Missing on page: ${missingText}`
       ].join('\n'),
       '#065f46'

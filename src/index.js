@@ -314,7 +314,9 @@ async function handleLoadoutCommand(interaction) {
     case 'payload': {
       const name = interaction.options.getString('name', true);
       const loadout = store.getLoadout(userId, name);
-      const message = createPayloadMessage(loadout);
+      const message = createPayloadMessage(loadout, {
+        songs: buildPayloadSongs(loadout)
+      });
       await replySafely(interaction, message);
       return;
     }
@@ -322,7 +324,9 @@ async function handleLoadoutCommand(interaction) {
     case 'share': {
       const name = interaction.options.getString('name', true);
       const loadout = store.getLoadout(userId, name);
-      const shareCode = createLoadoutPayload(loadout);
+      const shareCode = createLoadoutPayload(loadout, {
+        songs: buildPayloadSongs(loadout)
+      });
       const lines = [
         `Share code for **${loadout.name}** (${loadout.songs.length}/30):`,
         shareCode,
@@ -566,6 +570,19 @@ function decodeLoadoutCode(rawCode) {
     name: String(payload.name || 'Imported Loadout').trim() || 'Imported Loadout',
     songIds
   };
+}
+
+function buildPayloadSongs(loadout) {
+  return loadout.songs.map((songId) => {
+    const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
+    if (!song) {
+      return { id: songId };
+    }
+    return {
+      id: songId,
+      title: song.title
+    };
+  });
 }
 
 function buildChartSummary(song) {
