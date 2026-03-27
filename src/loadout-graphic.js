@@ -616,30 +616,45 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     // Foreground content in each slot should always render at full opacity.
     ctx.globalAlpha = 1;
 
-    roundedRectPath(ctx, x + 10, y + 10, cardWidth - 20, 22, 8);
+    const titlePanelY = y + 10;
+    const titlePanelHeight = 22;
+    const titlePanelBottom = titlePanelY + titlePanelHeight;
+    roundedRectPath(ctx, x + 10, titlePanelY, cardWidth - 20, titlePanelHeight, 8);
     ctx.fillStyle = theme.cardTitleBar;
     ctx.fill();
 
     const contentInset = 16;
     const jacketX = x + contentInset;
     const jacketSize = 90;
-    const panelCenterY = y + cardHeight / 2;
-    const jacketY = Math.round(panelCenterY - jacketSize / 2);
+    const lowerRegionCenterY = (titlePanelBottom + (y + cardHeight)) / 2;
+    const jacketY = Math.round(lowerRegionCenterY - jacketSize / 2);
     const textX = jacketX + jacketSize + 10;
     const textRight = x + cardWidth - contentInset;
     const lineMaxWidth = Math.max(40, textRight - textX);
 
     if (card) {
-      const versionRightX = textRight - 18;
+      const typeText = String(card.primaryChart?.type || '').toUpperCase();
+      const hasTypeBadge = typeText === 'DX' || typeText === 'STD';
+      const titlePanelRight = x + cardWidth - 10;
+      const indicatorEdgeGap = 8;
+      const indicatorGap = 8;
+      const badgeWidth = hasTypeBadge ? 40 : 0;
+      const badgeHeight = 14;
+      const badgeX = titlePanelRight - indicatorEdgeGap - badgeWidth;
+      const badgeY = y + 14;
+      const versionRightX = hasTypeBadge
+        ? badgeX - indicatorGap
+        : titlePanelRight - indicatorEdgeGap;
+
       ctx.fillStyle = theme.versionColor;
       ctx.font = `500 12px ${fontFamily}`;
-      const versionText = card.version ? trimTextToWidth(ctx, card.version, 76) : '';
+      const versionText = card.version ? trimTextToWidth(ctx, card.version, 68) : '';
       const versionWidth = versionText ? ctx.measureText(versionText).width : 0;
-      const typeText = String(card.primaryChart?.type || '').toUpperCase();
 
       ctx.fillStyle = theme.titleColor;
       ctx.font = `600 14px ${fontFamily}`;
-      const headerMaxWidth = Math.max(40, lineMaxWidth - (versionWidth ? versionWidth + 22 : 0));
+      const reservedRightWidth = Math.max(0, textRight - versionRightX + (versionWidth ? 4 : 0));
+      const headerMaxWidth = Math.max(40, lineMaxWidth - reservedRightWidth);
       const title = trimTextToWidth(ctx, trimText(card.title, 48), Math.max(20, headerMaxWidth * 0.62));
       const titleY = y + 25;
       ctx.fillText(title, textX, titleY);
@@ -650,7 +665,11 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       if (artistMaxWidth > 12) {
         ctx.fillStyle = theme.artistColor;
         ctx.font = `500 12px ${fontFamily}`;
-        const artistInline = trimTextToWidth(ctx, trimText(card.artist, 56), artistMaxWidth);
+        const artistInline = trimTextToWidth(
+          ctx,
+          `- ${trimText(card.artist, 56)}`,
+          artistMaxWidth
+        );
         ctx.fillText(artistInline, artistX, titleY);
       }
 
@@ -662,18 +681,14 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
         ctx.textAlign = 'left';
       }
 
-      if (typeText === 'DX' || typeText === 'STD') {
-        const badgeWidth = 42;
-        const badgeHeight = 18;
-        const badgeX = versionRightX - badgeWidth;
-        const badgeY = y + 35;
+      if (hasTypeBadge) {
         roundedRectPath(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 7);
         ctx.fillStyle = typeText === 'DX' ? '#f59e0b' : '#3b82f6';
         ctx.fill();
         ctx.fillStyle = '#ffffff';
-        ctx.font = `700 11px ${fontFamily}`;
+        ctx.font = `700 10px ${fontFamily}`;
         ctx.textAlign = 'center';
-        ctx.fillText(typeText, badgeX + badgeWidth / 2, badgeY + 13);
+        ctx.fillText(typeText, badgeX + badgeWidth / 2, badgeY + 10.5);
         ctx.textAlign = 'left';
       }
 
@@ -742,7 +757,7 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     const maxLines = 5;
     const visibleLineCount = Math.max(1, Math.min(lineEntries.length, maxLines));
     const lineStep = 16;
-    const firstLineY = panelCenterY - ((visibleLineCount - 1) * lineStep) / 2;
+    const firstLineY = lowerRegionCenterY - ((visibleLineCount - 1) * lineStep) / 2;
     for (let lineIndex = 0; lineIndex < visibleLineCount; lineIndex += 1) {
       const lineEntry = lineEntries[lineIndex] || { difficulty: null, text: '' };
       const line = trimTextToWidth(ctx, lineEntry.text, lineMaxWidth);
