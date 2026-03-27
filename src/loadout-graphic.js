@@ -550,6 +550,12 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
   const cardFrameImage = await imageCache.get(assets.cardFrame);
   const cardBgOpacity = clampOpacity(theme.cardBgOpacity, 0.45);
   const cardFillOpacity = clampOpacity(theme.cardFillOpacity, 0.58);
+  const frameSourceWidth = Number(theme.cardFrameSourceWidth) || 283;
+  const frameSourceHeight = Number(theme.cardFrameSourceHeight) || 288;
+  const frameInnerX = Number(theme.cardFrameInnerX) || 35;
+  const frameInnerY = Number(theme.cardFrameInnerY) || 38;
+  const frameInnerWidth = Number(theme.cardFrameInnerWidth) || 214;
+  const frameInnerHeight = Number(theme.cardFrameInnerHeight) || 214;
 
   for (let index = 0; index < slots.length; index += 1) {
     const card = slots[index];
@@ -647,22 +653,61 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.fillText(`Slot ${index + 1}`, x + 16, y + 25);
     }
 
+    const frameHeight = jacketSize + 22;
+    const frameWidth = frameHeight * (frameSourceWidth / frameSourceHeight);
+    const frameX = jacketX + (jacketSize - frameWidth) / 2;
+    const frameY = jacketY + (jacketSize - frameHeight) / 2;
+    const jacketWindow = {
+      x: frameX + frameWidth * (frameInnerX / frameSourceWidth),
+      y: frameY + frameHeight * (frameInnerY / frameSourceHeight),
+      width: frameWidth * (frameInnerWidth / frameSourceWidth),
+      height: frameHeight * (frameInnerHeight / frameSourceHeight)
+    };
+
+    if (cardFrameImage && card) {
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.drawImage(cardFrameImage, frameX, frameY, frameWidth, frameHeight);
+      ctx.restore();
+    }
+
     const jacketImage = card ? await imageCache.get(card.imagePath) : null;
     if (card && jacketImage) {
       ctx.save();
-      roundedRectPath(ctx, jacketX, jacketY, jacketSize, jacketSize, 12);
+      roundedRectPath(
+        ctx,
+        jacketWindow.x,
+        jacketWindow.y,
+        jacketWindow.width,
+        jacketWindow.height,
+        8
+      );
       ctx.clip();
-      drawImageCover(ctx, jacketImage, jacketX, jacketY, jacketSize, jacketSize);
+      drawImageCover(
+        ctx,
+        jacketImage,
+        jacketWindow.x,
+        jacketWindow.y,
+        jacketWindow.width,
+        jacketWindow.height
+      );
       ctx.restore();
     } else {
-      roundedRectPath(ctx, jacketX, jacketY, jacketSize, jacketSize, 12);
+      roundedRectPath(
+        ctx,
+        jacketWindow.x,
+        jacketWindow.y,
+        jacketWindow.width,
+        jacketWindow.height,
+        8
+      );
       ctx.fillStyle = '#2b2f55';
       ctx.fill();
       ctx.fillStyle = '#c6cce3';
       ctx.textAlign = 'center';
       ctx.font = `600 11px ${fontFamily}`;
-      ctx.fillText(card ? 'NO' : 'EMPTY', jacketX + jacketSize / 2, jacketY + 42);
-      ctx.fillText(card ? 'IMAGE' : 'SLOT', jacketX + jacketSize / 2, jacketY + 57);
+      ctx.fillText(card ? 'NO' : 'EMPTY', jacketWindow.x + jacketWindow.width / 2, jacketWindow.y + 37);
+      ctx.fillText(card ? 'IMAGE' : 'SLOT', jacketWindow.x + jacketWindow.width / 2, jacketWindow.y + 52);
       ctx.textAlign = 'left';
     }
 
@@ -675,19 +720,6 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.fillText(line, textX, y + 62 + lineIndex * 16);
     }
 
-    if (cardFrameImage && card) {
-      ctx.save();
-      ctx.globalAlpha = 1;
-      drawImageContain(
-        ctx,
-        cardFrameImage,
-        jacketX - 11,
-        jacketY - 11,
-        jacketSize + 22,
-        jacketSize + 22
-      );
-      ctx.restore();
-    }
   }
 
   return {

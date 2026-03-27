@@ -23,5 +23,11 @@
   "headerOverlayOpacity": 0.95,
   "cardBgOpacity": 0.25,
   "cardFrameOpacity": 0.2,
+  "cardFrameSourceWidth": 283,
+  "cardFrameSourceHeight": 288,
+  "cardFrameInnerX": 35,
+  "cardFrameInnerY": 38,
+  "cardFrameInnerWidth": 214,
+  "cardFrameInnerHeight": 214,
   "fontFamily": "FOT-NewRodin Pro, Inter, Murecho, Noto Sans JP, Arial, sans-serif"
 }
