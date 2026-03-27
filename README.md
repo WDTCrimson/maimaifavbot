@@ -53,7 +53,7 @@ All bot replies are ephemeral (private).
 - `DISCORD_GUILD_ID` (optional but recommended for fast command updates)
 - `DATA_FILE` (optional, default `./data/loadouts.json`)
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
-- `GRAPHIC_THEME_DIR` (optional, default `./data/theme`)
+- `GRAPHIC_THEME_DIR` (optional, default `./data/theme/tomomai` when present, else `./data/theme`)
 
 ## Using bookmarklet flow
 
@@ -107,7 +107,7 @@ node scripts/import-maimai-data.js --skip-data
 
 ## Customize graphic assets
 
-`/loadout graphic` can use custom assets from `GRAPHIC_THEME_DIR` (default `data/theme/`).
+`/loadout graphic` can use custom assets from `GRAPHIC_THEME_DIR` (default `data/theme/tomomai/` when available).
 
 Tomomai assets copied locally in this project:
 
