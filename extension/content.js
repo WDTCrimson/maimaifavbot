@@ -1,15 +1,39 @@
+const CONFUSABLE_CHAR_MAP = new Map([
+  // Greek lookalikes
+  ['Α', 'A'], ['α', 'a'], ['Β', 'B'], ['β', 'b'], ['Ε', 'E'], ['ε', 'e'], ['Ζ', 'Z'], ['ζ', 'z'],
+  ['Η', 'H'], ['η', 'h'], ['Ι', 'I'], ['ι', 'i'], ['Κ', 'K'], ['κ', 'k'], ['Μ', 'M'], ['μ', 'm'],
+  ['Ν', 'N'], ['ν', 'n'], ['Ο', 'O'], ['ο', 'o'], ['Ρ', 'P'], ['ρ', 'p'], ['Τ', 'T'], ['τ', 't'],
+  ['Υ', 'Y'], ['υ', 'y'], ['Χ', 'X'], ['χ', 'x'], ['Λ', 'A'], ['λ', 'a'], ['Δ', 'A'], ['δ', 'a'],
+  ['Φ', 'O'], ['φ', 'o'], ['Ω', 'O'], ['ω', 'o'],
+  // Cyrillic lookalikes
+  ['А', 'A'], ['а', 'a'], ['В', 'B'], ['Е', 'E'], ['е', 'e'], ['К', 'K'], ['М', 'M'], ['Н', 'H'],
+  ['О', 'O'], ['о', 'o'], ['Р', 'P'], ['р', 'p'], ['С', 'C'], ['с', 'c'], ['Т', 'T'], ['Х', 'X'],
+  ['х', 'x'], ['У', 'Y'], ['у', 'y'], ['І', 'I'], ['і', 'i'], ['Ј', 'J'], ['ј', 'j']
+]);
+
+function foldConfusableChars(value) {
+  return Array.from(String(value || ''), (char) => CONFUSABLE_CHAR_MAP.get(char) || char).join('');
+}
+
 function normalizeTitle(value) {
-  return String(value || '')
+  return foldConfusableChars(String(value || ''))
     .normalize('NFKC')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+function decodeBase64UrlJsonUtf8(raw) {
+  const normalized = String(raw || '').trim().replace(/-/g, '+').replace(/_/g, '/');
+  const binary = atob(normalized + '==='.slice((normalized.length + 3) % 4));
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  const jsonText = new TextDecoder('utf-8').decode(bytes);
+  return JSON.parse(jsonText);
+}
+
 function normalizeTitleLoose(value) {
   const base = normalizeTitle(value)
     .replace(/[|｜].*$/u, '')
-    .replace(/[\/／].*$/u, '')
     .replace(/[\(\)（）\[\]【】「」『』〈〉<>]/gu, ' ');
 
   return base
@@ -19,9 +43,7 @@ function normalizeTitleLoose(value) {
 }
 
 function decodePayload(raw) {
-  const normalized = String(raw || '').trim().replace(/-/g, '+').replace(/_/g, '/');
-  const decoded = atob(normalized + '==='.slice((normalized.length + 3) % 4));
-  const payload = JSON.parse(decoded);
+  const payload = decodeBase64UrlJsonUtf8(raw);
 
   if (!payload || typeof payload !== 'object') {
     throw new Error('Payload is invalid.');
