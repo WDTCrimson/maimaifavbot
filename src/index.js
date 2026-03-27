@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
 import { config, limits } from './config.js';
-import { createInstallMessage, createLoadoutPayload } from './bookmarklet.js';
+import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderLoadoutGraphic } from './loadout-graphic.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -369,16 +369,11 @@ async function handleLoadoutCommand(interaction) {
     }
 
     case 'bookmarklet': {
-      const message = createInstallMessage();
-      const attachment = new AttachmentBuilder(Buffer.from(`${message}\n`, 'utf8'), {
-        name: 'maimai-bookmarklet.txt'
+      await replyPayload(interaction, {
+        content:
+          'Copy the next message as your bookmark URL.\nThen run `/loadout payload`, open CHANGE FAVORITE SONGS, click bookmark, paste payload, and tap DECIDE.'
       });
-
-      await interaction.reply({
-        content: 'Install steps are in the attached `maimai-bookmarklet.txt` file.',
-        files: [attachment],
-        ephemeral: true
-      });
+      await replySafely(interaction, createBookmarkletCode());
       return;
     }
 

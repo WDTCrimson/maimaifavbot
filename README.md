@@ -57,12 +57,14 @@ All bot replies are ephemeral (private).
 
 ## Using bookmarklet flow
 
-1. Run `/loadout bookmarklet` and copy the URL from the attached file.
+1. Run `/loadout bookmarklet` and copy the bookmark URL from the bot message.
+   The URL is sent as its own message for easier mobile copy/paste.
 2. Create a browser bookmark and paste that URL as its destination.
 3. Run `/loadout payload name:<your-loadout>` and copy payload text.
 4. Open a maimai favorites/music page.
 5. Click bookmarklet and paste payload.
-6. Choose strict mode (`OK`) or add-only mode (`Cancel`).
+6. Bookmarklet resets favorites, checks loadout songs, then shows a summary.
+7. Tap `DECIDE` on the page to save.
 
 ## Using extension flow
 
