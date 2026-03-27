@@ -36,7 +36,12 @@ const defaultTheme = {
   headerOverlayOpacity: 0.95,
   cardBgOpacity: 0.45,
   cardFrameOpacity: 1,
-  fontFamily: 'Inter, "Noto Sans JP", Arial, sans-serif'
+  fontFamily: 'Inter, "Noto Sans JP", Arial, sans-serif',
+  difficultyColorBasic: '#22bb5b',
+  difficultyColorAdvanced: '#fb9c2d',
+  difficultyColorExpert: '#f64861',
+  difficultyColorMaster: '#9e45e2',
+  difficultyColorRemaster: '#ba67f8'
 };
 
 function trimText(text, maxLength) {
@@ -89,6 +94,26 @@ function formatInternal(value) {
   return text;
 }
 
+function normalizeDifficultyKey(value) {
+  const key = String(value || '').toLowerCase();
+  if (key === 're:master') {
+    return 'remaster';
+  }
+  return key;
+}
+
+function getDifficultyTextColor(theme, difficulty) {
+  const normalized = normalizeDifficultyKey(difficulty);
+  const colorByDifficulty = {
+    basic: theme.difficultyColorBasic || '#22bb5b',
+    advanced: theme.difficultyColorAdvanced || '#fb9c2d',
+    expert: theme.difficultyColorExpert || '#f64861',
+    master: theme.difficultyColorMaster || '#9e45e2',
+    remaster: theme.difficultyColorRemaster || '#ba67f8'
+  };
+  return colorByDifficulty[normalized] || theme.chartColor;
+}
+
 function buildDifficultyLines(song) {
   const order = ['basic', 'advanced', 'expert', 'master', 'remaster'];
   const labels = {
@@ -96,7 +121,7 @@ function buildDifficultyLines(song) {
     advanced: 'ADV',
     expert: 'EXP',
     master: 'MAS',
-    remaster: 'ReM'
+    remaster: 'REMAS'
   };
 
   const byDifficulty = new Map(order.map((difficulty) => [difficulty, null]));
@@ -120,11 +145,14 @@ function buildDifficultyLines(song) {
     if (!chart) {
       continue;
     }
-    lines.push(`${labels[difficulty]}  Lvl ${chart.level} [${formatInternal(chart.internalLevelValue)}]`);
+    lines.push({
+      difficulty,
+      text: `${labels[difficulty]}  Lvl ${chart.level} [${formatInternal(chart.internalLevelValue)}]`
+    });
   }
 
   if (!lines.length) {
-    return ['No chart data'];
+    return [{ difficulty: null, text: 'No chart data' }];
   }
 
   return lines.slice(0, 5);
@@ -592,51 +620,60 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     ctx.fillStyle = theme.cardTitleBar;
     ctx.fill();
 
-    const jacketX = x + 10;
-    const jacketY = y + 40;
+    const contentInset = 16;
+    const jacketX = x + contentInset;
     const jacketSize = 90;
+    const panelCenterY = y + cardHeight / 2;
+    const jacketY = Math.round(panelCenterY - jacketSize / 2);
     const textX = jacketX + jacketSize + 10;
-    const textRight = x + cardWidth - 10;
+    const textRight = x + cardWidth - contentInset;
     const lineMaxWidth = Math.max(40, textRight - textX);
 
     if (card) {
+      const versionRightX = textRight - 18;
       ctx.fillStyle = theme.versionColor;
       ctx.font = `500 12px ${fontFamily}`;
-      const versionText = card.version ? trimTextToWidth(ctx, card.version, 88) : '';
+      const versionText = card.version ? trimTextToWidth(ctx, card.version, 76) : '';
       const versionWidth = versionText ? ctx.measureText(versionText).width : 0;
       const typeText = String(card.primaryChart?.type || '').toUpperCase();
 
       ctx.fillStyle = theme.titleColor;
       ctx.font = `600 14px ${fontFamily}`;
-      const titleMaxWidth = Math.max(40, lineMaxWidth - (versionWidth ? versionWidth + 8 : 0));
-      const title = trimTextToWidth(ctx, trimText(card.title, 48), titleMaxWidth);
-      ctx.fillText(title, textX, y + 25);
+      const headerMaxWidth = Math.max(40, lineMaxWidth - (versionWidth ? versionWidth + 22 : 0));
+      const title = trimTextToWidth(ctx, trimText(card.title, 48), Math.max(20, headerMaxWidth * 0.62));
+      const titleY = y + 25;
+      ctx.fillText(title, textX, titleY);
+      const titleWidth = ctx.measureText(title).width;
+
+      const artistX = textX + titleWidth + 6;
+      const artistMaxWidth = textX + headerMaxWidth - artistX;
+      if (artistMaxWidth > 12) {
+        ctx.fillStyle = theme.artistColor;
+        ctx.font = `500 12px ${fontFamily}`;
+        const artistInline = trimTextToWidth(ctx, trimText(card.artist, 56), artistMaxWidth);
+        ctx.fillText(artistInline, artistX, titleY);
+      }
 
       if (versionText) {
         ctx.fillStyle = theme.versionColor;
         ctx.font = `500 12px ${fontFamily}`;
         ctx.textAlign = 'right';
-        ctx.fillText(versionText, textRight, y + 25);
+        ctx.fillText(versionText, versionRightX, y + 25);
         ctx.textAlign = 'left';
       }
 
-      ctx.fillStyle = theme.artistColor;
-      ctx.font = `500 12px ${fontFamily}`;
-      const artist = trimTextToWidth(ctx, trimText(card.artist, 56), lineMaxWidth);
-      ctx.fillText(artist, textX, y + 42);
-
       if (typeText === 'DX' || typeText === 'STD') {
-        const badgeWidth = 34;
-        const badgeHeight = 14;
-        const badgeX = textRight - badgeWidth;
-        const badgeY = y + 30;
+        const badgeWidth = 42;
+        const badgeHeight = 18;
+        const badgeX = versionRightX - badgeWidth;
+        const badgeY = y + 35;
         roundedRectPath(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 7);
         ctx.fillStyle = typeText === 'DX' ? '#f59e0b' : '#3b82f6';
         ctx.fill();
         ctx.fillStyle = '#ffffff';
-        ctx.font = `700 10px ${fontFamily}`;
+        ctx.font = `700 11px ${fontFamily}`;
         ctx.textAlign = 'center';
-        ctx.fillText(typeText, badgeX + badgeWidth / 2, badgeY + 10.5);
+        ctx.fillText(typeText, badgeX + badgeWidth / 2, badgeY + 13);
         ctx.textAlign = 'left';
       }
 
@@ -674,14 +711,8 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     const jacketImage = card ? await imageCache.get(card.imagePath) : null;
     if (card && jacketImage) {
       ctx.save();
-      roundedRectPath(
-        ctx,
-        jacketWindow.x,
-        jacketWindow.y,
-        jacketWindow.width,
-        jacketWindow.height,
-        8
-      );
+      ctx.beginPath();
+      ctx.rect(jacketWindow.x, jacketWindow.y, jacketWindow.width, jacketWindow.height);
       ctx.clip();
       drawImageCover(
         ctx,
@@ -693,14 +724,8 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       );
       ctx.restore();
     } else {
-      roundedRectPath(
-        ctx,
-        jacketWindow.x,
-        jacketWindow.y,
-        jacketWindow.width,
-        jacketWindow.height,
-        8
-      );
+      ctx.beginPath();
+      ctx.rect(jacketWindow.x, jacketWindow.y, jacketWindow.width, jacketWindow.height);
       ctx.fillStyle = '#2b2f55';
       ctx.fill();
       ctx.fillStyle = '#c6cce3';
@@ -713,11 +738,16 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
 
     ctx.fillStyle = theme.chartColor;
     ctx.font = `500 13px ${fontFamily}`;
-    const lines = card ? card.lines : ['No song selected'];
+    const lineEntries = card ? card.lines : [{ difficulty: null, text: 'No song selected' }];
     const maxLines = 5;
-    for (let lineIndex = 0; lineIndex < Math.min(lines.length, maxLines); lineIndex += 1) {
-      const line = trimTextToWidth(ctx, lines[lineIndex], lineMaxWidth);
-      ctx.fillText(line, textX, y + 62 + lineIndex * 16);
+    const visibleLineCount = Math.max(1, Math.min(lineEntries.length, maxLines));
+    const lineStep = 16;
+    const firstLineY = panelCenterY - ((visibleLineCount - 1) * lineStep) / 2;
+    for (let lineIndex = 0; lineIndex < visibleLineCount; lineIndex += 1) {
+      const lineEntry = lineEntries[lineIndex] || { difficulty: null, text: '' };
+      const line = trimTextToWidth(ctx, lineEntry.text, lineMaxWidth);
+      ctx.fillStyle = getDifficultyTextColor(theme, lineEntry.difficulty);
+      ctx.fillText(line, textX, firstLineY + lineIndex * lineStep);
     }
 
   }
