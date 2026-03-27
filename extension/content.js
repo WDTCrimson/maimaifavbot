@@ -6,6 +6,18 @@ function normalizeTitle(value) {
     .trim();
 }
 
+function normalizeTitleLoose(value) {
+  const base = normalizeTitle(value)
+    .replace(/[|｜].*$/u, '')
+    .replace(/[\/／].*$/u, '')
+    .replace(/[\(\)（）\[\]【】「」『』〈〉<>]/gu, ' ');
+
+  return base
+    .replace(/[ーｰ]/gu, '')
+    .replace(/[\s\p{P}\p{S}]+/gu, '')
+    .trim();
+}
+
 function decodePayload(raw) {
   const normalized = String(raw || '').trim().replace(/-/g, '+').replace(/_/g, '/');
   const decoded = atob(normalized + '==='.slice((normalized.length + 3) % 4));
@@ -33,12 +45,19 @@ function decodePayload(raw) {
     if (!norm || titleMap.has(norm)) {
       continue;
     }
-    titleMap.set(norm, title);
+    titleMap.set(norm, {
+      rawTitle: title,
+      loose: normalizeTitleLoose(title)
+    });
   }
 
   return {
     name: String(payload.name || 'unnamed-loadout').trim() || 'unnamed-loadout',
-    titles: [...titleMap.entries()].map(([norm, rawTitle]) => ({ norm, rawTitle }))
+    titles: [...titleMap.entries()].map(([norm, info]) => ({
+      norm,
+      rawTitle: info.rawTitle,
+      loose: info.loose
+    }))
   };
 }
 
@@ -58,7 +77,8 @@ function allCheckboxEntries() {
         label,
         input,
         title,
-        norm: normalizeTitle(title)
+        norm: normalizeTitle(title),
+        loose: normalizeTitleLoose(title)
       };
     })
     .filter((entry) => entry.input);
@@ -193,9 +213,15 @@ async function applyLoadout(rawPayload, options = {}) {
 
   const refreshedEntries = allCheckboxEntries();
   const entryByNorm = new Map();
+  const entryByLoose = new Map();
   for (const entry of refreshedEntries) {
     if (!entry.norm || !entryByNorm.has(entry.norm)) {
       entryByNorm.set(entry.norm, entry);
+    }
+    if (entry.loose) {
+      const bucket = entryByLoose.get(entry.loose) || [];
+      bucket.push(entry);
+      entryByLoose.set(entry.loose, bucket);
     }
   }
 
@@ -206,7 +232,27 @@ async function applyLoadout(rawPayload, options = {}) {
   const disabled = [];
 
   for (const target of payload.titles) {
-    const hit = entryByNorm.get(target.norm);
+    let hit = entryByNorm.get(target.norm) || null;
+
+    if (!hit && target.loose) {
+      const looseBucket = entryByLoose.get(target.loose) || [];
+      if (looseBucket.length === 1) {
+        hit = looseBucket[0];
+      }
+    }
+
+    if (!hit && target.loose && target.loose.length >= 2) {
+      const fuzzy = refreshedEntries.find((entry) => {
+        if (!entry.loose) {
+          return false;
+        }
+        return entry.loose.includes(target.loose) || target.loose.includes(entry.loose);
+      });
+      if (fuzzy) {
+        hit = fuzzy;
+      }
+    }
+
     if (!hit) {
       notFound.push(target.rawTitle);
       continue;
