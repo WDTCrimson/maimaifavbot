@@ -20,11 +20,11 @@ Then restart bot and run:
 
 ## Main mapped files
 
-- `background.png` <- `res/bg/13.png`
-- `header-overlay.png` <- `res/character/13.png`
-- `logo.png` <- `res/logo/13.png`
+- `background.png` <- `res/bg/12.png`
+- `header-overlay.png` <- `res/character/12.png`
+- `logo.png` <- `res/logo/12.png`
 - `watermark.png` <- `res/star/white_tail.png`
-- `card-bg.png` <- `res/bg/13_long.png`
+- `card-bg.png` <- `res/bg/12_long.png`
 - `card-frame.png` <- `res/songs/music_jacket_master.png`
 
 ## Extra version assets copied

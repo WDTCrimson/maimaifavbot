@@ -23,6 +23,8 @@ const defaultTheme = {
   overlayTint: 'rgba(120, 40, 60, 0.15)',
   headerFill: '#2b1538',
   cardFill: '#3e1f53',
+  cardFillOpacity: 0.58,
+  cardBackgroundStyle: 'flat',
   cardStroke: '#8b5cf6',
   cardTitleBar: '#5b286f',
   titleColor: '#ffffff',
@@ -42,6 +44,14 @@ function trimText(text, maxLength) {
     return text;
   }
   return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function clampOpacity(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.max(0, Math.min(1, parsed));
 }
 
 function trimTextToWidth(ctx, text, maxWidth) {
@@ -438,28 +448,23 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     ctx.restore();
   }
 
+  // Character artwork is part of the upper background, not the header panel.
+  const headerOverlay = await imageCache.get(assets.headerOverlay);
+  if (headerOverlay) {
+    const characterSize = 320;
+    const characterX = width - characterSize - 220;
+    const characterY = -36;
+    ctx.save();
+    ctx.globalAlpha = Number(theme.headerOverlayOpacity) || 0.95;
+    drawImageContain(ctx, headerOverlay, characterX, characterY, characterSize, characterSize);
+    ctx.restore();
+  }
+
   roundedRectPath(ctx, horizontalMargin, headerTop, width - horizontalMargin * 2, headerHeight, 18);
   ctx.fillStyle = theme.headerFill;
   ctx.globalAlpha = 0.72;
   ctx.fill();
   ctx.globalAlpha = 1;
-
-  const headerOverlay = await imageCache.get(assets.headerOverlay);
-  if (headerOverlay) {
-    ctx.save();
-    roundedRectPath(ctx, horizontalMargin, headerTop, width - horizontalMargin * 2, headerHeight, 18);
-    ctx.clip();
-    ctx.globalAlpha = Number(theme.headerOverlayOpacity) || 0.95;
-    drawImageCover(
-      ctx,
-      headerOverlay,
-      horizontalMargin,
-      headerTop,
-      width - horizontalMargin * 2,
-      headerHeight
-    );
-    ctx.restore();
-  }
 
   const logoWidth = 172;
   const logoHeight = 76;
@@ -498,8 +503,11 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     drawImageContain(ctx, logoImage, logoX, logoY, logoWidth, logoHeight);
   }
 
-  const cardBgImage = await imageCache.get(assets.cardBg);
+  const useImageCardBackground = String(theme.cardBackgroundStyle || '').toLowerCase() === 'image';
+  const cardBgImage = useImageCardBackground ? await imageCache.get(assets.cardBg) : null;
   const cardFrameImage = await imageCache.get(assets.cardFrame);
+  const cardBgOpacity = clampOpacity(theme.cardBgOpacity, 0.45);
+  const cardFillOpacity = clampOpacity(theme.cardFillOpacity, 0.58);
 
   for (let index = 0; index < slots.length; index += 1) {
     const card = slots[index];
@@ -509,8 +517,11 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
     const y = gridTop + row * (cardHeight + gapY);
 
     roundedRectPath(ctx, x, y, cardWidth, cardHeight, 16);
+    ctx.save();
+    ctx.globalAlpha = cardFillOpacity;
     ctx.fillStyle = theme.cardFill;
     ctx.fill();
+    ctx.restore();
     ctx.strokeStyle = theme.cardStroke;
     ctx.globalAlpha = 0.35;
     ctx.lineWidth = 2;
@@ -521,10 +532,13 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
       ctx.save();
       roundedRectPath(ctx, x, y, cardWidth, cardHeight, 16);
       ctx.clip();
-      ctx.globalAlpha = Number(theme.cardBgOpacity) || 0.45;
+      ctx.globalAlpha = cardBgOpacity;
       drawImageCover(ctx, cardBgImage, x, y, cardWidth, cardHeight);
       ctx.restore();
     }
+
+    // Foreground content in each slot should always render at full opacity.
+    ctx.globalAlpha = 1;
 
     roundedRectPath(ctx, x + 10, y + 10, cardWidth - 20, 22, 8);
     ctx.fillStyle = theme.cardTitleBar;
@@ -597,8 +611,15 @@ export async function renderLoadoutGraphic({ loadoutName, songs, themeDir }) {
 
     if (cardFrameImage && card) {
       ctx.save();
-      ctx.globalAlpha = Number(theme.cardFrameOpacity) || 1;
-      drawImageContain(ctx, cardFrameImage, x, y, cardWidth, cardHeight);
+      ctx.globalAlpha = 1;
+      drawImageContain(
+        ctx,
+        cardFrameImage,
+        jacketX - 7,
+        jacketY - 7,
+        jacketSize + 14,
+        jacketSize + 14
+      );
       ctx.restore();
     }
   }

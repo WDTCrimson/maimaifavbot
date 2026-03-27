@@ -10,6 +10,8 @@
   "overlayTint": "rgba(60, 20, 40, 0.08)",
   "headerFill": "#4f2547",
   "cardFill": "#3f1e49",
+  "cardFillOpacity": 0.5,
+  "cardBackgroundStyle": "flat",
   "cardStroke": "#f6b8dd",
   "cardTitleBar": "#6e305f",
   "titleColor": "#ffffff",
