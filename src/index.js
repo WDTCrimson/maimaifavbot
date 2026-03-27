@@ -376,11 +376,11 @@ function buildChartSummary(song) {
       const difficulty = String(chart.difficulty || '').toLowerCase();
       const difficultyText = difficultyLabel[difficulty] || String(chart.difficulty || 'UNKNOWN');
       const typeText = String(chart.type || 'UNK').toUpperCase();
-      const levelText = `Lv${chart.level}`;
+      const levelText = `Lvl ${chart.level}`;
       const internal =
         typeof chart.internalLevelValue === 'number' ? chart.internalLevelValue : chart.internalLevelValue || '?';
       const versionText = chart.version || 'Unknown version';
-      return `${typeText} ${difficultyText} ${levelText} (Int ${internal}) - ${versionText}`;
+      return `${typeText} ${difficultyText} ${levelText} [${internal}] - ${versionText}`;
     });
 
   if (!rows.length) {
@@ -443,8 +443,7 @@ async function replySongAdded(interaction, { loadout, song, songId }) {
     .setTitle(song.title)
     .setDescription(song.artist || 'Unknown artist')
     .addFields(
-      { name: 'Song ID', value: songId, inline: true },
-      { name: 'Loadout', value: `${loadout.name} (${loadout.songs.length}/30)`, inline: true },
+      { name: 'Loadout', value: `${loadout.name} (${loadout.songs.length}/30)` },
       { name: 'Charts', value: chartSummary.join('\n') }
     );
 
@@ -453,7 +452,7 @@ async function replySongAdded(interaction, { loadout, song, songId }) {
   }
 
   const payload = {
-    content: `Added **${song.title}** (\`${songId}\`) to **${loadout.name}**.`,
+    content: `Added **${song.title}** to **${loadout.name}**.`,
     embeds: [embed]
   };
 
