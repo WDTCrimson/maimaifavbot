@@ -1,31 +1,32 @@
 # maimai-fav-bot
 
-Discord bot to manage maimai favorite-song loadouts (up to 30 songs each), plus automation helpers to apply a loadout on maimaidxnet.
+Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus automation helpers to apply a playlist on maimaidxnet.
 
 ## What this MVP does
 
-- Create, list, show, and delete per-user loadouts.
-- Add/remove numeric song IDs per loadout (max 30).
-- Generate a compact payload string for a loadout.
+- Create, list, show, and delete per-user playlists.
+- Add/remove songs per playlist (max 30).
+- Generate a compact payload string for a playlist.
 - Provide a bookmarklet installer string.
 - Include a Chrome-compatible extension (`extension/`) that applies payloads on maimai pages.
 
 ## Bot commands
 
-- `/loadout create name:<text>`
-- `/loadout delete name:<text>`
-- `/loadout list`
-- `/loadout show name:<text>`
-- `/loadout add name:<text> song_id:<id>`
-- `/loadout add-song name:<text> song_query:<text>`
-- `/loadout remove name:<text> song_query:<text>`
-- `/loadout payload name:<text>`
-- `/loadout share name:<text>`
-- `/loadout import name:<text> code:<text> [replace:true|false]`
-- `/loadout graphic name:<text>`
-- `/loadout bookmarklet`
+- `/playlist create name:<text>`
+- `/playlist delete name:<text>`
+- `/playlist list`
+- `/playlist show name:<text>`
+- `/playlist add-song name:<text> song_query:<text>`
+- `/playlist remove-song name:<text> song_query:<text>`
+- `/playlist export name:<text>`
+- `/playlist share name:<text>`
+- `/playlist import name:<text> code:<text> [replace:true|false]`
+- `/playlist graphic name:<text>`
+- `/playlist bookmarklet`
 - `/song search query:<text>`
 - `/song info query:<text>`
+
+`/song search` also supports exact constant queries (examples: `12.3`, `13.7 mas`, `11.8 dx`).
 
 All bot replies are ephemeral (private).
 
@@ -57,10 +58,10 @@ All bot replies are ephemeral (private).
 
 ## Using bookmarklet flow
 
-1. Run `/loadout bookmarklet` and copy the bookmark URL from the bot message.
+1. Run `/playlist bookmarklet` and copy the bookmark URL from the bot message.
    The URL is sent as its own message for easier mobile copy/paste.
 2. Create a browser bookmark and paste that URL as its destination.
-3. Run `/loadout payload name:<your-loadout>` and copy payload text.
+3. Run `/playlist export name:<your-playlist>` and copy payload text.
 4. Open a maimai favorites/music page.
 5. Click bookmarklet and paste payload.
 6. Bookmarklet resets favorites, applies songs, and auto-submits `DECIDE`.
@@ -71,11 +72,11 @@ All bot replies are ephemeral (private).
 2. Enable Developer mode.
 3. Click "Load unpacked" and select the `extension/` folder.
 4. On maimai page, click extension icon.
-5. To apply an existing bot loadout:
-   Paste payload from `/loadout payload` and click apply.
+5. To apply an existing bot playlist:
+   Paste payload from `/playlist export` and click apply.
 6. To import your current website favorites into the bot:
    Click `Export Current Favorites`, then run:
-   `/loadout import name:<new_loadout_name> code:<paste_code> replace:true`
+   `/playlist import name:<new_playlist_name> code:<paste_code> replace:true`
 
 ### Rebuild extension CSS (Tailwind)
 
@@ -125,7 +126,7 @@ node scripts/import-maimai-data.js --skip-data
 
 ## Customize graphic assets
 
-`/loadout graphic` can use custom assets from `GRAPHIC_THEME_DIR` (default `data/theme/tomomai/` when available).
+`/playlist graphic` can use custom assets from `GRAPHIC_THEME_DIR` (default `data/theme/tomomai/` when available).
 
 Tomomai assets copied locally in this project:
 

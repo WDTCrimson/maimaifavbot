@@ -126,7 +126,7 @@ applyButton.addEventListener('click', async () => {
   localStorage.setItem(storageKey, payload);
   localStorage.setItem(strictKey, strictInput.checked ? '1' : '0');
   localStorage.setItem(autoSubmitKey, autoSubmitInput.checked ? '1' : '0');
-  setStatus('Applying loadout...', 'info');
+  setStatus('Applying playlist...', 'info');
 
   try {
     const tab = await getActiveTab();
@@ -150,7 +150,7 @@ applyButton.addEventListener('click', async () => {
 
     setStatus(
       [
-        `Loadout: ${report.name}`,
+        `Playlist: ${report.name}`,
         `Added: ${report.added}`,
         `Removed: ${report.removed}`,
         `Unknown state: ${report.unknown}`,
@@ -194,7 +194,7 @@ exportButton.addEventListener('click', async () => {
       [
         `Exported favorites: ${response.exported.count}`,
         'Import command:',
-        '/loadout import name:<new_loadout_name> code:<paste_code> replace:true',
+        '/playlist import name:<new_playlist_name> code:<paste_code> replace:true',
         copied ? 'Import code copied to clipboard.' : 'Import code placed in payload box.'
       ].join('\n'),
       'success'

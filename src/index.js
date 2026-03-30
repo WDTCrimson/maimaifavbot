@@ -47,8 +47,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     switch (interaction.commandName) {
-      case 'loadout':
-        await handleLoadoutCommand(interaction);
+      case 'playlist':
+        await handlePlaylistCommand(interaction);
         return;
       case 'song':
         await handleSongCommand(interaction);
@@ -62,8 +62,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 async function handleAutocomplete(interaction) {
-  if (interaction.commandName === 'loadout') {
-    await handleLoadoutAutocomplete(interaction);
+  if (interaction.commandName === 'playlist') {
+    await handlePlaylistAutocomplete(interaction);
     return;
   }
 
@@ -75,13 +75,13 @@ async function handleAutocomplete(interaction) {
   await interaction.respond([]);
 }
 
-async function handleLoadoutAutocomplete(interaction) {
+async function handlePlaylistAutocomplete(interaction) {
   const subcommand = interaction.options.getSubcommand();
   const focused = interaction.options.getFocused(true);
   const focusedValue = String(focused.value || '');
 
   if (focused.name === 'name') {
-    const choices = getLoadoutNameChoices(interaction.user.id, focusedValue);
+    const choices = getPlaylistNameChoices(interaction.user.id, focusedValue);
     await interaction.respond(choices);
     return;
   }
@@ -96,9 +96,9 @@ async function handleLoadoutAutocomplete(interaction) {
     return;
   }
 
-  if (subcommand === 'remove' && focused.name === 'song_query') {
-    const loadoutName = interaction.options.getString('name');
-    const choices = getLoadoutSongChoices(interaction.user.id, loadoutName, focusedValue);
+  if ((subcommand === 'remove-song' || subcommand === 'remove') && focused.name === 'song_query') {
+    const playlistName = interaction.options.getString('name');
+    const choices = getPlaylistSongChoices(interaction.user.id, playlistName, focusedValue);
     await interaction.respond(choices);
     return;
   }
@@ -113,11 +113,16 @@ async function handleSongAutocomplete(interaction) {
   }
 
   const focusedValue = String(interaction.options.getFocused(true).value || '');
+  if (parseConstantSearchQuery(focusedValue)) {
+    await interaction.respond([]);
+    return;
+  }
+
   const choices = songCatalog.autocomplete(focusedValue, 25);
   await interaction.respond(choices);
 }
 
-function getLoadoutNameChoices(userId, query) {
+function getPlaylistNameChoices(userId, query) {
   const normalizedQuery = query.trim().toLowerCase();
   return store
     .listLoadouts(userId)
@@ -136,21 +141,21 @@ function truncateChoiceName(value, maxLength = 100) {
   return `${value.slice(0, maxLength - 1)}…`;
 }
 
-function getLoadoutSongChoices(userId, loadoutName, query) {
-  if (!loadoutName) {
+function getPlaylistSongChoices(userId, playlistName, query) {
+  if (!playlistName) {
     return [];
   }
 
-  let loadout = null;
+  let playlist = null;
   try {
-    loadout = store.getLoadout(userId, loadoutName);
+    playlist = store.getLoadout(userId, playlistName);
   } catch {
     return [];
   }
 
   const normalizedQuery = String(query || '').trim().toLowerCase();
 
-  const entries = loadout.songs
+  const entries = playlist.songs
     .map((songId) => {
       const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
       const label = song ? `${song.title} - ${song.artist}` : songId;
@@ -177,60 +182,60 @@ function getLoadoutSongChoices(userId, loadoutName, query) {
   return entries;
 }
 
-async function handleLoadoutCommand(interaction) {
+async function handlePlaylistCommand(interaction) {
   const subcommand = interaction.options.getSubcommand();
   const userId = interaction.user.id;
 
   switch (subcommand) {
     case 'create': {
       const name = interaction.options.getString('name', true);
-      const loadout = await store.createLoadout(userId, name);
-      await replySafely(interaction, `Created loadout **${loadout.name}**.`);
+      const playlist = await store.createLoadout(userId, name);
+      await replySafely(interaction, `Created playlist **${playlist.name}**.`);
       return;
     }
 
     case 'delete': {
       const name = interaction.options.getString('name', true);
-      const loadout = await store.deleteLoadout(userId, name);
-      await replySafely(interaction, `Deleted loadout **${loadout.name}**.`);
+      const playlist = await store.deleteLoadout(userId, name);
+      await replySafely(interaction, `Deleted playlist **${playlist.name}**.`);
       return;
     }
 
     case 'list': {
-      const loadouts = store.listLoadouts(userId);
-      if (!loadouts.length) {
-        await replySafely(interaction, 'You have no loadouts yet. Use `/loadout create` first.');
+      const playlists = store.listLoadouts(userId);
+      if (!playlists.length) {
+        await replySafely(interaction, 'You have no playlists yet. Use `/playlist create` first.');
         return;
       }
 
-      const lines = loadouts.map((loadout) => `- ${loadout.name} (${loadout.songs.length}/30)`);
-      await replySafely(interaction, `Your loadouts:\n${lines.join('\n')}`);
+      const lines = playlists.map((playlist) => `- ${playlist.name} (${playlist.songs.length}/30)`);
+      await replySafely(interaction, `Your playlists:\n${lines.join('\n')}`);
       return;
     }
 
     case 'show': {
       const name = interaction.options.getString('name', true);
-      const loadout = store.getLoadout(userId, name);
-      await replyLoadoutShow(interaction, loadout);
+      const playlist = store.getLoadout(userId, name);
+      await replyPlaylistShow(interaction, playlist);
       return;
     }
 
     case 'graphic': {
       songCatalog.requireAvailable();
       const name = interaction.options.getString('name', true);
-      const loadout = store.getLoadout(userId, name);
-      if (!loadout.songs.length) {
-        await replySafely(interaction, `**${loadout.name}** is empty. Add songs first.`);
+      const playlist = store.getLoadout(userId, name);
+      if (!playlist.songs.length) {
+        await replySafely(interaction, `**${playlist.name}** is empty. Add songs first.`);
         return;
       }
 
-      const songs = loadout.songs.map((songId) => songCatalog.getByFavoriteId(songId)).filter(Boolean);
+      const songs = playlist.songs.map((songId) => songCatalog.getByFavoriteId(songId)).filter(Boolean);
       if (!songs.length) {
-        throw new Error('No songs from this loadout are available in the local song catalog.');
+        throw new Error('No songs from this playlist are available in the local song catalog.');
       }
 
       const graphic = await renderLoadoutGraphic({
-        loadoutName: loadout.name,
+        loadoutName: playlist.name,
         songs,
         themeDir: config.graphicThemeDir
       });
@@ -239,36 +244,15 @@ async function handleLoadoutCommand(interaction) {
         name: graphic.fileName
       });
 
-      const missingCount = loadout.songs.length - songs.length;
+      const missingCount = playlist.songs.length - songs.length;
       const content =
         missingCount > 0
-          ? `Generated loadout graphic for **${loadout.name}** (${songs.length} songs rendered, ${missingCount} missing in catalog).`
-          : `Generated loadout graphic for **${loadout.name}** (${songs.length} songs rendered).`;
+          ? `Generated playlist graphic for **${playlist.name}** (${songs.length} songs rendered, ${missingCount} missing in catalog).`
+          : `Generated playlist graphic for **${playlist.name}** (${songs.length} songs rendered).`;
 
       await replyPayload(interaction, {
         content,
         files: [attachment]
-      });
-      return;
-    }
-
-    case 'add': {
-      const name = interaction.options.getString('name', true);
-      const songId = interaction.options.getString('song_id', true);
-      const loadout = await store.addSong(userId, name, songId);
-      const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
-      if (!song) {
-        await replySafely(
-          interaction,
-          `Added song ID **${songId}** to **${loadout.name}** (${loadout.songs.length}/30).`
-        );
-        return;
-      }
-
-      await replySongAdded(interaction, {
-        loadout,
-        song,
-        songId
       });
       return;
     }
@@ -283,42 +267,44 @@ async function handleLoadoutCommand(interaction) {
         throw new Error(`No matching song found for "${songQuery}".`);
       }
 
-      const loadout = await store.addSong(userId, name, song.favoriteId);
+      const playlist = await store.addSong(userId, name, song.favoriteId);
       await replySongAdded(interaction, {
-        loadout,
+        playlist,
         song,
         songId: song.favoriteId
       });
       return;
     }
 
+    case 'remove-song':
     case 'remove': {
       const name = interaction.options.getString('name', true);
       const songQuery = interaction.options.getString('song_query', true);
-      const loadoutBefore = store.getLoadout(userId, name);
-      const songId = resolveSongIdInLoadout(loadoutBefore, songQuery);
-      const loadout = await store.removeSong(userId, name, songId);
+      const playlistBefore = store.getLoadout(userId, name);
+      const songId = resolveSongIdInPlaylist(playlistBefore, songQuery);
+      const playlist = await store.removeSong(userId, name, songId);
       const removedSong = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
       if (removedSong) {
         await replySafely(
           interaction,
-          `Removed **${removedSong.title}** from **${loadout.name}** (${loadout.songs.length}/30).`
+          `Removed **${removedSong.title}** from **${playlist.name}** (${playlist.songs.length}/30).`
         );
         return;
       }
 
-      await replySafely(interaction, `Removed song from **${loadout.name}** (${loadout.songs.length}/30).`);
+      await replySafely(interaction, `Removed song from **${playlist.name}** (${playlist.songs.length}/30).`);
       return;
     }
 
+    case 'export':
     case 'payload': {
       const name = interaction.options.getString('name', true);
-      const loadout = store.getLoadout(userId, name);
-      const payload = createLoadoutPayload(loadout, {
-        songs: buildPayloadSongs(loadout)
+      const playlist = store.getLoadout(userId, name);
+      const payload = createLoadoutPayload(playlist, {
+        songs: buildPayloadSongs(playlist)
       });
       await replyPayload(interaction, {
-        content: `Loadout: **${loadout.name}** (${loadout.songs.length}/30)\nPayload below (copy this message only):`
+        content: `Playlist: **${playlist.name}** (${playlist.songs.length}/30)\nPayload below (copy this message only):`
       });
       await replySafely(interaction, payload);
       return;
@@ -326,15 +312,15 @@ async function handleLoadoutCommand(interaction) {
 
     case 'share': {
       const name = interaction.options.getString('name', true);
-      const loadout = store.getLoadout(userId, name);
-      const shareCode = createLoadoutPayload(loadout, {
-        songs: buildPayloadSongs(loadout)
+      const playlist = store.getLoadout(userId, name);
+      const shareCode = createLoadoutPayload(playlist, {
+        songs: buildPayloadSongs(playlist)
       });
       const lines = [
-        `Share code for **${loadout.name}** (${loadout.songs.length}/30):`,
+        `Share code for **${playlist.name}** (${playlist.songs.length}/30):`,
         shareCode,
         '',
-        'Use `/loadout import` with this code.'
+        'Use `/playlist import` with this code.'
       ];
       await replySafely(interaction, lines.join('\n'));
       return;
@@ -349,7 +335,7 @@ async function handleLoadoutCommand(interaction) {
       const exists = store.hasLoadout(userId, name);
       if (exists && !replace) {
         throw new Error(
-          `Loadout "${name}" already exists. Set \`replace:true\` in \`/loadout import\` to overwrite it.`
+          `Playlist "${name}" already exists. Set \`replace:true\` in \`/playlist import\` to overwrite it.`
         );
       }
 
@@ -357,7 +343,7 @@ async function handleLoadoutCommand(interaction) {
         await store.createLoadout(userId, name);
       }
 
-      const loadout = await store.setSongs(userId, name, decoded.songIds, {
+      const playlist = await store.setSongs(userId, name, decoded.songIds, {
         createIfMissing: true
       });
 
@@ -368,7 +354,7 @@ async function handleLoadoutCommand(interaction) {
 
       await replySafely(
         interaction,
-        `Imported **${loadout.songs.length}** song(s) into **${loadout.name}** from "${decoded.name}".${unresolvedLine}`
+        `Imported **${playlist.songs.length}** song(s) into **${playlist.name}** from "${decoded.name}".${unresolvedLine}`
       );
       return;
     }
@@ -376,7 +362,7 @@ async function handleLoadoutCommand(interaction) {
     case 'bookmarklet': {
       await replyPayload(interaction, {
         content:
-          'Copy the next message as your bookmark URL.\nThen run `/loadout payload`, open CHANGE FAVORITE SONGS, click bookmark, and paste payload. It auto-submits DECIDE.'
+          'Copy the next message as your bookmark URL.\nThen run `/playlist export`, open CHANGE FAVORITE SONGS, click bookmark, and paste payload. It auto-submits DECIDE.'
       });
       await replySafely(interaction, createBookmarkletCode());
       return;
@@ -391,10 +377,53 @@ async function handleSongCommand(interaction) {
   songCatalog.requireAvailable();
 
   const subcommand = interaction.options.getSubcommand();
-  const query = interaction.options.getString('query', true);
 
   switch (subcommand) {
     case 'search': {
+      const query = interaction.options.getString('query', true);
+      const constantSearch = parseConstantSearchQuery(query);
+
+      if (constantSearch) {
+        const matches = findChartsByConstant({
+          constant: constantSearch.constant,
+          difficulty: constantSearch.difficulty,
+          chartType: constantSearch.chartType,
+          limit: 25
+        });
+
+        if (!matches.length) {
+          await replySafely(
+            interaction,
+            `No charts found for constant ${formatInternalLevel(
+              constantSearch.constant
+            )}${buildConstantFilterSuffix({
+              difficulty: constantSearch.difficulty,
+              chartType: constantSearch.chartType
+            })}.`
+          );
+          return;
+        }
+
+        const lines = matches.map((entry, index) => {
+          const difficultyText = formatDifficultyShort(entry.chart.difficulty);
+          const typeText = String(entry.chart.type || 'UNK').toUpperCase();
+          const levelText = String(entry.chart.level || '?');
+          const constantText = formatInternalLevel(entry.chart.internalLevelValue);
+          return `${index + 1}. [${typeText} ${difficultyText}] ${entry.song.title} - Lvl ${levelText} [${constantText}]`;
+        });
+
+        await replySafely(
+          interaction,
+          `Charts at constant ${formatInternalLevel(
+            constantSearch.constant
+          )}${buildConstantFilterSuffix({
+            difficulty: constantSearch.difficulty,
+            chartType: constantSearch.chartType
+          })}:\n${lines.join('\n')}`
+        );
+        return;
+      }
+
       const songs = songCatalog.search(query, 10);
       if (!songs.length) {
         await replySafely(interaction, `No songs found for "${query}".`);
@@ -409,6 +438,7 @@ async function handleSongCommand(interaction) {
     }
 
     case 'info': {
+      const query = interaction.options.getString('query', true);
       const song = songCatalog.resolveSong(query);
       if (!song) {
         await replySafely(interaction, `No song found for "${query}".`);
@@ -431,6 +461,147 @@ async function handleSongCommand(interaction) {
     default:
       await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
   }
+}
+
+function parseConstantSearchQuery(rawQuery) {
+  const tokens = String(rawQuery || '')
+    .trim()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+
+  let constant = null;
+  let difficulty = null;
+  let chartType = null;
+
+  const difficultyMap = new Map([
+    ['basic', 'basic'],
+    ['bsc', 'basic'],
+    ['advanced', 'advanced'],
+    ['adv', 'advanced'],
+    ['expert', 'expert'],
+    ['exp', 'expert'],
+    ['master', 'master'],
+    ['mas', 'master'],
+    ['remaster', 'remaster'],
+    ['remas', 'remaster']
+  ]);
+
+  for (const rawToken of tokens) {
+    const token = rawToken.toLowerCase().replace(/^[^a-z0-9.+:-]+|[^a-z0-9.+:-]+$/g, '');
+    if (!token) {
+      continue;
+    }
+
+    if (constant == null && /^\d{1,2}\.\d$/.test(token)) {
+      constant = Number.parseFloat(token);
+      continue;
+    }
+
+    if (!chartType && (token === 'std' || token === 'dx')) {
+      chartType = token;
+      continue;
+    }
+
+    if (!difficulty) {
+      const compact = token.replace(/[^a-z]/g, '');
+      if (difficultyMap.has(compact)) {
+        difficulty = difficultyMap.get(compact);
+      }
+    }
+  }
+
+  if (constant == null) {
+    return null;
+  }
+
+  return {
+    constant,
+    difficulty,
+    chartType
+  };
+}
+
+function normalizeChartText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim();
+}
+
+function parseInternalConstant(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+
+  const parsed = Number.parseFloat(String(value ?? '').trim());
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return parsed;
+}
+
+function sameConstant(a, b, epsilon = 0.0001) {
+  return Math.abs(a - b) < epsilon;
+}
+
+function formatDifficultyShort(value) {
+  const difficulty = normalizeChartText(value);
+  const labels = {
+    basic: 'BSC',
+    advanced: 'ADV',
+    expert: 'EXP',
+    master: 'MAS',
+    remaster: 'REMAS'
+  };
+  return labels[difficulty] || String(value || 'UNK').toUpperCase();
+}
+
+function findChartsByConstant({ constant, difficulty, chartType, limit }) {
+  const difficultyFilter = difficulty ? normalizeChartText(difficulty) : null;
+  const chartTypeFilter = chartType ? normalizeChartText(chartType) : null;
+
+  const matches = [];
+  for (const song of songCatalog.songs) {
+    for (const chart of Array.isArray(song.difficultyLevels) ? song.difficultyLevels : []) {
+      const chartConstant = parseInternalConstant(chart.internalLevelValue);
+      if (chartConstant == null || !sameConstant(chartConstant, constant)) {
+        continue;
+      }
+
+      if (difficultyFilter && normalizeChartText(chart.difficulty) !== difficultyFilter) {
+        continue;
+      }
+      if (chartTypeFilter && normalizeChartText(chart.type) !== chartTypeFilter) {
+        continue;
+      }
+
+      matches.push({ song, chart });
+    }
+  }
+
+  matches.sort((a, b) => {
+    const byTitle = a.song.title.localeCompare(b.song.title);
+    if (byTitle !== 0) {
+      return byTitle;
+    }
+    return normalizeChartText(a.chart.difficulty).localeCompare(normalizeChartText(b.chart.difficulty));
+  });
+
+  return matches.slice(0, limit);
+}
+
+function buildConstantFilterSuffix({ difficulty, chartType }) {
+  const parts = [];
+  if (difficulty) {
+    parts.push(formatDifficultyShort(difficulty));
+  }
+  if (chartType) {
+    parts.push(String(chartType || '').toUpperCase());
+  }
+  if (!parts.length) {
+    return '';
+  }
+  return ` (${parts.join(', ')})`;
 }
 
 function formatSongLevels(song) {
@@ -473,7 +644,7 @@ function formatSongLevels(song) {
   return pieces.join(', ') || 'Unknown';
 }
 
-function resolveSongIdInLoadout(loadout, songQuery) {
+function resolveSongIdInPlaylist(playlist, songQuery) {
   const query = String(songQuery || '').trim();
   if (!query) {
     throw new Error('Song query cannot be empty.');
@@ -488,12 +659,12 @@ function resolveSongIdInLoadout(loadout, songQuery) {
   }
 
   const exact = songCatalog.resolveSong(query);
-  if (exact && loadout.songs.includes(exact.favoriteId)) {
+  if (exact && playlist.songs.includes(exact.favoriteId)) {
     return exact.favoriteId;
   }
 
   const normalizedQuery = query.toLowerCase();
-  const partial = loadout.songs.find((songId) => {
+  const partial = playlist.songs.find((songId) => {
     const song = songCatalog.getByFavoriteId(songId);
     if (!song) {
       return false;
@@ -508,7 +679,7 @@ function resolveSongIdInLoadout(loadout, songQuery) {
     return partial;
   }
 
-  throw new Error(`No matching song in this loadout for "${songQuery}".`);
+  throw new Error(`No matching song in this playlist for "${songQuery}".`);
 }
 
 function decodeLoadoutCode(rawCode) {
@@ -606,7 +777,7 @@ function decodeLoadoutCode(rawCode) {
   }
 
   return {
-    name: String(payload.name || 'Imported Loadout').trim() || 'Imported Loadout',
+    name: String(payload.name || 'Imported Playlist').trim() || 'Imported Playlist',
     songIds,
     unresolvedTitles
   };
@@ -664,8 +835,8 @@ function formatUnresolvedTitleSummary(unresolvedTitles, maxItems = 5) {
   return items.join(', ');
 }
 
-function buildPayloadSongs(loadout) {
-  return loadout.songs.map((songId) => {
+function buildPayloadSongs(playlist) {
+  return playlist.songs.map((songId) => {
     const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
     if (!song) {
       return { id: songId };
@@ -790,12 +961,12 @@ async function resolveArtworkAttachment(song, namePrefix = '') {
   return null;
 }
 
-async function replySongAdded(interaction, { loadout, song, songId }) {
+async function replySongAdded(interaction, { playlist, song, songId }) {
   const artwork = await resolveArtworkAttachment(song);
-  const embed = createSongEmbed(song, loadout, artwork?.imageUrl);
+  const embed = createSongEmbed(song, playlist, artwork?.imageUrl);
 
   const payload = {
-    content: `Added **${song.title}** to **${loadout.name}**.`,
+    content: `Added **${song.title}** to **${playlist.name}**.`,
     embeds: [embed]
   };
 
@@ -806,14 +977,14 @@ async function replySongAdded(interaction, { loadout, song, songId }) {
   await replyPayload(interaction, payload);
 }
 
-function createSongEmbed(song, loadout, imageUrl) {
+function createSongEmbed(song, playlist, imageUrl) {
   const chartSummary = buildChartSummary(song);
   const embed = new EmbedBuilder()
     .setColor(0x4f46e5)
     .setTitle(song.title)
     .setDescription(song.artist || 'Unknown artist')
     .addFields(
-      { name: 'Loadout', value: `${loadout.name} (${loadout.songs.length}/30)` },
+      { name: 'Playlist', value: `${playlist.name} (${playlist.songs.length}/30)` },
       { name: 'Charts', value: chartSummary.join('\n') }
     );
 
@@ -832,27 +1003,27 @@ function chunkArray(values, size) {
   return chunks;
 }
 
-async function replyLoadoutShow(interaction, loadout) {
-  if (!loadout.songs.length) {
-    await replySafely(interaction, `**${loadout.name}** is empty.`);
+async function replyPlaylistShow(interaction, playlist) {
+  if (!playlist.songs.length) {
+    await replySafely(interaction, `**${playlist.name}** is empty.`);
     return;
   }
 
   if (!songCatalog.available) {
     await replySafely(
       interaction,
-      `**${loadout.name}** (${loadout.songs.length}/30)\nSong catalog unavailable for embed view.`
+      `**${playlist.name}** (${playlist.songs.length}/30)\nSong catalog unavailable for embed view.`
     );
     return;
   }
 
-  const entries = loadout.songs
+  const entries = playlist.songs
     .map((songId) => songCatalog.getByFavoriteId(songId))
     .filter(Boolean);
-  const missingCount = loadout.songs.length - entries.length;
+  const missingCount = playlist.songs.length - entries.length;
 
   if (!entries.length) {
-    await replySafely(interaction, `**${loadout.name}** has no songs that match the local catalog.`);
+    await replySafely(interaction, `**${playlist.name}** has no songs that match the local catalog.`);
     return;
   }
 
@@ -865,7 +1036,7 @@ async function replyLoadoutShow(interaction, loadout) {
     for (let songIndex = 0; songIndex < chunk.length; songIndex += 1) {
       const song = chunk[songIndex];
       const artwork = await resolveArtworkAttachment(song, `show-${chunkIndex}-${songIndex}`);
-      const embed = createSongEmbed(song, loadout, artwork?.imageUrl);
+      const embed = createSongEmbed(song, playlist, artwork?.imageUrl);
       embeds.push(embed);
       if (artwork) {
         files.push(artwork.attachment);
@@ -883,10 +1054,10 @@ async function replyLoadoutShow(interaction, loadout) {
     if (chunkIndex === 0) {
       payload.content =
         missingCount > 0
-          ? `**${loadout.name}** (${loadout.songs.length}/30) - ${missingCount} song(s) missing from catalog`
-          : `**${loadout.name}** (${loadout.songs.length}/30)`;
+          ? `**${playlist.name}** (${playlist.songs.length}/30) - ${missingCount} song(s) missing from catalog`
+          : `**${playlist.name}** (${playlist.songs.length}/30)`;
     } else {
-      payload.content = `**${loadout.name}** (continued ${chunkIndex + 1}/${chunks.length})`;
+      payload.content = `**${playlist.name}** (continued ${chunkIndex + 1}/${chunks.length})`;
     }
 
     await replyPayload(interaction, payload);
@@ -896,11 +1067,11 @@ async function replyLoadoutShow(interaction, loadout) {
 async function replySafely(interaction, content) {
   if (content.length > 1900) {
     const attachment = new AttachmentBuilder(Buffer.from(`${content}\n`, 'utf8'), {
-      name: 'loadout-response.txt'
+      name: 'playlist-response.txt'
     });
 
     await replyPayload(interaction, {
-      content: 'Response was too long, so it was attached as `loadout-response.txt`.',
+      content: 'Response was too long, so it was attached as `playlist-response.txt`.',
       files: [attachment]
     });
     return;

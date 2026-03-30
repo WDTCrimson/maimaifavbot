@@ -31,14 +31,14 @@ export function createInstallMessage() {
     'Create a browser bookmark with this exact URL:',
     createBookmarkletCode(),
     '',
-    'Then run `/loadout payload <name>` in Discord, open maimaidxnet favorites page, click the bookmark, and paste payload. It auto-submits DECIDE.'
+    'Then run `/playlist export <name>` in Discord, open maimaidxnet favorites page, click the bookmark, and paste payload. It auto-submits DECIDE.'
   ].join('\n');
 }
 
 export function createPayloadMessage(loadout, options = {}) {
   const payload = createLoadoutPayload(loadout, options);
   return [
-    `Loadout: ${loadout.name}`,
+    `Playlist: ${loadout.name}`,
     `Songs: ${loadout.songs.length}/30`,
     '',
     'Payload (paste into bookmarklet/extension):',

@@ -1,41 +1,30 @@
 import { SlashCommandBuilder } from 'discord.js';
 
-export const loadoutCommand = new SlashCommandBuilder()
-  .setName('loadout')
-  .setDescription('Manage maimai favorite-song loadouts')
+export const playlistCommand = new SlashCommandBuilder()
+  .setName('playlist')
+  .setDescription('Manage maimai favorite-song playlists')
   .addSubcommand((subcommand) =>
     subcommand
       .setName('create')
-      .setDescription('Create a new loadout')
+      .setDescription('Create a new playlist')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true)
       )
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName('delete')
-      .setDescription('Delete a loadout')
+      .setDescription('Delete a playlist')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
-      )
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
-      .setName('add')
-      .setDescription('Add a song ID to a loadout')
-      .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
-      )
-      .addStringOption((option) =>
-        option.setName('song_id').setDescription('Numeric song ID').setRequired(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName('add-song')
-      .setDescription('Add a song to a loadout by title/artist')
+      .setDescription('Add a song to a playlist by title/artist')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
       )
       .addStringOption((option) =>
         option
@@ -47,10 +36,10 @@ export const loadoutCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
-      .setName('remove')
-      .setDescription('Remove a song from a loadout by name/artist')
+      .setName('remove-song')
+      .setDescription('Remove a song from a playlist by name/artist')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
       )
       .addStringOption((option) =>
         option
@@ -63,44 +52,44 @@ export const loadoutCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('show')
-      .setDescription('Show all songs in a loadout')
+      .setDescription('Show all songs in a playlist')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName('graphic')
-      .setDescription('Generate a Favorite Loadout graphic image')
+      .setDescription('Generate a Favorite playlist graphic image')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
-    subcommand.setName('list').setDescription('List your loadouts')
+    subcommand.setName('list').setDescription('List your playlists')
   )
   .addSubcommand((subcommand) =>
     subcommand
-      .setName('payload')
+      .setName('export')
       .setDescription('Generate a payload for bookmarklet/extension')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName('share')
-      .setDescription('Generate a share code for this loadout')
+      .setDescription('Generate a share code for this playlist')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Loadout name').setRequired(true).setAutocomplete(true)
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
       )
   )
   .addSubcommand((subcommand) =>
     subcommand
       .setName('import')
-      .setDescription('Import a loadout from share code/payload')
+      .setDescription('Import a playlist from share code/payload')
       .addStringOption((option) =>
-        option.setName('name').setDescription('Target loadout name').setRequired(true)
+        option.setName('name').setDescription('Target playlist name').setRequired(true)
       )
       .addStringOption((option) =>
         option
@@ -111,7 +100,7 @@ export const loadoutCommand = new SlashCommandBuilder()
       .addBooleanOption((option) =>
         option
           .setName('replace')
-          .setDescription('Replace target loadout if it already exists')
+          .setDescription('Replace target playlist if it already exists')
           .setRequired(false)
       )
   )
@@ -127,11 +116,11 @@ export const songCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('search')
-      .setDescription('Search songs by title, artist, or ID')
+      .setDescription('Search songs by title/artist/ID or exact chart constant')
       .addStringOption((option) =>
         option
           .setName('query')
-          .setDescription('Song title, artist, or numeric ID')
+          .setDescription('Song title, artist, numeric ID, or constant like 12.3 / 13.7 mas')
           .setRequired(true)
           .setAutocomplete(true)
       )
@@ -149,4 +138,4 @@ export const songCommand = new SlashCommandBuilder()
       )
   );
 
-export const commands = [loadoutCommand.toJSON(), songCommand.toJSON()];
+export const commands = [playlistCommand.toJSON(), songCommand.toJSON()];

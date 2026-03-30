@@ -25,3 +25,4 @@ coverage/
 *.service
 package-lock.json
 *.tar.gz
+COMMANDS_REVIEW.local.md
