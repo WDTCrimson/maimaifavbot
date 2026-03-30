@@ -8,7 +8,9 @@
     "start": "node src/index.js",
     "register": "node src/register-commands.js",
     "check": "node --check src/index.js && node --check src/register-commands.js",
-    "import:data": "node scripts/import-maimai-data.js"
+    "import:data": "node scripts/import-maimai-data.js",
+    "build:extension:css": "tailwindcss -c tailwind.extension.config.cjs -i ./extension/popup.tailwind.css -o ./extension/popup.css --minify && cp ./extension/popup.css ./extension-firefox/popup.css",
+    "dev:extension:css": "tailwindcss -c tailwind.extension.config.cjs -i ./extension/popup.tailwind.css -o ./extension/popup.css --watch"
   },
   "engines": {
     "node": ">=20"
@@ -17,6 +19,9 @@
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
     "skia-canvas": "^3.0.8"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.19"
   },
   "overrides": {
     "undici": "^6.23.1"

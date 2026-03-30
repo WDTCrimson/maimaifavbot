@@ -14,9 +14,9 @@ strictInput.checked = localStorage.getItem(strictKey) === '1';
 const storedAutoSubmit = localStorage.getItem(autoSubmitKey);
 autoSubmitInput.checked = storedAutoSubmit == null ? true : storedAutoSubmit === '1';
 
-function setStatus(text, color = '#1f2937') {
+function setStatus(text, tone = 'neutral') {
   status.textContent = text;
-  status.style.color = color;
+  status.dataset.tone = tone;
 }
 
 function readLastError() {
@@ -119,14 +119,14 @@ async function copyToClipboard(text) {
 applyButton.addEventListener('click', async () => {
   const payload = payloadInput.value.trim();
   if (!payload) {
-    setStatus('Paste a payload first.', '#b45309');
+    setStatus('Paste a payload first.', 'warn');
     return;
   }
 
   localStorage.setItem(storageKey, payload);
   localStorage.setItem(strictKey, strictInput.checked ? '1' : '0');
   localStorage.setItem(autoSubmitKey, autoSubmitInput.checked ? '1' : '0');
-  setStatus('Applying loadout...', '#1e6ae8');
+  setStatus('Applying loadout...', 'info');
 
   try {
     const tab = await getActiveTab();
@@ -161,15 +161,15 @@ applyButton.addEventListener('click', async () => {
         `Checked now: ${report.totalChecked ?? 0}`,
         `Missing on page: ${missingText}`
       ].join('\n'),
-      '#065f46'
+      'success'
     );
   } catch (error) {
-    setStatus(`Failed: ${error.message}`, '#b91c1c');
+    setStatus(`Failed: ${error.message}`, 'error');
   }
 });
 
 exportButton.addEventListener('click', async () => {
-  setStatus('Reading current favorites...', '#1e6ae8');
+  setStatus('Reading current favorites...', 'info');
 
   try {
     const tab = await getActiveTab();
@@ -197,9 +197,9 @@ exportButton.addEventListener('click', async () => {
         '/loadout import name:<new_loadout_name> code:<paste_code> replace:true',
         copied ? 'Import code copied to clipboard.' : 'Import code placed in payload box.'
       ].join('\n'),
-      '#065f46'
+      'success'
     );
   } catch (error) {
-    setStatus(`Failed: ${error.message}`, '#b91c1c');
+    setStatus(`Failed: ${error.message}`, 'error');
   }
 });

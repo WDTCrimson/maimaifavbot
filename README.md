@@ -77,6 +77,18 @@ All bot replies are ephemeral (private).
    Click `Export Current Favorites`, then run:
    `/loadout import name:<new_loadout_name> code:<paste_code> replace:true`
 
+### Rebuild extension CSS (Tailwind)
+
+- Source: `extension/popup.tailwind.css`
+- Build once:
+  ```bash
+  npm run build:extension:css
+  ```
+- Watch mode while editing:
+  ```bash
+  npm run dev:extension:css
+  ```
+
 ## Notes and limits
 
 - The page automation is heuristic-based because maimaidxnet has no public API for favorites.
