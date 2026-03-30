@@ -220,6 +220,13 @@ async function handlePlaylistCommand(interaction) {
       return;
     }
 
+    case 'stats': {
+      const name = interaction.options.getString('name', true);
+      const playlist = store.getLoadout(userId, name);
+      await replyPlaylistStats(interaction, playlist);
+      return;
+    }
+
     case 'graphic': {
       songCatalog.requireAvailable();
       const name = interaction.options.getString('name', true);
@@ -995,6 +1002,157 @@ function createSongEmbed(song, playlist, imageUrl) {
   return embed;
 }
 
+function incrementCount(map, key) {
+  map.set(key, (map.get(key) || 0) + 1);
+}
+
+function truncateStatsLabel(value, maxLength = 28) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return 'Unknown';
+  }
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function formatTopCounts(countsMap, { limit = 6, maxLabelLength = 28 } = {}) {
+  const entries = [...countsMap.entries()].sort((a, b) => {
+    if (b[1] !== a[1]) {
+      return b[1] - a[1];
+    }
+    return String(a[0]).localeCompare(String(b[0]));
+  });
+
+  if (!entries.length) {
+    return 'None';
+  }
+
+  const lines = entries.slice(0, limit).map(([label, count], index) => {
+    return `${index + 1}. ${truncateStatsLabel(label, maxLabelLength)} (${count})`;
+  });
+
+  if (entries.length > limit) {
+    lines.push(`+${entries.length - limit} more`);
+  }
+
+  return lines.join('\n');
+}
+
+function buildPlaylistStatsEmbed(playlist, songs, missingCount) {
+  const categoryCounts = new Map();
+  const versionCounts = new Map();
+  const typeSongCounts = new Map([
+    ['std', 0],
+    ['dx', 0]
+  ]);
+  const difficultyChartCounts = new Map([
+    ['basic', 0],
+    ['advanced', 0],
+    ['expert', 0],
+    ['master', 0],
+    ['remaster', 0]
+  ]);
+  const uniqueArtists = new Set();
+
+  let chartCount = 0;
+  let constantCount = 0;
+  let constantSum = 0;
+  let constantMin = Infinity;
+  let constantMax = -Infinity;
+
+  for (const song of songs) {
+    incrementCount(categoryCounts, song.category || 'Unknown');
+    uniqueArtists.add(song.artist || 'Unknown');
+
+    const songTypes = new Set();
+
+    for (const chart of Array.isArray(song.difficultyLevels) ? song.difficultyLevels : []) {
+      chartCount += 1;
+
+      const difficulty = normalizeChartText(chart.difficulty);
+      if (difficultyChartCounts.has(difficulty)) {
+        incrementCount(difficultyChartCounts, difficulty);
+      }
+
+      const type = normalizeChartText(chart.type);
+      if (type === 'std' || type === 'dx') {
+        songTypes.add(type);
+      }
+
+      const version = String(chart.version || '').trim() || 'Unknown';
+      incrementCount(versionCounts, version);
+
+      const constant = parseInternalConstant(chart.internalLevelValue);
+      if (constant != null) {
+        constantCount += 1;
+        constantSum += constant;
+        constantMin = Math.min(constantMin, constant);
+        constantMax = Math.max(constantMax, constant);
+      }
+    }
+
+    for (const type of songTypes) {
+      incrementCount(typeSongCounts, type);
+    }
+  }
+
+  const averageConstant =
+    constantCount > 0 ? Number.parseFloat((constantSum / constantCount).toFixed(2)) : null;
+
+  const overviewLines = [
+    `Songs: ${playlist.songs.length}/30`,
+    `In local catalog: ${songs.length}`,
+    `Missing in catalog: ${missingCount}`,
+    `Unique artists: ${uniqueArtists.size}`
+  ];
+
+  if (chartCount > 0) {
+    overviewLines.push(`Total charts scanned: ${chartCount}`);
+  }
+
+  const typeLines = [
+    `Songs w/ DX charts: ${typeSongCounts.get('dx') || 0}`,
+    `Songs w/ STD charts: ${typeSongCounts.get('std') || 0}`
+  ];
+
+  const difficultyLines = [
+    `BASIC: ${difficultyChartCounts.get('basic') || 0}`,
+    `ADV: ${difficultyChartCounts.get('advanced') || 0}`,
+    `EXP: ${difficultyChartCounts.get('expert') || 0}`,
+    `MAS: ${difficultyChartCounts.get('master') || 0}`,
+    `REMAS: ${difficultyChartCounts.get('remaster') || 0}`
+  ];
+
+  const constantLine =
+    constantCount > 0
+      ? `Min ${formatInternalLevel(constantMin)} | Avg ${formatInternalLevel(
+          averageConstant
+        )} | Max ${formatInternalLevel(constantMax)}`
+      : 'No internal constant data available.';
+
+  const embed = new EmbedBuilder()
+    .setColor(0x0891b2)
+    .setTitle(`Playlist Stats - ${playlist.name}`)
+    .addFields(
+      { name: 'Overview', value: overviewLines.join('\n') },
+      { name: 'Chart Types (per song)', value: typeLines.join('\n') },
+      { name: 'Difficulty Counts (charts)', value: difficultyLines.join('\n') },
+      { name: 'Internal Constants (charts)', value: constantLine },
+      {
+        name: 'Top Categories',
+        value: formatTopCounts(categoryCounts, { limit: 6, maxLabelLength: 26 })
+      },
+      {
+        name: 'Top Versions',
+        value: formatTopCounts(versionCounts, { limit: 6, maxLabelLength: 26 })
+      }
+    );
+
+  return embed;
+}
+
 function chunkArray(values, size) {
   const chunks = [];
   for (let index = 0; index < values.length; index += size) {
@@ -1062,6 +1220,29 @@ async function replyPlaylistShow(interaction, playlist) {
 
     await replyPayload(interaction, payload);
   }
+}
+
+async function replyPlaylistStats(interaction, playlist) {
+  if (!playlist.songs.length) {
+    await replySafely(interaction, `**${playlist.name}** is empty.`);
+    return;
+  }
+
+  if (!songCatalog.available) {
+    await replySafely(
+      interaction,
+      `**${playlist.name}** (${playlist.songs.length}/30)\nSong catalog unavailable for detailed stats.`
+    );
+    return;
+  }
+
+  const songs = playlist.songs
+    .map((songId) => songCatalog.getByFavoriteId(songId))
+    .filter(Boolean);
+  const missingCount = playlist.songs.length - songs.length;
+
+  const embed = buildPlaylistStatsEmbed(playlist, songs, missingCount);
+  await replyPayload(interaction, { embeds: [embed] });
 }
 
 async function replySafely(interaction, content) {

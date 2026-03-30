@@ -59,6 +59,14 @@ export const playlistCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('stats')
+      .setDescription('Show stats and breakdowns for a playlist')
+      .addStringOption((option) =>
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('graphic')
       .setDescription('Generate a Favorite playlist graphic image')
       .addStringOption((option) =>

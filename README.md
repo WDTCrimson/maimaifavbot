@@ -16,6 +16,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/playlist delete name:<text>`
 - `/playlist list`
 - `/playlist show name:<text>`
+- `/playlist stats name:<text>`
 - `/playlist add-song name:<text> song_query:<text>`
 - `/playlist remove-song name:<text> song_query:<text>`
 - `/playlist export name:<text>`
