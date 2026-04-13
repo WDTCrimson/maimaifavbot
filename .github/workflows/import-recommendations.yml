@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Build transient song catalog
+        run: npm run import:data -- --skip-jackets --skip-logos
+
       - name: Import recommendation dataset
         run: npm run import:recommendations
 

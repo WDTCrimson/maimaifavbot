@@ -370,7 +370,18 @@ async function main() {
     throw error;
   }
 
-  const rawCatalog = JSON.parse(await readFile(songCatalogFile, 'utf8'));
+  let rawCatalog = null;
+  try {
+    rawCatalog = JSON.parse(await readFile(songCatalogFile, 'utf8'));
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(
+        `Missing song catalog at ${songCatalogFile}. Run \`npm run import:data -- --skip-jackets --skip-logos\` first.`
+      );
+    }
+    throw error;
+  }
+
   const songs = normalizeSongCatalog(rawCatalog);
   const matchers = buildMatchers(songs);
   const sources = Array.isArray(sourceConfig?.sources) ? sourceConfig.sources : [];

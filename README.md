@@ -128,7 +128,7 @@ GitHub Actions:
 
 - Workflow file: [.github/workflows/import-recommendations.yml](/home/crimson/PersonalProjects/maimaifavbot/.github/workflows/import-recommendations.yml)
 - Trigger: manual or daily schedule
-- Behavior: runs the importer on GitHub-hosted runners, then commits updated `community.json` and `import-report.json` back into the repo
+- Behavior: first builds a transient song catalog with `npm run import:data -- --skip-jackets --skip-logos`, then runs the recommendation importer and commits updated `community.json` and `import-report.json` back into the repo
 
 You can still hand-edit `community.json` if you want, but the intended path is to tune the tracked source config and rerun the importer. See [data/recommendations/README.md](/home/crimson/PersonalProjects/maimaifavbot/data/recommendations/README.md) for the schema.
 
