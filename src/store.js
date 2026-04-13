@@ -54,7 +54,7 @@ export class LoadoutStore {
     this.maxSongsPerLoadout = limits.maxSongsPerLoadout;
     this.maxNameLength = limits.maxNameLength;
     this.loaded = false;
-    this.state = { users: {} };
+    this.state = { users: {}, accountLinkSessions: {} };
   }
 
   async load() {
@@ -69,6 +69,12 @@ export class LoadoutStore {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && parsed.users && typeof parsed.users === 'object') {
         this.state = parsed;
+        if (
+          !this.state.accountLinkSessions ||
+          typeof this.state.accountLinkSessions !== 'object'
+        ) {
+          this.state.accountLinkSessions = {};
+        }
       }
     } catch (error) {
       if (error.code !== 'ENOENT') {
@@ -104,6 +110,13 @@ export class LoadoutStore {
     return this.state.users[userId];
   }
 
+  getAccountLinkSessions() {
+    if (!this.state.accountLinkSessions || typeof this.state.accountLinkSessions !== 'object') {
+      this.state.accountLinkSessions = {};
+    }
+    return this.state.accountLinkSessions;
+  }
+
   getAccount(userId) {
     const user = this.getUser(userId);
     return user.account || null;
@@ -134,6 +147,99 @@ export class LoadoutStore {
     user.account = null;
     await this.save();
     return previous;
+  }
+
+  getAccountLinkSession(token) {
+    const key = String(token || '').trim();
+    if (!key) {
+      return null;
+    }
+
+    const sessions = this.getAccountLinkSessions();
+    return sessions[key] || null;
+  }
+
+  getPendingAccountLinkSessionForUser(userId, now = Date.now()) {
+    const sessions = this.getAccountLinkSessions();
+    for (const session of Object.values(sessions)) {
+      if (
+        session &&
+        session.userId === userId &&
+        session.status === 'pending' &&
+        Date.parse(session.expiresAt) > now
+      ) {
+        return session;
+      }
+    }
+    return null;
+  }
+
+  async cleanupExpiredAccountLinkSessions(now = Date.now()) {
+    const sessions = this.getAccountLinkSessions();
+    let changed = false;
+
+    for (const [token, session] of Object.entries(sessions)) {
+      if (!session || typeof session !== 'object') {
+        delete sessions[token];
+        changed = true;
+        continue;
+      }
+
+      const expiresAt = Date.parse(session.expiresAt || '');
+      if (session.status === 'pending' && (!Number.isFinite(expiresAt) || expiresAt <= now)) {
+        delete sessions[token];
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      await this.save();
+    }
+  }
+
+  async createAccountLinkSession(userId, session) {
+    const sessions = this.getAccountLinkSessions();
+    const now = Date.now();
+
+    for (const [token, existing] of Object.entries(sessions)) {
+      if (
+        existing &&
+        existing.userId === userId &&
+        existing.status === 'pending' &&
+        Date.parse(existing.expiresAt || '') > now
+      ) {
+        delete sessions[token];
+      }
+    }
+
+    sessions[session.token] = {
+      token: session.token,
+      userId,
+      status: 'pending',
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      linkUrl: session.linkUrl || null,
+      callbackUrl: session.callbackUrl || null
+    };
+
+    await this.save();
+    return sessions[session.token];
+  }
+
+  async completeAccountLinkSession(token, details = {}) {
+    const session = this.getAccountLinkSession(token);
+    if (!session) {
+      return null;
+    }
+
+    session.status = 'completed';
+    session.completedAt = details.completedAt || new Date().toISOString();
+    session.provider = details.provider || session.provider || null;
+    session.playerName = details.playerName || session.playerName || null;
+    session.accountUpdatedAt = details.accountUpdatedAt || null;
+
+    await this.save();
+    return session;
   }
 
   listLoadouts(userId) {

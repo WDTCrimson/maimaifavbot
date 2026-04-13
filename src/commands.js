@@ -177,7 +177,7 @@ export const accountCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('link')
-      .setDescription('Show the current supported account link methods')
+      .setDescription('Generate a one-time external account link session')
   )
   .addSubcommand((subcommand) =>
     subcommand
@@ -189,7 +189,9 @@ export const accountCommand = new SlashCommandBuilder()
           .setDescription('Source of the imported account snapshot')
           .setRequired(true)
           .addChoices(
+            { name: 'Auto Detect', value: 'auto' },
             { name: 'Manual', value: 'manual' },
+            { name: 'maimaijson', value: 'maimaijson' },
             { name: 'Tomomai', value: 'tomomai' },
             { name: 'mimixd', value: 'mimixd' }
           )

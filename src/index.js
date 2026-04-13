@@ -1,6 +1,12 @@
 import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
+import {
+  accountLinkCallbackServerEnabled,
+  buildAccountLinkUrl,
+  createAccountLinkToken,
+  startAccountLinkCallbackServer
+} from './account-link-service.js';
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderLoadoutGraphic } from './loadout-graphic.js';
@@ -16,6 +22,27 @@ await songCatalog.ensureReady();
 
 const recommendationCatalog = new RecommendationCatalog(config.recommendationFile, songCatalog);
 await recommendationCatalog.ensureReady();
+
+if (accountLinkCallbackServerEnabled(config)) {
+  await startAccountLinkCallbackServer({
+    bind: config.accountLinkCallbackBind,
+    port: config.accountLinkCallbackPort,
+    sharedSecret: config.accountLinkSharedSecret,
+    store,
+    normalizeImportedAccountSnapshot
+  });
+  console.log(
+    `Account link callback server listening on ${config.accountLinkCallbackBind}:${config.accountLinkCallbackPort}`
+  );
+} else if (
+  config.accountLinkBaseUrl ||
+  config.accountLinkCallbackPublicUrl ||
+  config.accountLinkCallbackPort
+) {
+  console.warn(
+    'Account link web flow is partially configured. Set ACCOUNT_LINK_BASE_URL, ACCOUNT_LINK_CALLBACK_PUBLIC_URL, ACCOUNT_LINK_CALLBACK_PORT, and ACCOUNT_LINK_SHARED_SECRET to enable it fully.'
+  );
+}
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -407,17 +434,74 @@ async function handleAccountCommand(interaction) {
 
   switch (subcommand) {
     case 'link': {
-      const lines = [
-        'Current supported account link method: import a profile snapshot from an external tool.',
-        '',
-        'Available now:',
-        '- `/account import provider:manual data:<json-or-base64>`',
-        '- `/account import provider:tomomai data:<json-or-base64>`',
-        '- `/account import provider:mimixd data:<json-or-base64>`',
-        '',
-        'Planned later: a proper web-based account link flow so you do not need to paste snapshots manually.'
-      ];
-      await replySafely(interaction, lines.join('\n'));
+      await store.cleanupExpiredAccountLinkSessions();
+
+      if (!config.accountLinkBaseUrl || !config.accountLinkCallbackPublicUrl) {
+        const lines = [
+          'External web-based account linking is not configured on this bot yet.',
+          '',
+          'Required environment variables:',
+          '- `ACCOUNT_LINK_BASE_URL`',
+          '- `ACCOUNT_LINK_CALLBACK_PUBLIC_URL`',
+          '- `ACCOUNT_LINK_CALLBACK_PORT`',
+          '- `ACCOUNT_LINK_SHARED_SECRET`',
+          '',
+          'Currently available fallback:',
+          '- `/account import provider:auto data:<json-or-base64>`',
+          '- `/account import provider:manual data:<json-or-base64>`',
+          '- `/account import provider:maimaijson data:<json-or-base64>`',
+          '- `/account import provider:tomomai data:<json-or-base64>`',
+          '- `/account import provider:mimixd data:<json-or-base64>`'
+        ];
+        await replySafely(interaction, lines.join('\n'));
+        return;
+      }
+
+      if (!accountLinkCallbackServerEnabled(config)) {
+        await replySafely(
+          interaction,
+          'Web account linking is partially configured, but the callback server is not enabled. Set `ACCOUNT_LINK_CALLBACK_PORT` and `ACCOUNT_LINK_SHARED_SECRET` on the bot host.'
+        );
+        return;
+      }
+
+      const session = await createPendingAccountLinkSession(userId);
+      const embed = buildAccountLinkEmbed(session);
+
+      await replyPayload(interaction, {
+        content: session.linkUrl,
+        embeds: [embed]
+      });
+      return;
+    }
+
+    case 'status': {
+      await store.cleanupExpiredAccountLinkSessions();
+      const account = store.getAccount(userId);
+      const pendingSession = store.getPendingAccountLinkSessionForUser(userId);
+
+      if (!account) {
+        if (pendingSession) {
+          await replyPayload(interaction, {
+            content: pendingSession.linkUrl || undefined,
+            embeds: [buildPendingAccountLinkEmbed(pendingSession)]
+          });
+          return;
+        }
+
+        await replySafely(
+          interaction,
+          'No linked account snapshot found. Use `/account link` to start a web link session or `/account import` to import a snapshot.'
+        );
+        return;
+      }
+
+      const embeds = [buildAccountStatusEmbed(account)];
+      if (pendingSession) {
+        embeds.push(buildPendingAccountLinkEmbed(pendingSession));
+      }
+
+      await replyPayload(interaction, { embeds });
       return;
     }
 
@@ -431,22 +515,6 @@ async function handleAccountCommand(interaction) {
       await replyPayload(interaction, {
         content: `Imported **${formatAccountProvider(stored.provider)}** account snapshot.`,
         embeds: [buildAccountStatusEmbed(stored)]
-      });
-      return;
-    }
-
-    case 'status': {
-      const account = store.getAccount(userId);
-      if (!account) {
-        await replySafely(
-          interaction,
-          'No account snapshot linked yet. Use `/account link` for the current supported flow.'
-        );
-        return;
-      }
-
-      await replyPayload(interaction, {
-        embeds: [buildAccountStatusEmbed(account)]
       });
       return;
     }
@@ -596,6 +664,60 @@ async function handleSongCommand(interaction) {
   }
 }
 
+async function createPendingAccountLinkSession(userId) {
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(
+    Date.now() + config.accountLinkTtlMinutes * 60 * 1000
+  ).toISOString();
+  const token = createAccountLinkToken();
+  const linkUrl = buildAccountLinkUrl({
+    baseUrl: config.accountLinkBaseUrl,
+    callbackUrl: config.accountLinkCallbackPublicUrl,
+    token,
+    expiresAt
+  });
+
+  return store.createAccountLinkSession(userId, {
+    token,
+    createdAt,
+    expiresAt,
+    linkUrl,
+    callbackUrl: config.accountLinkCallbackPublicUrl
+  });
+}
+
+function buildAccountLinkEmbed(session) {
+  return new EmbedBuilder()
+    .setColor(0x2563eb)
+    .setTitle('Account Link Session')
+    .setDescription('Open the link below in your browser-based account-link service.')
+    .addFields(
+      {
+        name: 'Session',
+        value: [`Status: pending`, `Expires: ${formatDateTime(session.expiresAt)}`].join('\n')
+      },
+      {
+        name: 'Callback Contract',
+        value: [
+          `POST \`${config.accountLinkCallbackPublicUrl}\``,
+          'Header: `x-account-link-secret: <ACCOUNT_LINK_SHARED_SECRET>`',
+          'Body: `{ "token": "...", "provider": "tomomai", "account": { ... } }`'
+        ].join('\n')
+      }
+    );
+}
+
+function buildPendingAccountLinkEmbed(session) {
+  return new EmbedBuilder()
+    .setColor(0x1d4ed8)
+    .setTitle('Pending Account Link')
+    .setDescription('A web-based account link session is still open for this Discord account.')
+    .addFields({
+      name: 'Session',
+      value: [`Status: pending`, `Expires: ${formatDateTime(session.expiresAt)}`].join('\n')
+    });
+}
+
 function decodeBase64UrlText(value) {
   const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
   const padLength = (4 - (normalized.length % 4)) % 4;
@@ -660,10 +782,67 @@ function firstValidIsoDate(...values) {
   return null;
 }
 
+function getNestedValue(root, path) {
+  const parts = Array.isArray(path) ? path : String(path || '').split('.');
+  let current = root;
+  for (const part of parts) {
+    if (!current || typeof current !== 'object' || !(part in current)) {
+      return undefined;
+    }
+    current = current[part];
+  }
+  return current;
+}
+
+function firstNestedString(root, paths) {
+  for (const path of paths) {
+    const value = getNestedValue(root, path);
+    const text = firstNonEmptyString(value);
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function firstNestedNumber(root, paths) {
+  for (const path of paths) {
+    const value = getNestedValue(root, path);
+    const parsed = firstFiniteNumber(value);
+    if (parsed != null) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function firstNestedDate(root, paths) {
+  for (const path of paths) {
+    const value = getNestedValue(root, path);
+    const parsed = firstValidIsoDate(value);
+    if (parsed) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function countNestedArrayItems(root, paths) {
+  for (const path of paths) {
+    const value = getNestedValue(root, path);
+    if (Array.isArray(value) && value.length > 0) {
+      return value.length;
+    }
+  }
+  return null;
+}
+
 function formatAccountProvider(provider) {
   const normalized = String(provider || '').trim().toLowerCase();
   const labels = {
+    auto: 'Auto',
     manual: 'Manual',
+    maimaijson: 'maimaijson',
     tomomai: 'Tomomai',
     mimixd: 'mimixd'
   };
@@ -684,74 +863,283 @@ function formatDateTime(value) {
   return parsed.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
 }
 
+function extractManualAccountSnapshot(payload) {
+  const player = payload.player && typeof payload.player === 'object' ? payload.player : {};
+  const profile = payload.profile && typeof payload.profile === 'object' ? payload.profile : {};
+  const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
+
+  return {
+    playerName: firstNonEmptyString(
+      payload.playerName,
+      payload.name,
+      payload.username,
+      player.name,
+      player.username,
+      profile.name
+    ),
+    friendCode: firstNonEmptyString(
+      payload.friendCode,
+      payload.friend_code,
+      player.friendCode,
+      player.friend_code,
+      profile.friendCode
+    ),
+    region: firstNonEmptyString(payload.region, player.region, profile.region),
+    rating: firstFiniteNumber(
+      payload.rating,
+      payload.dxRating,
+      payload.dx_rating,
+      metrics.rating,
+      metrics.dxRating,
+      player.rating
+    ),
+    playCount: firstFiniteNumber(
+      payload.playCount,
+      payload.play_count,
+      metrics.playCount,
+      metrics.play_count,
+      player.playCount
+    ),
+    topRating: firstFiniteNumber(payload.topRating, payload.top_rating, metrics.topRating),
+    sourceFetchedAt: firstValidIsoDate(
+      payload.fetchedAt,
+      payload.fetched_at,
+      payload.updatedAt,
+      payload.updated_at,
+      metrics.fetchedAt,
+      profile.updatedAt
+    ),
+    bestCount: firstFiniteNumber(payload.bestCount, payload.best_count),
+    recentCount: firstFiniteNumber(payload.recentCount, payload.recent_count)
+  };
+}
+
+function extractTomomaiAccountSnapshot(payload) {
+  return {
+    playerName: firstNestedString(payload, [
+      'user.name',
+      'profile.name',
+      'player.name',
+      'data.user.name',
+      'data.profile.name'
+    ]),
+    friendCode: firstNestedString(payload, [
+      'user.friendCode',
+      'profile.friendCode',
+      'player.friendCode',
+      'data.user.friendCode'
+    ]),
+    region: firstNestedString(payload, [
+      'user.region',
+      'profile.region',
+      'data.user.region'
+    ]),
+    rating: firstNestedNumber(payload, [
+      'user.rating',
+      'profile.rating',
+      'metrics.rating',
+      'b50.rating',
+      'data.user.rating'
+    ]),
+    playCount: firstNestedNumber(payload, [
+      'user.playCount',
+      'profile.playCount',
+      'metrics.playCount',
+      'data.user.playCount'
+    ]),
+    topRating: firstNestedNumber(payload, [
+      'b50.rating',
+      'metrics.topRating',
+      'profile.topRating'
+    ]),
+    sourceFetchedAt: firstNestedDate(payload, [
+      'updatedAt',
+      'fetchedAt',
+      'data.updatedAt',
+      'user.updatedAt'
+    ]),
+    bestCount: countNestedArrayItems(payload, [
+      'b35',
+      'b50.best',
+      'best',
+      'scores.best'
+    ]),
+    recentCount: countNestedArrayItems(payload, [
+      'b15',
+      'b50.recent',
+      'recent',
+      'scores.recent'
+    ])
+  };
+}
+
+function extractMimixdAccountSnapshot(payload) {
+  return {
+    playerName: firstNestedString(payload, [
+      'account.name',
+      'user.name',
+      'profile.name',
+      'player_data.userName',
+      'player.name'
+    ]),
+    friendCode: firstNestedString(payload, [
+      'account.friendCode',
+      'profile.friendCode',
+      'player_data.friendCode'
+    ]),
+    region: firstNestedString(payload, [
+      'account.region',
+      'profile.region',
+      'player_data.region'
+    ]),
+    rating: firstNestedNumber(payload, [
+      'account.rating',
+      'profile.rating',
+      'player_data.rating',
+      'rating.current'
+    ]),
+    playCount: firstNestedNumber(payload, [
+      'account.playCount',
+      'profile.playCount',
+      'player_data.playCount',
+      'stats.playCount'
+    ]),
+    topRating: firstNestedNumber(payload, [
+      'rating.top',
+      'profile.topRating',
+      'stats.topRating'
+    ]),
+    sourceFetchedAt: firstNestedDate(payload, [
+      'updatedAt',
+      'fetchedAt',
+      'account.updatedAt',
+      'profile.updatedAt'
+    ]),
+    bestCount: countNestedArrayItems(payload, [
+      'best50',
+      'records.best',
+      'scores.best'
+    ]),
+    recentCount: countNestedArrayItems(payload, [
+      'recent10',
+      'records.recent',
+      'scores.recent'
+    ])
+  };
+}
+
+function extractMaimaiJsonAccountSnapshot(payload) {
+  return {
+    playerName: firstNestedString(payload, [
+      'userName',
+      'name',
+      'playerName',
+      'playerData.userName',
+      'player_data.userName'
+    ]),
+    friendCode: firstNestedString(payload, [
+      'friendCode',
+      'playerData.friendCode',
+      'player_data.friendCode'
+    ]),
+    region: firstNestedString(payload, [
+      'region',
+      'playerData.region',
+      'player_data.region'
+    ]),
+    rating: firstNestedNumber(payload, [
+      'rating',
+      'playerData.rating',
+      'player_data.rating',
+      'playerData.dxRating',
+      'player_data.dxRating'
+    ]),
+    playCount: firstNestedNumber(payload, [
+      'playCount',
+      'playerData.playCount',
+      'player_data.playCount'
+    ]),
+    topRating: firstNestedNumber(payload, [
+      'topRating',
+      'playerData.topRating',
+      'player_data.topRating'
+    ]),
+    sourceFetchedAt: firstNestedDate(payload, [
+      'updatedAt',
+      'fetchedAt',
+      'playerData.updatedAt',
+      'player_data.updatedAt'
+    ]),
+    bestCount: countNestedArrayItems(payload, [
+      'best',
+      'best50',
+      'charts.best',
+      'scores.best'
+    ]),
+    recentCount: countNestedArrayItems(payload, [
+      'recent',
+      'recent10',
+      'charts.recent',
+      'scores.recent'
+    ])
+  };
+}
+
+function detectAccountProvider(payload) {
+  if (getNestedValue(payload, 'player_data') || getNestedValue(payload, 'playerData')) {
+    return 'maimaijson';
+  }
+  if (getNestedValue(payload, 'b50') || getNestedValue(payload, 'b35') || getNestedValue(payload, 'b15')) {
+    return 'tomomai';
+  }
+  if (getNestedValue(payload, 'best50') || getNestedValue(payload, 'recent10') || getNestedValue(payload, 'account')) {
+    return 'mimixd';
+  }
+  return 'manual';
+}
+
 function normalizeImportedAccountSnapshot(payload, provider) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Imported account payload must be a JSON object.');
   }
 
-  const player = payload.player && typeof payload.player === 'object' ? payload.player : {};
-  const profile = payload.profile && typeof payload.profile === 'object' ? payload.profile : {};
-  const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
+  const normalizedProviderInput = String(provider || 'manual').trim().toLowerCase();
+  const effectiveProvider =
+    normalizedProviderInput === 'auto' ? detectAccountProvider(payload) : normalizedProviderInput;
 
-  const playerName = firstNonEmptyString(
-    payload.playerName,
-    payload.name,
-    payload.username,
-    player.name,
-    player.username,
-    profile.name
-  );
+  const extractors = {
+    manual: extractManualAccountSnapshot,
+    tomomai: extractTomomaiAccountSnapshot,
+    mimixd: extractMimixdAccountSnapshot,
+    maimaijson: extractMaimaiJsonAccountSnapshot
+  };
+
+  const extractor = extractors[effectiveProvider] || extractManualAccountSnapshot;
+  const snapshot = extractor(payload);
+  const fallbackSnapshot = extractManualAccountSnapshot(payload);
+
+  const playerName = firstNonEmptyString(snapshot.playerName, fallbackSnapshot.playerName);
 
   if (!playerName) {
     throw new Error('Imported account payload must include a player name.');
   }
 
-  const friendCode = firstNonEmptyString(
-    payload.friendCode,
-    payload.friend_code,
-    player.friendCode,
-    player.friend_code,
-    profile.friendCode
-  );
-  const region = firstNonEmptyString(payload.region, player.region, profile.region);
-  const rating = firstFiniteNumber(
-    payload.rating,
-    payload.dxRating,
-    payload.dx_rating,
-    metrics.rating,
-    metrics.dxRating,
-    player.rating
-  );
-  const playCount = firstFiniteNumber(
-    payload.playCount,
-    payload.play_count,
-    metrics.playCount,
-    metrics.play_count,
-    player.playCount
-  );
-  const topRating = firstFiniteNumber(payload.topRating, payload.top_rating, metrics.topRating);
-  const sourceFetchedAt = firstValidIsoDate(
-    payload.fetchedAt,
-    payload.fetched_at,
-    payload.updatedAt,
-    payload.updated_at,
-    metrics.fetchedAt,
-    profile.updatedAt
-  );
-
   return {
-    provider: String(provider || 'manual').trim().toLowerCase(),
+    provider: effectiveProvider,
+    linkMethod: 'import',
     player: {
       name: playerName,
-      friendCode,
-      region
+      friendCode: firstNonEmptyString(snapshot.friendCode, fallbackSnapshot.friendCode),
+      region: firstNonEmptyString(snapshot.region, fallbackSnapshot.region)
     },
     metrics: {
-      rating,
-      topRating,
-      playCount
+      rating: firstFiniteNumber(snapshot.rating, fallbackSnapshot.rating),
+      topRating: firstFiniteNumber(snapshot.topRating, fallbackSnapshot.topRating),
+      playCount: firstFiniteNumber(snapshot.playCount, fallbackSnapshot.playCount),
+      bestCount: firstFiniteNumber(snapshot.bestCount, fallbackSnapshot.bestCount),
+      recentCount: firstFiniteNumber(snapshot.recentCount, fallbackSnapshot.recentCount)
     },
-    sourceFetchedAt,
+    sourceFetchedAt: firstValidIsoDate(snapshot.sourceFetchedAt, fallbackSnapshot.sourceFetchedAt),
     sourcePayload: payload
   };
 }
@@ -1534,6 +1922,7 @@ function buildSongSuggestionEmbed({ range, focus, suggestions, unresolvedCount }
 function buildAccountStatusEmbed(account) {
   const playerLines = [
     `Provider: ${formatAccountProvider(account.provider)}`,
+    account.linkMethod ? `Link method: ${formatAccountLinkMethod(account.linkMethod)}` : null,
     `Player: ${account.player?.name || 'Unknown'}`,
     account.player?.friendCode ? `Friend code: ${account.player.friendCode}` : null,
     account.player?.region ? `Region: ${account.player.region}` : null
@@ -1542,13 +1931,18 @@ function buildAccountStatusEmbed(account) {
   const metricLines = [
     account.metrics?.rating != null ? `Rating: ${Math.round(account.metrics.rating)}` : null,
     account.metrics?.topRating != null ? `Top rating: ${Math.round(account.metrics.topRating)}` : null,
-    account.metrics?.playCount != null ? `Play count: ${Math.round(account.metrics.playCount)}` : null
+    account.metrics?.playCount != null ? `Play count: ${Math.round(account.metrics.playCount)}` : null,
+    account.metrics?.bestCount != null ? `Best entries: ${Math.round(account.metrics.bestCount)}` : null,
+    account.metrics?.recentCount != null ? `Recent entries: ${Math.round(account.metrics.recentCount)}` : null
   ].filter(Boolean);
 
   const timelineLines = [
     `Linked: ${formatDateTime(account.linkedAt)}`,
     `Updated: ${formatDateTime(account.updatedAt)}`,
-    account.sourceFetchedAt ? `Source fetched: ${formatDateTime(account.sourceFetchedAt)}` : null
+    account.sourceFetchedAt ? `Source fetched: ${formatDateTime(account.sourceFetchedAt)}` : null,
+    account.linkSession?.completedAt
+      ? `Link completed: ${formatDateTime(account.linkSession.completedAt)}`
+      : null
   ].filter(Boolean);
 
   return new EmbedBuilder()
@@ -1559,6 +1953,17 @@ function buildAccountStatusEmbed(account) {
       { name: 'Metrics', value: metricLines.join('\n') || 'No metric data available.' },
       { name: 'Timeline', value: timelineLines.join('\n') }
     );
+}
+
+function formatAccountLinkMethod(linkMethod) {
+  const normalized = String(linkMethod || '').trim().toLowerCase();
+  if (normalized === 'web') {
+    return 'Web callback';
+  }
+  if (normalized === 'import') {
+    return 'Manual import';
+  }
+  return linkMethod || 'Unknown';
 }
 
 function chunkArray(values, size) {

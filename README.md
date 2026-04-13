@@ -29,7 +29,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/song suggest range:<text> [focus:<text>] [count:<1-10>]`
 - `/song info query:<text>`
 - `/account link`
-- `/account import provider:<manual|tomomai|mimixd> data:<json-or-base64>`
+- `/account import provider:<auto|manual|maimaijson|tomomai|mimixd> data:<json-or-base64>`
 - `/account status`
 - `/account unlink`
 
@@ -63,6 +63,12 @@ All bot replies are ephemeral (private).
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
 - `RECOMMENDATION_FILE` (optional, default `./data/recommendations/community.json`)
 - `GRAPHIC_THEME_DIR` (optional, default `./data/theme/tomomai` when present, else `./data/theme`)
+- `ACCOUNT_LINK_BASE_URL` (optional, external web service start URL for `/account link`)
+- `ACCOUNT_LINK_CALLBACK_PUBLIC_URL` (optional, public callback URL the external service posts snapshots to)
+- `ACCOUNT_LINK_CALLBACK_BIND` (optional, default `127.0.0.1`)
+- `ACCOUNT_LINK_CALLBACK_PORT` (optional, enables the built-in callback listener when set)
+- `ACCOUNT_LINK_SHARED_SECRET` (optional, required with callback port for secure web linking)
+- `ACCOUNT_LINK_TTL_MINUTES` (optional, default `15`)
 
 ## Using bookmarklet flow
 
@@ -107,12 +113,22 @@ All bot replies are ephemeral (private).
 
 ## Account linking groundwork
 
-The current `/account` commands are safe scaffolding only. They store a per-user account snapshot in the bot so later we can attach a real web-based sync flow without redesigning the data model.
+The bot now has two account-link paths:
 
-Current supported flow:
+- manual snapshot import with `/account import`
+- a scaffolded web-link session with `/account link`
+
+The web-link path is intentionally narrow. This bot does not log into maimai NET by itself yet. Instead, it generates a one-time session URL and exposes a callback endpoint so a separate browser-based link service can POST a sanitized account snapshot back into the bot.
+
+Current supported flows:
 - import a profile snapshot from another tool or manual export
-- inspect it with `/account status`
-- remove it with `/account unlink`
+- generate a one-time web-link session with `/account link`
+- inspect the current snapshot or pending session with `/account status`
+- remove the linked snapshot with `/account unlink`
+
+Recommended import mode:
+- use `provider:auto` first
+- use a provider-specific mode only if you want to force a parsing path
 
 Minimal import payload example:
 
@@ -127,6 +143,48 @@ Minimal import payload example:
 ```
 
 You can pass raw JSON or base64url-encoded JSON to `/account import`.
+
+Examples:
+
+```text
+/account import provider:auto data:{"name":"TEIO","rating":12007}
+```
+
+```text
+/account import provider:maimaijson data:{"player_data":{"userName":"TEIO","rating":12007}}
+```
+
+### Web-link callback contract
+
+If you set all of these environment variables:
+
+- `ACCOUNT_LINK_BASE_URL`
+- `ACCOUNT_LINK_CALLBACK_PUBLIC_URL`
+- `ACCOUNT_LINK_CALLBACK_PORT`
+- `ACCOUNT_LINK_SHARED_SECRET`
+
+then `/account link` will generate a one-time external URL and the bot will start a local callback listener.
+
+Expected callback request:
+
+```http
+POST /account-link/callback
+x-account-link-secret: <ACCOUNT_LINK_SHARED_SECRET>
+content-type: application/json
+```
+
+```json
+{
+  "token": "550e8400-e29b-41d4-a716-446655440000",
+  "provider": "tomomai",
+  "account": {
+    "name": "TEIO",
+    "rating": 12007
+  }
+}
+```
+
+The external service is responsible for obtaining maimai session data, transforming it into a safe profile snapshot, and POSTing it to the callback URL. The bot only stores the normalized snapshot plus minimal session metadata.
 
 ## Community recommendations
 

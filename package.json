@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node src/index.js",
     "register": "node src/register-commands.js",
-    "check": "node --check src/index.js && node --check src/register-commands.js && node --check src/recommendation-catalog.js && node --check scripts/import-recommendations.js",
+    "check": "node --check src/index.js && node --check src/register-commands.js && node --check src/recommendation-catalog.js && node --check src/account-link-service.js && node --check scripts/import-recommendations.js",
     "import:data": "node scripts/import-maimai-data.js",
     "import:recommendations": "node scripts/import-recommendations.js",
     "build:extension:css": "tailwindcss -c tailwind.extension.config.cjs -i ./extension/popup.tailwind.css -o ./extension/popup.css --minify && cp ./extension/popup.css ./extension-firefox/popup.css",
