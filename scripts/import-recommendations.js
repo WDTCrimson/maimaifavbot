@@ -364,6 +364,9 @@ async function main() {
         `Missing recommendation source config. Expected ${sourceFile} or ${fallbackSourceFile}.`
       );
     }
+    if (error instanceof SyntaxError) {
+      throw new Error(`Invalid JSON in recommendation source config: ${effectiveSourceFile}`);
+    }
     throw error;
   }
 
