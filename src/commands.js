@@ -120,7 +120,7 @@ export const playlistCommand = new SlashCommandBuilder()
 
 export const songCommand = new SlashCommandBuilder()
   .setName('song')
-  .setDescription('Search song metadata imported for this bot')
+  .setDescription('Search song metadata and curated recommendations')
   .addSubcommand((subcommand) =>
     subcommand
       .setName('search')
@@ -131,6 +131,31 @@ export const songCommand = new SlashCommandBuilder()
           .setDescription('Song title, artist, numeric ID, or constant like 12.3 / 13.7 mas')
           .setRequired(true)
           .setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('suggest')
+      .setDescription('Suggest community-recommended songs for a constant range')
+      .addStringOption((option) =>
+        option
+          .setName('range')
+          .setDescription('Exact constant or range like 12.7 or 12.3-12.8')
+          .setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('focus')
+          .setDescription('Optional recommendation tag like entry, tech, stamina, accuracy')
+          .setRequired(false)
+      )
+      .addIntegerOption((option) =>
+        option
+          .setName('count')
+          .setDescription('How many suggestions to return')
+          .setRequired(false)
+          .setMinValue(1)
+          .setMaxValue(10)
       )
   )
   .addSubcommand((subcommand) =>

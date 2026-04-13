@@ -6,6 +6,9 @@ package-lock.json
 data/*.json
 data/import/
 data/assets/
+data/recommendations/community.json
+data/recommendations/import-report.json
+data/recommendations/sources.json
 # Keep tomomai preset images trackable for server deploy via git pull
 data/theme/tomomai/*
 !data/theme/tomomai/*.png

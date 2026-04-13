@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-04-13T00:00:00.000Z",
+  "entries": [
+    {
+      "title": "KING",
+      "artist": "Kanaria",
+      "tags": ["entry", "tech"],
+      "note": "Example seed entry. Replace with your own community recommendation note.",
+      "sources": ["Example seed"],
+      "weight": 1
+    }
+  ]
+}

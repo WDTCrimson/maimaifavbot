@@ -7,6 +7,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - Create, list, show, and delete per-user playlists.
 - Add/remove songs per playlist (max 30).
 - Generate a compact payload string for a playlist.
+- Suggest songs from a curated community recommendation dataset.
 - Provide a bookmarklet installer string.
 - Include a Chrome-compatible extension (`extension/`) that applies payloads on maimai pages.
 
@@ -25,6 +26,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/playlist graphic name:<text>`
 - `/playlist bookmarklet`
 - `/song search query:<text>`
+- `/song suggest range:<text> [focus:<text>] [count:<1-10>]`
 - `/song info query:<text>`
 
 `/song search` also supports exact constant queries (examples: `12.3`, `13.7 mas`, `11.8 dx`).
@@ -55,6 +57,7 @@ All bot replies are ephemeral (private).
 - `DISCORD_GUILD_ID` (optional but recommended for fast command updates)
 - `DATA_FILE` (optional, default `./data/loadouts.json`)
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
+- `RECOMMENDATION_FILE` (optional, default `./data/recommendations/community.json`)
 - `GRAPHIC_THEME_DIR` (optional, default `./data/theme/tomomai` when present, else `./data/theme`)
 
 ## Using bookmarklet flow
@@ -97,6 +100,37 @@ All bot replies are ephemeral (private).
 - If selectors differ on your target page, adjust logic in `extension/content.js` and `src/bookmarklet.js`.
 - Title-only import payloads require a local song catalog (`SONG_CATALOG_FILE`) so the bot can resolve titles to song IDs.
 - Review maimai terms/rules before using automation.
+
+## Community recommendations
+
+`/song suggest` reads a local dataset, but that dataset can now be generated automatically from public discussion sources.
+
+Bootstrap the source config:
+
+```bash
+mkdir -p data/recommendations
+cp data/recommendations/sources.example.json data/recommendations/sources.json
+```
+
+Generate the recommendation dataset:
+
+```bash
+npm run import:recommendations
+```
+
+This writes:
+- `data/recommendations/community.json`
+- `data/recommendations/import-report.json`
+
+The importer prefers `data/recommendations/sources.json` when present, and otherwise falls back to the tracked `data/recommendations/sources.example.json`.
+
+GitHub Actions:
+
+- Workflow file: [.github/workflows/import-recommendations.yml](/home/crimson/PersonalProjects/maimaifavbot/.github/workflows/import-recommendations.yml)
+- Trigger: manual or daily schedule
+- Behavior: runs the importer on GitHub-hosted runners, then commits updated `community.json` and `import-report.json` back into the repo
+
+You can still hand-edit `community.json` if you want, but the intended path is to tune the tracked source config and rerun the importer. See [data/recommendations/README.md](/home/crimson/PersonalProjects/maimaifavbot/data/recommendations/README.md) for the schema.
 
 ## Import song data + logos + jackets
 

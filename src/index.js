@@ -4,6 +4,7 @@ import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } fr
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderLoadoutGraphic } from './loadout-graphic.js';
+import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
 
@@ -12,6 +13,9 @@ await store.ensureReady();
 
 const songCatalog = new SongCatalog(config.songCatalogFile);
 await songCatalog.ensureReady();
+
+const recommendationCatalog = new RecommendationCatalog(config.recommendationFile, songCatalog);
+await recommendationCatalog.ensureReady();
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds]
@@ -23,6 +27,12 @@ client.once(Events.ClientReady, (readyClient) => {
     console.log(`Loaded song catalog: ${songCatalog.count} songs`);
   } else {
     console.warn(`Song catalog unavailable at ${config.songCatalogFile}`);
+  }
+
+  if (recommendationCatalog.available) {
+    console.log(`Loaded recommendation catalog: ${recommendationCatalog.entries.length} entries`);
+  } else {
+    console.warn(`Recommendation catalog unavailable at ${config.recommendationFile}`);
   }
 });
 
@@ -139,6 +149,14 @@ function truncateChoiceName(value, maxLength = 100) {
     return value;
   }
   return `${value.slice(0, maxLength - 1)}…`;
+}
+
+function truncateText(value, maxLength) {
+  const text = String(value || '');
+  if (text.length <= maxLength) {
+    return text;
+  }
+  return `${text.slice(0, maxLength - 1)}…`;
 }
 
 function getPlaylistSongChoices(userId, playlistName, query) {
@@ -444,6 +462,42 @@ async function handleSongCommand(interaction) {
       return;
     }
 
+    case 'suggest': {
+      recommendationCatalog.requireAvailable();
+
+      const rawRange = interaction.options.getString('range', true);
+      const focus = interaction.options.getString('focus') || '';
+      const count = interaction.options.getInteger('count') || 5;
+      const range = parseSuggestionRange(rawRange);
+
+      const suggestions = recommendationCatalog.suggest({
+        minConstant: range.minConstant,
+        maxConstant: range.maxConstant,
+        focus,
+        limit: count
+      });
+
+      if (!suggestions.length) {
+        const focusSuffix = focus ? ` with focus "${focus}"` : '';
+        await replySafely(
+          interaction,
+          `No community suggestions found for ${formatSuggestionRange(range)}${focusSuffix}.`
+        );
+        return;
+      }
+
+      const embed = buildSongSuggestionEmbed({
+        rawRange,
+        range,
+        focus,
+        suggestions,
+        unresolvedCount: recommendationCatalog.unresolvedEntries.length
+      });
+
+      await replyPayload(interaction, { embeds: [embed] });
+      return;
+    }
+
     case 'info': {
       const query = interaction.options.getString('query', true);
       const song = songCatalog.resolveSong(query);
@@ -527,6 +581,40 @@ function parseConstantSearchQuery(rawQuery) {
     difficulty,
     chartType
   };
+}
+
+function parseSuggestionRange(rawRange) {
+  const input = String(rawRange || '').trim();
+  if (!input) {
+    throw new Error('Range cannot be empty.');
+  }
+
+  const exactMatch = input.match(/^(\d{1,2}\.\d)$/);
+  if (exactMatch) {
+    const value = Number.parseFloat(exactMatch[1]);
+    return { minConstant: value, maxConstant: value };
+  }
+
+  const rangeMatch = input.match(/^(\d{1,2}\.\d)\s*-\s*(\d{1,2}\.\d)$/);
+  if (!rangeMatch) {
+    throw new Error('Range must look like `12.7` or `12.3-12.8`.');
+  }
+
+  const minConstant = Number.parseFloat(rangeMatch[1]);
+  const maxConstant = Number.parseFloat(rangeMatch[2]);
+  if (minConstant > maxConstant) {
+    throw new Error('Range start cannot be greater than range end.');
+  }
+
+  return { minConstant, maxConstant };
+}
+
+function formatSuggestionRange(range) {
+  if (sameConstant(range.minConstant, range.maxConstant)) {
+    return formatInternalLevel(range.minConstant);
+  }
+
+  return `${formatInternalLevel(range.minConstant)}-${formatInternalLevel(range.maxConstant)}`;
 }
 
 function normalizeChartText(value) {
@@ -1149,6 +1237,64 @@ function buildPlaylistStatsEmbed(playlist, songs, missingCount) {
         value: formatTopCounts(versionCounts, { limit: 6, maxLabelLength: 26 })
       }
     );
+
+  return embed;
+}
+
+function formatSuggestionChartList(charts, limit = 3) {
+  const rows = charts.slice(0, limit).map((chart) => {
+    const type = String(chart.type || 'UNK').toUpperCase();
+    const difficulty = formatDifficultyShort(chart.difficulty);
+    return `${type} ${difficulty} ${chart.level} [${formatInternalLevel(chart.constant)}]`;
+  });
+
+  if (charts.length > limit) {
+    rows.push(`+${charts.length - limit} more chart(s)`);
+  }
+
+  return rows.join(', ');
+}
+
+function buildSongSuggestionEmbed({ range, focus, suggestions, unresolvedCount }) {
+  const description = suggestions
+    .map((entry, index) => {
+      const tags = entry.tags.length ? `Tags: ${entry.tags.join(', ')}` : 'Tags: none';
+      const note = entry.note
+        ? `Reason: ${truncateText(entry.note, 160)}`
+        : 'Reason: community-curated recommendation';
+      const charts = `Matching charts: ${formatSuggestionChartList(entry.matchingCharts)}`;
+      const sources =
+        entry.sources.length > 0
+          ? `Sources: ${truncateText(entry.sources.slice(0, 2).join(', '), 120)}`
+          : null;
+
+      return [
+        `**${index + 1}. ${entry.song.title}** - ${entry.song.artist}`,
+        charts,
+        tags,
+        note,
+        sources
+      ]
+        .filter(Boolean)
+        .join('\n');
+    })
+    .join('\n\n');
+
+  const embed = new EmbedBuilder()
+    .setColor(0x16a34a)
+    .setTitle(`Song Suggestions - ${formatSuggestionRange(range)}`)
+    .setDescription(truncateText(description, 4000));
+
+  const summary = [
+    `Returned: ${suggestions.length}`,
+    focus ? `Focus: ${focus}` : 'Focus: any',
+    unresolvedCount > 0 ? `Unresolved dataset rows: ${unresolvedCount}` : 'Unresolved dataset rows: 0'
+  ];
+
+  embed.addFields({
+    name: 'Summary',
+    value: summary.join('\n')
+  });
 
   return embed;
 }

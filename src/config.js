@@ -25,6 +25,8 @@ export const config = {
   guildId: process.env.DISCORD_GUILD_ID?.trim() || null,
   dataFile: process.env.DATA_FILE?.trim() || './data/loadouts.json',
   songCatalogFile: process.env.SONG_CATALOG_FILE?.trim() || './data/import/songs.normalized.json',
+  recommendationFile:
+    process.env.RECOMMENDATION_FILE?.trim() || './data/recommendations/community.json',
   graphicThemeDir: process.env.GRAPHIC_THEME_DIR?.trim() || resolveDefaultGraphicThemeDir()
 };
 

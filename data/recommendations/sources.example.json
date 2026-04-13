@@ -1,0 +1,23 @@
+{
+  "sources": [
+    {
+      "type": "reddit-search",
+      "name": "r/maimai recommendation search",
+      "subreddit": "maimai",
+      "queries": [
+        "recommendation",
+        "recommended songs",
+        "good 12+",
+        "good 13",
+        "13 entry",
+        "12.7 recommendation",
+        "favorite charts"
+      ],
+      "sort": "relevance",
+      "time": "year",
+      "limit": 15,
+      "includeComments": true,
+      "commentLimit": 20
+    }
+  ]
+}
