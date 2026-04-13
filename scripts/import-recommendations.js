@@ -75,12 +75,37 @@ async function fileExists(filePath) {
   }
 }
 
-async function fetchJson(url) {
-  const response = await fetch(url, {
+function buildFetchOptions() {
+  return {
     headers: {
-      'user-agent': 'maimai-fav-bot-recommendation-importer/1.0'
+      'user-agent': 'maimai-fav-bot-recommendation-importer/1.0',
+      accept: 'application/json,text/plain,*/*'
     }
-  });
+  };
+}
+
+function rewriteRedditUrlToOld(url) {
+  const parsed = new URL(url);
+  if (parsed.hostname === 'www.reddit.com' || parsed.hostname === 'reddit.com') {
+    parsed.hostname = 'old.reddit.com';
+    return parsed.toString();
+  }
+  return null;
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, buildFetchOptions());
+
+  if (response.status === 403) {
+    const fallbackUrl = rewriteRedditUrlToOld(url);
+    if (fallbackUrl && fallbackUrl !== url) {
+      const fallbackResponse = await fetch(fallbackUrl, buildFetchOptions());
+      if (fallbackResponse.ok) {
+        return fallbackResponse.json();
+      }
+      throw new Error(`HTTP ${fallbackResponse.status} for ${fallbackUrl}`);
+    }
+  }
 
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} for ${url}`);
