@@ -92,9 +92,48 @@ export class LoadoutStore {
 
   getUser(userId) {
     if (!this.state.users[userId]) {
-      this.state.users[userId] = { loadouts: {} };
+      this.state.users[userId] = { loadouts: {}, account: null };
+    } else {
+      if (!this.state.users[userId].loadouts || typeof this.state.users[userId].loadouts !== 'object') {
+        this.state.users[userId].loadouts = {};
+      }
+      if (!Object.prototype.hasOwnProperty.call(this.state.users[userId], 'account')) {
+        this.state.users[userId].account = null;
+      }
     }
     return this.state.users[userId];
+  }
+
+  getAccount(userId) {
+    const user = this.getUser(userId);
+    return user.account || null;
+  }
+
+  hasAccount(userId) {
+    return Boolean(this.getAccount(userId));
+  }
+
+  async setAccount(userId, account) {
+    const user = this.getUser(userId);
+    const now = new Date().toISOString();
+    const previous = user.account || null;
+
+    user.account = {
+      ...account,
+      linkedAt: previous?.linkedAt || account.linkedAt || now,
+      updatedAt: now
+    };
+
+    await this.save();
+    return user.account;
+  }
+
+  async clearAccount(userId) {
+    const user = this.getUser(userId);
+    const previous = user.account || null;
+    user.account = null;
+    await this.save();
+    return previous;
   }
 
   listLoadouts(userId) {

@@ -28,6 +28,10 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/song search query:<text>`
 - `/song suggest range:<text> [focus:<text>] [count:<1-10>]`
 - `/song info query:<text>`
+- `/account link`
+- `/account import provider:<manual|tomomai|mimixd> data:<json-or-base64>`
+- `/account status`
+- `/account unlink`
 
 `/song search` also supports exact constant queries (examples: `12.3`, `13.7 mas`, `11.8 dx`).
 
@@ -100,6 +104,29 @@ All bot replies are ephemeral (private).
 - If selectors differ on your target page, adjust logic in `extension/content.js` and `src/bookmarklet.js`.
 - Title-only import payloads require a local song catalog (`SONG_CATALOG_FILE`) so the bot can resolve titles to song IDs.
 - Review maimai terms/rules before using automation.
+
+## Account linking groundwork
+
+The current `/account` commands are safe scaffolding only. They store a per-user account snapshot in the bot so later we can attach a real web-based sync flow without redesigning the data model.
+
+Current supported flow:
+- import a profile snapshot from another tool or manual export
+- inspect it with `/account status`
+- remove it with `/account unlink`
+
+Minimal import payload example:
+
+```json
+{
+  "name": "TEIO",
+  "rating": 12007,
+  "friendCode": "1234-5678",
+  "region": "INTL",
+  "fetchedAt": "2026-04-13T12:00:00.000Z"
+}
+```
+
+You can pass raw JSON or base64url-encoded JSON to `/account import`.
 
 ## Community recommendations
 

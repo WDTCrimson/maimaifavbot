@@ -57,6 +57,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     switch (interaction.commandName) {
+      case 'account':
+        await handleAccountCommand(interaction);
+        return;
       case 'playlist':
         await handlePlaylistCommand(interaction);
         return;
@@ -398,6 +401,75 @@ async function handlePlaylistCommand(interaction) {
   }
 }
 
+async function handleAccountCommand(interaction) {
+  const subcommand = interaction.options.getSubcommand();
+  const userId = interaction.user.id;
+
+  switch (subcommand) {
+    case 'link': {
+      const lines = [
+        'Current supported account link method: import a profile snapshot from an external tool.',
+        '',
+        'Available now:',
+        '- `/account import provider:manual data:<json-or-base64>`',
+        '- `/account import provider:tomomai data:<json-or-base64>`',
+        '- `/account import provider:mimixd data:<json-or-base64>`',
+        '',
+        'Planned later: a proper web-based account link flow so you do not need to paste snapshots manually.'
+      ];
+      await replySafely(interaction, lines.join('\n'));
+      return;
+    }
+
+    case 'import': {
+      const provider = interaction.options.getString('provider', true);
+      const rawData = interaction.options.getString('data', true);
+      const imported = decodeAccountImportData(rawData);
+      const account = normalizeImportedAccountSnapshot(imported, provider);
+      const stored = await store.setAccount(userId, account);
+
+      await replyPayload(interaction, {
+        content: `Imported **${formatAccountProvider(stored.provider)}** account snapshot.`,
+        embeds: [buildAccountStatusEmbed(stored)]
+      });
+      return;
+    }
+
+    case 'status': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(
+          interaction,
+          'No account snapshot linked yet. Use `/account link` for the current supported flow.'
+        );
+        return;
+      }
+
+      await replyPayload(interaction, {
+        embeds: [buildAccountStatusEmbed(account)]
+      });
+      return;
+    }
+
+    case 'unlink': {
+      const account = await store.clearAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot was found.');
+        return;
+      }
+
+      await replySafely(
+        interaction,
+        `Removed linked **${formatAccountProvider(account.provider)}** account snapshot.`
+      );
+      return;
+    }
+
+    default:
+      await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
+  }
+}
+
 async function handleSongCommand(interaction) {
   songCatalog.requireAvailable();
 
@@ -522,6 +594,166 @@ async function handleSongCommand(interaction) {
     default:
       await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
   }
+}
+
+function decodeBase64UrlText(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/');
+  const padLength = (4 - (normalized.length % 4)) % 4;
+  return Buffer.from(normalized + '='.repeat(padLength), 'base64').toString('utf8');
+}
+
+function decodeAccountImportData(rawData) {
+  const text = String(rawData || '').trim();
+  if (!text) {
+    throw new Error('Account import data cannot be empty.');
+  }
+
+  if (text.startsWith('{')) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      throw new Error('Account import data is not valid JSON.');
+    }
+  }
+
+  try {
+    return JSON.parse(decodeBase64UrlText(text));
+  } catch {
+    throw new Error('Account import data must be JSON or base64url-encoded JSON.');
+  }
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
+function firstFiniteNumber(...values) {
+  for (const value of values) {
+    const parsed =
+      typeof value === 'number' && Number.isFinite(value)
+        ? value
+        : Number.parseFloat(String(value ?? '').trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function firstValidIsoDate(...values) {
+  for (const value of values) {
+    const text = String(value || '').trim();
+    if (!text) {
+      continue;
+    }
+    const parsed = new Date(text);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString();
+    }
+  }
+  return null;
+}
+
+function formatAccountProvider(provider) {
+  const normalized = String(provider || '').trim().toLowerCase();
+  const labels = {
+    manual: 'Manual',
+    tomomai: 'Tomomai',
+    mimixd: 'mimixd'
+  };
+  return labels[normalized] || provider || 'Unknown';
+}
+
+function formatDateTime(value) {
+  const text = String(value || '').trim();
+  if (!text) {
+    return 'Unknown';
+  }
+
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return text;
+  }
+
+  return parsed.toISOString().replace('T', ' ').replace('.000Z', ' UTC');
+}
+
+function normalizeImportedAccountSnapshot(payload, provider) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Imported account payload must be a JSON object.');
+  }
+
+  const player = payload.player && typeof payload.player === 'object' ? payload.player : {};
+  const profile = payload.profile && typeof payload.profile === 'object' ? payload.profile : {};
+  const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics : {};
+
+  const playerName = firstNonEmptyString(
+    payload.playerName,
+    payload.name,
+    payload.username,
+    player.name,
+    player.username,
+    profile.name
+  );
+
+  if (!playerName) {
+    throw new Error('Imported account payload must include a player name.');
+  }
+
+  const friendCode = firstNonEmptyString(
+    payload.friendCode,
+    payload.friend_code,
+    player.friendCode,
+    player.friend_code,
+    profile.friendCode
+  );
+  const region = firstNonEmptyString(payload.region, player.region, profile.region);
+  const rating = firstFiniteNumber(
+    payload.rating,
+    payload.dxRating,
+    payload.dx_rating,
+    metrics.rating,
+    metrics.dxRating,
+    player.rating
+  );
+  const playCount = firstFiniteNumber(
+    payload.playCount,
+    payload.play_count,
+    metrics.playCount,
+    metrics.play_count,
+    player.playCount
+  );
+  const topRating = firstFiniteNumber(payload.topRating, payload.top_rating, metrics.topRating);
+  const sourceFetchedAt = firstValidIsoDate(
+    payload.fetchedAt,
+    payload.fetched_at,
+    payload.updatedAt,
+    payload.updated_at,
+    metrics.fetchedAt,
+    profile.updatedAt
+  );
+
+  return {
+    provider: String(provider || 'manual').trim().toLowerCase(),
+    player: {
+      name: playerName,
+      friendCode,
+      region
+    },
+    metrics: {
+      rating,
+      topRating,
+      playCount
+    },
+    sourceFetchedAt,
+    sourcePayload: payload
+  };
 }
 
 function parseConstantSearchQuery(rawQuery) {
@@ -1297,6 +1529,36 @@ function buildSongSuggestionEmbed({ range, focus, suggestions, unresolvedCount }
   });
 
   return embed;
+}
+
+function buildAccountStatusEmbed(account) {
+  const playerLines = [
+    `Provider: ${formatAccountProvider(account.provider)}`,
+    `Player: ${account.player?.name || 'Unknown'}`,
+    account.player?.friendCode ? `Friend code: ${account.player.friendCode}` : null,
+    account.player?.region ? `Region: ${account.player.region}` : null
+  ].filter(Boolean);
+
+  const metricLines = [
+    account.metrics?.rating != null ? `Rating: ${Math.round(account.metrics.rating)}` : null,
+    account.metrics?.topRating != null ? `Top rating: ${Math.round(account.metrics.topRating)}` : null,
+    account.metrics?.playCount != null ? `Play count: ${Math.round(account.metrics.playCount)}` : null
+  ].filter(Boolean);
+
+  const timelineLines = [
+    `Linked: ${formatDateTime(account.linkedAt)}`,
+    `Updated: ${formatDateTime(account.updatedAt)}`,
+    account.sourceFetchedAt ? `Source fetched: ${formatDateTime(account.sourceFetchedAt)}` : null
+  ].filter(Boolean);
+
+  return new EmbedBuilder()
+    .setColor(0xf59e0b)
+    .setTitle('Linked Account')
+    .addFields(
+      { name: 'Profile', value: playerLines.join('\n') },
+      { name: 'Metrics', value: metricLines.join('\n') || 'No metric data available.' },
+      { name: 'Timeline', value: timelineLines.join('\n') }
+    );
 }
 
 function chunkArray(values, size) {

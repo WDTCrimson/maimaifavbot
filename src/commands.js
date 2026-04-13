@@ -171,4 +171,45 @@ export const songCommand = new SlashCommandBuilder()
       )
   );
 
-export const commands = [playlistCommand.toJSON(), songCommand.toJSON()];
+export const accountCommand = new SlashCommandBuilder()
+  .setName('account')
+  .setDescription('Manage linked maimai account snapshots')
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('link')
+      .setDescription('Show the current supported account link methods')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('import')
+      .setDescription('Import an account snapshot from an external tool')
+      .addStringOption((option) =>
+        option
+          .setName('provider')
+          .setDescription('Source of the imported account snapshot')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Manual', value: 'manual' },
+            { name: 'Tomomai', value: 'tomomai' },
+            { name: 'mimixd', value: 'mimixd' }
+          )
+      )
+      .addStringOption((option) =>
+        option
+          .setName('data')
+          .setDescription('JSON or base64url-encoded JSON account snapshot')
+          .setRequired(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('status')
+      .setDescription('Show your currently linked account snapshot')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('unlink')
+      .setDescription('Remove your linked account snapshot')
+  );
+
+export const commands = [playlistCommand.toJSON(), songCommand.toJSON(), accountCommand.toJSON()];
