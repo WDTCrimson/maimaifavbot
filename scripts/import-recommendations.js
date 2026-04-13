@@ -6,6 +6,11 @@ const DEFAULT_SOURCE_EXAMPLE_FILE = './data/recommendations/sources.example.json
 const DEFAULT_OUTPUT_FILE = './data/recommendations/community.json';
 const DEFAULT_REPORT_FILE = './data/recommendations/import-report.json';
 const DEFAULT_SONG_CATALOG_FILE = './data/import/songs.normalized.json';
+const DEFAULT_REDDIT_USER_AGENT =
+  'script:maimai-fav-bot.recommendation-importer:v1.0 (by /u/maimaifavbot)';
+
+let redditAccessToken = null;
+let redditAccessTokenExpiresAt = 0;
 
 function normalizeText(value) {
   return String(value || '')
@@ -76,12 +81,17 @@ async function fileExists(filePath) {
 }
 
 function buildFetchOptions() {
+  const userAgent = process.env.REDDIT_USER_AGENT?.trim() || DEFAULT_REDDIT_USER_AGENT;
   return {
     headers: {
-      'user-agent': 'maimai-fav-bot-recommendation-importer/1.0',
+      'user-agent': userAgent,
       accept: 'application/json,text/plain,*/*'
     }
   };
+}
+
+function hasRedditOAuthConfig() {
+  return Boolean(process.env.REDDIT_CLIENT_ID?.trim() && process.env.REDDIT_CLIENT_SECRET?.trim());
 }
 
 function rewriteRedditUrlToOld(url) {
@@ -93,7 +103,81 @@ function rewriteRedditUrlToOld(url) {
   return null;
 }
 
+function rewriteRedditUrlToOAuth(url) {
+  const parsed = new URL(url);
+  if (
+    parsed.hostname === 'www.reddit.com' ||
+    parsed.hostname === 'reddit.com' ||
+    parsed.hostname === 'old.reddit.com'
+  ) {
+    parsed.hostname = 'oauth.reddit.com';
+    parsed.pathname = parsed.pathname.replace(/\/?\.json$/, '').replace(/\.json$/, '');
+    return parsed.toString();
+  }
+  return url;
+}
+
+async function getRedditAccessToken() {
+  const now = Date.now();
+  if (redditAccessToken && now < redditAccessTokenExpiresAt) {
+    return redditAccessToken;
+  }
+
+  const clientId = process.env.REDDIT_CLIENT_ID?.trim();
+  const clientSecret = process.env.REDDIT_CLIENT_SECRET?.trim();
+  if (!clientId || !clientSecret) {
+    throw new Error('Missing Reddit OAuth credentials.');
+  }
+
+  const body = new URLSearchParams({
+    grant_type: 'client_credentials',
+    scope: 'read'
+  });
+
+  const response = await fetch('https://www.reddit.com/api/v1/access_token', {
+    method: 'POST',
+    headers: {
+      ...buildFetchOptions().headers,
+      authorization: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+      'content-type': 'application/x-www-form-urlencoded'
+    },
+    body
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to get Reddit OAuth token: HTTP ${response.status}`);
+  }
+
+  const payload = await response.json();
+  const accessToken = String(payload.access_token || '').trim();
+  const expiresIn = Number(payload.expires_in || 3600);
+  if (!accessToken) {
+    throw new Error('Reddit OAuth token response did not include an access token.');
+  }
+
+  redditAccessToken = accessToken;
+  redditAccessTokenExpiresAt = now + Math.max(60, expiresIn - 60) * 1000;
+  return redditAccessToken;
+}
+
 async function fetchJson(url) {
+  if (hasRedditOAuthConfig() && url.includes('reddit.com')) {
+    const oauthUrl = rewriteRedditUrlToOAuth(url);
+    const token = await getRedditAccessToken();
+    const oauthResponse = await fetch(oauthUrl, {
+      headers: {
+        ...buildFetchOptions().headers,
+        authorization: `Bearer ${token}`
+      }
+    });
+
+    if (!oauthResponse.ok) {
+      throw new Error(`HTTP ${oauthResponse.status} for ${oauthUrl}`);
+    }
+
+    return oauthResponse.json();
+  }
+
   const response = await fetch(url, buildFetchOptions());
 
   if (response.status === 403) {
@@ -104,6 +188,12 @@ async function fetchJson(url) {
         return fallbackResponse.json();
       }
       throw new Error(`HTTP ${fallbackResponse.status} for ${fallbackUrl}`);
+    }
+
+    if (url.includes('reddit.com')) {
+      throw new Error(
+        `HTTP 403 for ${url}. Configure REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET to use Reddit OAuth.`
+      );
     }
   }
 

@@ -23,6 +23,7 @@ GitHub Actions workflow:
 - runs manually or on a daily schedule
 - uses the tracked source config when `sources.json` is not present
 - commits updated recommendation outputs back into the repository
+- can use Reddit OAuth via GitHub secrets `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, and `REDDIT_USER_AGENT`
 
 Expected runtime file:
 

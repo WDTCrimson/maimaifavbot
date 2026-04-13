@@ -129,6 +129,7 @@ GitHub Actions:
 - Workflow file: [.github/workflows/import-recommendations.yml](/home/crimson/PersonalProjects/maimaifavbot/.github/workflows/import-recommendations.yml)
 - Trigger: manual or daily schedule
 - Behavior: first builds a transient song catalog with `npm run import:data -- --skip-jackets --skip-logos`, then runs the recommendation importer and commits updated `community.json` and `import-report.json` back into the repo
+- If Reddit public endpoints return `403`, set GitHub Actions secrets `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, and `REDDIT_USER_AGENT` so the importer can use Reddit OAuth instead
 
 You can still hand-edit `community.json` if you want, but the intended path is to tune the tracked source config and rerun the importer. See [data/recommendations/README.md](/home/crimson/PersonalProjects/maimaifavbot/data/recommendations/README.md) for the schema.
 
