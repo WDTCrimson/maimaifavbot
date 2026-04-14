@@ -32,6 +32,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/account import provider:<auto|manual|maimaijson|tomomai|mimixd> data:<json-or-base64>`
 - `/account status`
 - `/account sync`
+- `/account top`
 - `/account unlink`
 
 `/song search` also supports exact constant queries (examples: `12.3`, `13.7 mas`, `11.8 dx`).
@@ -128,6 +129,7 @@ Current supported flows:
 - generate a one-time web-link session with `/account link`
 - inspect the current snapshot or pending session with `/account status`
 - refresh a linked International web-linked snapshot with `/account sync`
+- generate a Tomomai-style top-score image with `/account top`
 - remove the linked snapshot with `/account unlink`
 
 Recommended import mode:

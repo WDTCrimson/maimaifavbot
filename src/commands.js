@@ -215,6 +215,11 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('top')
+      .setDescription('Generate a top-score graphic from your linked account snapshot')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('unlink')
       .setDescription('Remove your linked account snapshot')
   );

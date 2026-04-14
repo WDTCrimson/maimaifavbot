@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
+import { renderAccountB50Graphic } from './account-b50-graphic.js';
 import {
   accountLinkCallbackServerEnabled,
   buildAccountLinkUrl,
@@ -551,7 +552,7 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token);
+      const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog);
       const stored = await store.setAccount(userId, {
         ...account,
         ...refreshed.snapshot,
@@ -564,6 +565,43 @@ async function handleAccountCommand(interaction) {
       await replyPayload(interaction, {
         content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.`,
         embeds: [buildAccountStatusEmbed(stored)]
+      });
+      return;
+    }
+
+    case 'top': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(
+          interaction,
+          'No linked account snapshot found. Use `/account link` first.'
+        );
+        return;
+      }
+
+      if (!account.best50?.top50?.length) {
+        await replySafely(
+          interaction,
+          'This account snapshot does not include top-score data yet. Run `/account sync` first.'
+        );
+        return;
+      }
+
+      await interaction.deferReply();
+
+      const graphic = await renderAccountB50Graphic({
+        account,
+        songCatalog,
+        themeDir: config.graphicThemeDir
+      });
+
+      const attachment = new AttachmentBuilder(graphic.buffer, {
+        name: graphic.fileName
+      });
+
+      await replyPayload(interaction, {
+        content: `Generated top-score graphic for **${account.player?.name || 'linked account'}**.`,
+        files: [attachment]
       });
       return;
     }
@@ -2021,7 +2059,10 @@ function buildAccountStatusEmbed(account) {
       : null
   ].filter(Boolean);
 
-  return new EmbedBuilder()
+  const best50Lines = buildAccountBest50Lines(account.best50);
+  const recentLines = buildAccountRecentLines(account.recentSessions);
+
+  const embed = new EmbedBuilder()
     .setColor(0xf59e0b)
     .setTitle('Linked Account')
     .addFields(
@@ -2029,6 +2070,69 @@ function buildAccountStatusEmbed(account) {
       { name: 'Metrics', value: metricLines.join('\n') || 'No metric data available.' },
       { name: 'Timeline', value: timelineLines.join('\n') }
     );
+
+  if (best50Lines) {
+    embed.addFields({ name: 'B50', value: best50Lines });
+  }
+
+  if (recentLines) {
+    embed.addFields({ name: 'Recent Sessions', value: recentLines });
+  }
+
+  return embed;
+}
+
+function buildAccountBest50Lines(best50) {
+  if (!best50 || (!Array.isArray(best50.b15) && !Array.isArray(best50.b35))) {
+    return null;
+  }
+
+  const b15 = Array.isArray(best50.b15) ? best50.b15 : [];
+  const b35 = Array.isArray(best50.b35) ? best50.b35 : [];
+  const lines = [
+    `B15: ${b15.length} songs (${sumRatings(b15)})`,
+    `B35: ${b35.length} songs (${sumRatings(b35)})`,
+    best50.totalRating != null ? `Total: ${Math.round(best50.totalRating)}` : null
+  ].filter(Boolean);
+
+  const topLines = [];
+  for (const entry of [...b15.slice(0, 2), ...b35.slice(0, 2)]) {
+    const bucket = b15.includes(entry) ? 'B15' : 'B35';
+    topLines.push(
+      `${bucket} ${formatDifficultyShort(entry.difficulty)} ${truncateText(entry.title || 'Unknown', 32)} - ${entry.rating}`
+    );
+  }
+
+  return truncateText([...lines, ...topLines].join('\n'), 1024);
+}
+
+function buildAccountRecentLines(recentSessions) {
+  if (!Array.isArray(recentSessions) || !recentSessions.length) {
+    return null;
+  }
+
+  const lines = recentSessions.slice(0, 5).map((play, index) => {
+    const difficulty = formatDifficultyShort(play.difficulty || '?');
+    const achievement =
+      play.achievement != null
+        ? `${(Number(play.achievement) / 10000).toFixed(4)}%`
+        : 'Unknown';
+    const rating = play.rating != null ? ` | ${play.rating}` : '';
+    return `${index + 1}. ${difficulty} ${truncateText(play.title || 'Unknown', 26)} - ${achievement}${rating}`;
+  });
+
+  if (recentSessions.length > 5) {
+    lines.push(`+${recentSessions.length - 5} more`);
+  }
+
+  return truncateText(lines.join('\n'), 1024);
+}
+
+function sumRatings(entries) {
+  return entries.reduce((sum, entry) => {
+    const rating = Number(entry?.rating);
+    return sum + (Number.isFinite(rating) ? rating : 0);
+  }, 0);
 }
 
 function formatAccountLinkMethod(linkMethod) {
