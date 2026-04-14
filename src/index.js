@@ -376,6 +376,7 @@ async function handlePlaylistCommand(interaction) {
     }
 
     case 'apply': {
+      await interaction.deferReply({ ephemeral: true });
       songCatalog.requireAvailable();
       const name = interaction.options.getString('name', true);
       const playlist = store.getLoadout(userId, name);
