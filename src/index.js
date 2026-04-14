@@ -1,5 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { randomBytes } from 'node:crypto';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
 import {
@@ -124,9 +125,39 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
     }
   } catch (error) {
-    await replySafely(interaction, `Error: ${error.message}`);
+    const reference = createPublicErrorCode('BOT');
+    logInteractionError(reference, interaction, error);
+    await replySafely(
+      interaction,
+      `Request failed. Reference: \`${reference}\``
+    );
   }
 });
+
+function createPublicErrorCode(prefix = 'ERR') {
+  return `${prefix}-${randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
+function logInteractionError(reference, interaction, error) {
+  console.error(`[${reference}] Interaction error`, {
+    commandName: interaction.commandName,
+    userId: interaction.user?.id || null,
+    guildId: interaction.guildId || null,
+    channelId: interaction.channelId || null,
+    subcommand:
+      typeof interaction.options?.getSubcommand === 'function'
+        ? (() => {
+            try {
+              return interaction.options.getSubcommand(false);
+            } catch {
+              return null;
+            }
+          })()
+        : null,
+    errorMessage: error instanceof Error ? error.message : String(error),
+    errorStack: error instanceof Error ? error.stack : null
+  });
+}
 
 async function handleAutocomplete(interaction) {
   if (interaction.commandName === 'playlist') {

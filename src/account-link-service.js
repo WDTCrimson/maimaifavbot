@@ -8,6 +8,10 @@ function writeJson(response, statusCode, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function createCallbackErrorCode() {
+  return `CALLBACK-${randomBytes(4).toString('hex').toUpperCase()}`;
+}
+
 function readJsonBody(request, maxBytes = MAX_BODY_BYTES) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -98,7 +102,7 @@ export async function startAccountLinkCallbackServer({
     if (method === 'POST' && url.pathname === '/account-link/callback') {
       const providedSecret = String(request.headers['x-account-link-secret'] || '').trim();
       if (!providedSecret || providedSecret !== sharedSecret) {
-        writeJson(response, 401, { ok: false, error: 'Unauthorized callback secret.' });
+        writeJson(response, 401, { ok: false, error: 'Unauthorized.', code: 'CALLBACK-UNAUTHORIZED' });
         return;
       }
 
@@ -108,30 +112,30 @@ export async function startAccountLinkCallbackServer({
         const body = await readJsonBody(request);
         const token = String(body.token || '').trim();
         if (!token) {
-          writeJson(response, 400, { ok: false, error: 'Missing token.' });
+          writeJson(response, 400, { ok: false, error: 'Invalid request.', code: 'CALLBACK-BAD-REQUEST' });
           return;
         }
 
         const session = store.getAccountLinkSession(token);
         if (!session) {
-          writeJson(response, 404, { ok: false, error: 'Link session not found.' });
+          writeJson(response, 404, { ok: false, error: 'Not found.', code: 'CALLBACK-NOT-FOUND' });
           return;
         }
 
         const expiresAt = Date.parse(session.expiresAt || '');
         if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
-          writeJson(response, 410, { ok: false, error: 'Link session expired.' });
+          writeJson(response, 410, { ok: false, error: 'Expired.', code: 'CALLBACK-EXPIRED' });
           return;
         }
 
         if (session.status !== 'pending') {
-          writeJson(response, 409, { ok: false, error: 'Link session is not pending.' });
+          writeJson(response, 409, { ok: false, error: 'Conflict.', code: 'CALLBACK-CONFLICT' });
           return;
         }
 
         const payload = body.account || body.snapshot || body.data || body.profile;
         if (!payload || typeof payload !== 'object') {
-          writeJson(response, 400, { ok: false, error: 'Missing account payload object.' });
+          writeJson(response, 400, { ok: false, error: 'Invalid request.', code: 'CALLBACK-BAD-REQUEST' });
           return;
         }
 
@@ -163,17 +167,19 @@ export async function startAccountLinkCallbackServer({
           playerName: storedAccount.player?.name || null
         });
       } catch (error) {
-        logger.error('Account link callback error:', error);
+        const reference = createCallbackErrorCode();
+        logger.error(`[${reference}] Account link callback error:`, error);
         writeJson(response, 400, {
           ok: false,
-          error: error instanceof Error ? error.message : 'Unknown callback error.'
+          error: 'Request failed.',
+          code: reference
         });
       }
 
       return;
     }
 
-    writeJson(response, 404, { ok: false, error: 'Not found.' });
+    writeJson(response, 404, { ok: false, error: 'Not found.', code: 'CALLBACK-ROUTE-NOT-FOUND' });
   });
 
   await new Promise((resolve, reject) => {
