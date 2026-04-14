@@ -56,10 +56,6 @@ function normalizeTitleLoose(value) {
     .trim();
 }
 
-function normalizeFavoriteValue(value) {
-  return String(value || '').trim();
-}
-
 function normalizeIntlClalToken(value) {
   const text = String(value || '').trim();
   if (!text) {
@@ -482,7 +478,7 @@ async function parseFavoriteEditPage(html) {
       return;
     }
 
-    const value = normalizeFavoriteValue(input.attr('value'));
+    const value = String(input.attr('value') || '').trim();
     if (!value) {
       return;
     }
@@ -506,14 +502,10 @@ async function parseFavoriteEditPage(html) {
 }
 
 function resolveFavoriteSelections(page, desiredSongs) {
-  const byValue = new Map();
   const byNorm = new Map();
   const byLoose = new Map();
 
   for (const row of page.rows) {
-    if (!byValue.has(row.value)) {
-      byValue.set(row.value, row);
-    }
     if (row.norm && !byNorm.has(row.norm)) {
       byNorm.set(row.norm, row);
     }
@@ -531,13 +523,10 @@ function resolveFavoriteSelections(page, desiredSongs) {
   const disabled = [];
 
   for (const song of desiredSongs) {
-    let row = byValue.get(normalizeFavoriteValue(song.favoriteId)) || null;
-
-    if (!row) {
-      const norm = normalizeTitle(song.title);
-      if (norm) {
-        row = byNorm.get(norm) || null;
-      }
+    let row = null;
+    const norm = normalizeTitle(song.title);
+    if (norm) {
+      row = byNorm.get(norm) || null;
     }
 
     if (!row) {
@@ -545,8 +534,6 @@ function resolveFavoriteSelections(page, desiredSongs) {
       const bucket = loose ? byLoose.get(loose) || [] : [];
       if (bucket.length === 1) {
         row = bucket[0];
-      } else if (bucket.length > 1) {
-        row = bucket.find((entry) => normalizeTitle(entry.title) === normalizeTitle(song.title)) || null;
       }
     }
 
@@ -588,6 +575,31 @@ function buildFavoriteUpdateBody(preservedFields, selectedValues) {
   }
 
   return body;
+}
+
+function verifyFavoriteSelections(page, desiredSongs) {
+  const desiredNorms = new Set(
+    desiredSongs
+      .map((song) => normalizeTitle(song.title))
+      .filter(Boolean)
+  );
+  const checkedRows = page.rows.filter((row) => row.checked);
+  const checkedNorms = new Set(checkedRows.map((row) => row.norm).filter(Boolean));
+
+  return {
+    missingAfterApply: desiredSongs
+      .map((song) => song.title)
+      .filter((title) => {
+        const norm = normalizeTitle(title);
+        return norm && !checkedNorms.has(norm);
+      }),
+    unexpectedCheckedTitles: checkedRows
+      .map((row) => row.title)
+      .filter((title) => {
+        const norm = normalizeTitle(title);
+        return norm && !desiredNorms.has(norm);
+      })
+  };
 }
 
 async function updateFavoriteSelections(cookies, page, selectedValues) {
@@ -1012,6 +1024,7 @@ export async function applyIntlFavoritesFromClal(rawToken, desiredSongs) {
   const afterPage = await parseFavoriteEditPage(await fetchFavoriteEditHtml(cookies));
   const afterCheckedValues = new Set(afterPage.rows.filter((row) => row.checked).map((row) => row.value));
   const failed = selectedValues.filter((value) => !afterCheckedValues.has(value));
+  const verification = verifyFavoriteSelections(afterPage, desiredSongs);
 
   return {
     scannedRows: afterPage.rows.length,
@@ -1020,6 +1033,8 @@ export async function applyIntlFavoritesFromClal(rawToken, desiredSongs) {
     missing: resolved.missing,
     disabled: resolved.disabled,
     failedValues: failed,
+    missingAfterApply: verification.missingAfterApply,
+    unexpectedCheckedTitles: verification.unexpectedCheckedTitles,
     beforeChecked: beforeCheckedValues.size,
     totalChecked: afterCheckedValues.size,
     added: [...afterCheckedValues].filter((value) => !beforeCheckedValues.has(value)).length,

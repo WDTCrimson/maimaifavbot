@@ -418,6 +418,16 @@ async function handlePlaylistCommand(interaction) {
       if (report.failedValues.length) {
         lines.push(`Verification mismatches: ${report.failedValues.length}`);
       }
+      if (report.missingAfterApply.length) {
+        lines.push(
+          `Missing after apply: ${report.missingAfterApply.slice(0, 10).join(', ')}${report.missingAfterApply.length > 10 ? ', ...' : ''}`
+        );
+      }
+      if (report.unexpectedCheckedTitles.length) {
+        lines.push(
+          `Unexpected checked after apply: ${report.unexpectedCheckedTitles.slice(0, 10).join(', ')}${report.unexpectedCheckedTitles.length > 10 ? ', ...' : ''}`
+        );
+      }
 
       await replySafely(interaction, lines.join('\n'));
       return;
