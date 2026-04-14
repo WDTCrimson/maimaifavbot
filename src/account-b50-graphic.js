@@ -43,6 +43,25 @@ const DIFFICULTY_SHORT = {
   remaster: 'REMAS'
 };
 
+const VERSION_SETTINGS = {
+  10: {
+    character: { scaleX: 0.56, scaleY: 0.56, left: 1200 - 580, top: -100, opacity: 1.0 },
+    logoScale: 1.0
+  },
+  11: {
+    character: { scaleX: 0.7, scaleY: 0.7, left: 1200 - 520, top: -100, opacity: 1.0 },
+    logoScale: 1.0
+  },
+  12: {
+    character: { scaleX: 0.6, scaleY: 0.6, left: 1200 - 540, top: -30, opacity: 1.0 },
+    logoScale: 1.0
+  },
+  13: {
+    character: { scaleX: 0.65, scaleY: 0.65, left: 1200 - 540, top: -30, opacity: 1.0 },
+    logoScale: 1.2
+  }
+};
+
 function sanitizeFileName(text) {
   const value = String(text || '')
     .trim()
@@ -360,6 +379,38 @@ function resolveSectionLabelPath(bucket) {
   return join(process.cwd(), 'data', 'assets', 'tomomai', 'res', 'label', `${bucket}.png`);
 }
 
+function resolveTypeBadgeUrl(type) {
+  return String(type || '').toLowerCase() === 'dx'
+    ? 'https://maimaidx-eng.com/maimai-mobile/img/music/music_dx.png'
+    : 'https://maimaidx-eng.com/maimai-mobile/img/music/music_standard.png';
+}
+
+function resolveFcBadgePath(gameVersion, fc) {
+  return join(
+    process.cwd(),
+    'data',
+    'assets',
+    'tomomai',
+    'res',
+    'badge',
+    String(gameVersion),
+    `${String(fc || 'none').toLowerCase()}.png`
+  );
+}
+
+function resolveFsBadgePath(gameVersion, fs) {
+  return join(
+    process.cwd(),
+    'data',
+    'assets',
+    'tomomai',
+    'res',
+    'badge',
+    String(gameVersion),
+    `${String(fs || 'none').toLowerCase()}.png`
+  );
+}
+
 function sumRatings(entries) {
   return entries.reduce((sum, entry) => sum + (Number.isFinite(Number(entry?.rating)) ? Number(entry.rating) : 0), 0);
 }
@@ -384,7 +435,7 @@ function buildSectionSummary(label, entries) {
   return `${label}: ${entries.length} songs • ${total} total • ${entries.length ? (total / entries.length).toFixed(1) : '0.0'} avg`;
 }
 
-async function drawSongCard(ctx, cache, theme, fontFamily, card, x, y, width, height) {
+async function drawSongCard(ctx, cache, theme, fontFamily, card, x, y, width, height, gameVersion) {
   const jacketImage = await cache.get(card.imagePath);
   const difficultyColor = getDifficultyTextColor(theme, card.difficulty);
 
@@ -492,28 +543,177 @@ async function drawSongCard(ctx, cache, theme, fontFamily, card, x, y, width, he
   ctx.fillText(diffText, x + width - 10, y + 4);
   ctx.restore();
 
-  const badge = await cache.get(resolveDifficultyBadgePath(card.difficulty));
-  if (badge) {
-    drawImageContain(ctx, badge, x + 8, y + 8, 48, 16);
+  const typeBadge = await cache.get(resolveTypeBadgeUrl(card.type));
+  if (typeBadge) {
+    drawImageContain(ctx, typeBadge, x + 12, y + 12, typeBadge.width * 0.45, typeBadge.height * 0.45);
+  } else {
+    roundedRectPath(ctx, x + 12, y + 12, 38, 16, 8);
+    ctx.fillStyle = String(card.type || '').toLowerCase() === 'dx' ? '#f59e0b' : '#3b82f6';
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = `700 9px ${fontFamily}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(String(card.type || 'std').toUpperCase(), x + 31, y + 23);
+    ctx.textAlign = 'left';
   }
 
-  roundedRectPath(ctx, x + 12, y + 28, 34, 14, 7);
-  ctx.fillStyle = String(card.type || '').toLowerCase() === 'dx' ? '#f59e0b' : '#3b82f6';
-  ctx.fill();
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `700 9px ${fontFamily}`;
-  ctx.textAlign = 'center';
-  ctx.fillText(String(card.type || 'std').toUpperCase(), x + 29, y + 38);
-  ctx.textAlign = 'left';
-
-  ctx.fillStyle = theme.subtitleColor;
-  ctx.font = `600 12px ${fontFamily}`;
-  const fcFs = [card.fc && card.fc !== 'none' ? String(card.fc).toUpperCase() : null, card.fs && card.fs !== 'none' ? String(card.fs).toUpperCase() : null]
-    .filter(Boolean)
-    .join(' / ');
-  if (fcFs) {
-    ctx.fillText(fcFs, x + 12, y + 60);
+  const fcBadge = await cache.get(resolveFcBadgePath(gameVersion, card.fc));
+  const fsBadge = await cache.get(resolveFsBadgePath(gameVersion, card.fs));
+  const badgeScale = 0.6;
+  const badgeY = y + 52;
+  const badgeX = x + 10;
+  if (fcBadge) {
+    ctx.drawImage(fcBadge, badgeX, badgeY, fcBadge.width * badgeScale, fcBadge.height * badgeScale);
   }
+  if (fsBadge) {
+    const fcWidth = fcBadge ? fcBadge.width * badgeScale : 0;
+    ctx.drawImage(fsBadge, badgeX + fcWidth - 1, badgeY, fsBadge.width * badgeScale, fsBadge.height * badgeScale);
+  }
+}
+
+async function drawHeader(ctx, cache, fontFamily, account, visualVersion, width) {
+  const PADDING = 36;
+  const TARGET_HEIGHT = 204;
+  const TROPHY_FONT_SIZE = 18;
+  const NAME_FONT_SIZE = 28;
+  const PROFILE_IMG_RIGHT_MARGIN = 28;
+  const TROPHY_BOTTOM_MARGIN = 20;
+
+  const versionSettings = VERSION_SETTINGS[visualVersion] || VERSION_SETTINGS[10];
+  const headerOverlay = await cache.get(
+    join(process.cwd(), 'data', 'theme', 'tomomai', `character-${visualVersion}.png`)
+  );
+  if (headerOverlay) {
+    ctx.save();
+    ctx.globalAlpha = versionSettings.character.opacity;
+    ctx.beginPath();
+    ctx.rect(0, 0, width, TARGET_HEIGHT + PADDING * 2);
+    ctx.clip();
+    ctx.drawImage(
+      headerOverlay,
+      versionSettings.character.left,
+      versionSettings.character.top,
+      headerOverlay.width * versionSettings.character.scaleX,
+      headerOverlay.height * versionSettings.character.scaleY
+    );
+    ctx.restore();
+  }
+
+  const logo = await cache.get(
+    join(process.cwd(), 'data', 'theme', 'tomomai', `logo-${visualVersion}.png`)
+  );
+  if (logo && headerOverlay) {
+    const logoScale = ((TARGET_HEIGHT - 30 * 2) / logo.height) * versionSettings.logoScale;
+    const logoWidth = logo.width * logoScale;
+    const logoHeight = logo.height * logoScale;
+    const characterWidth = headerOverlay.width * versionSettings.character.scaleX;
+    const logoLeft = versionSettings.character.left + characterWidth / 2 - logoWidth / 2;
+    const logoTop = TARGET_HEIGHT - logoHeight / 2;
+    ctx.drawImage(logo, logoLeft, logoTop, logoWidth, logoHeight);
+  }
+
+  const profileImg = await cache.get(account.player?.iconUrl || account.extra?.iconUrl);
+  if (profileImg) {
+    const profileScale = TARGET_HEIGHT / profileImg.height;
+    const profileWidth = profileImg.width * profileScale;
+    ctx.drawImage(profileImg, PADDING, PADDING, profileWidth, TARGET_HEIGHT);
+
+    const trophyBackground = await cache.get(
+      join(
+        process.cwd(),
+        'data',
+        'assets',
+        'tomomai',
+        'res',
+        'trophy',
+        `${String(account.extra?.titleType || 'normal').toLowerCase()}.png`
+      )
+    );
+    const trophyLeft = PADDING + PROFILE_IMG_RIGHT_MARGIN + profileWidth;
+    const trophyTop = PADDING;
+    let trophyWidth = 0;
+    let trophyHeight = 0;
+    if (trophyBackground) {
+      const trophyScale = 1.6;
+      trophyWidth = trophyBackground.width * trophyScale;
+      trophyHeight = trophyBackground.height * trophyScale;
+      ctx.drawImage(trophyBackground, trophyLeft, trophyTop, trophyWidth, trophyHeight);
+
+      const title = String(account.player?.title || account.extra?.title || '').trim();
+      ctx.font = `450 ${TROPHY_FONT_SIZE}px ${fontFamily}`;
+      const trophyTextWidth = ctx.measureText(title).width;
+      const trophyTextLeft = trophyLeft + trophyWidth / 2 - trophyTextWidth / 2;
+      const trophyTextTop = trophyTop + trophyHeight / 2 - TROPHY_FONT_SIZE / 2 - 2;
+      ctx.strokeStyle = '#111111';
+      ctx.lineWidth = 4;
+      ctx.strokeText(title, trophyTextLeft, trophyTextTop + TROPHY_FONT_SIZE);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(title, trophyTextLeft, trophyTextTop + TROPHY_FONT_SIZE);
+    }
+
+    const nameRectWidth = trophyWidth || 340;
+    const nameRectHeight = trophyHeight + NAME_FONT_SIZE || 74;
+    const nameRectLeft = trophyLeft;
+    const nameRectTop = trophyTop + (trophyHeight || 54) + TROPHY_BOTTOM_MARGIN;
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = 'black';
+    roundedRectPath(ctx, nameRectLeft, nameRectTop, nameRectWidth, nameRectHeight, 10);
+    ctx.fill();
+    ctx.restore();
+
+    const displayName = String(account.player?.name || 'Unknown Player');
+    ctx.font = `700 ${NAME_FONT_SIZE}px ${fontFamily}`;
+    const nameTextWidth = ctx.measureText(displayName).width;
+    const nameTextLeft = nameRectLeft + nameRectWidth / 2 - nameTextWidth / 2;
+    const nameTextTop = nameRectTop + nameRectHeight / 2 - NAME_FONT_SIZE / 2;
+    ctx.fillStyle = '#f9f0f4';
+    ctx.fillText(displayName, nameTextLeft, nameTextTop + NAME_FONT_SIZE / 2 + 10);
+
+    const ratingFrame = await cache.get(resolveRatingPlatePath(account.metrics?.rating, visualVersion));
+    if (ratingFrame) {
+      const ratingScale = 0.75;
+      const ratingWidth = ratingFrame.width * ratingScale;
+      const ratingHeight = ratingFrame.height * ratingScale;
+      const ratingLeft = nameRectLeft - 2;
+      const ratingTop = nameRectTop + nameRectHeight + TROPHY_BOTTOM_MARGIN - 2;
+      ctx.drawImage(ratingFrame, ratingLeft, ratingTop, ratingWidth, ratingHeight);
+
+      ctx.font = `600 ${ratingHeight * 0.53}px ${fontFamily}`;
+      ctx.fillStyle = '#f9f0f4';
+      let digitLeft = ratingLeft + ratingWidth * 0.43;
+      for (const char of String(Math.round(account.metrics?.rating || 0))) {
+        ctx.fillText(char, digitLeft, ratingTop + ratingHeight * 0.19 + ratingHeight * 0.53);
+        digitLeft += 23;
+      }
+
+      const classRank = await cache.get(account.extra?.classRankUrl || null);
+      if (classRank) {
+        const scale = 0.7;
+        const w = classRank.width * scale;
+        const h = classRank.height * scale;
+        const left = ratingLeft + ratingWidth + 10;
+        const top = ratingTop + ratingHeight / 2 - h / 2;
+        ctx.drawImage(classRank, left, top, w, h);
+      }
+
+      const courseRank = await cache.get(account.extra?.courseRankUrl || null);
+      if (courseRank) {
+        const scale = 0.6;
+        const w = courseRank.width * scale;
+        const h = courseRank.height * scale;
+        const classRankLeft = ratingLeft + ratingWidth + 10 + (classRank ? classRank.width * 0.7 + 10 : 0);
+        const top = ratingTop + ratingHeight / 2 - h / 2;
+        ctx.drawImage(courseRank, classRankLeft, top, w, h);
+      }
+    }
+  }
+
+  const gradient = ctx.createLinearGradient(0, 2100, 0, 0);
+  gradient.addColorStop(1, '#00000020');
+  gradient.addColorStop(0, '#00000020');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, TARGET_HEIGHT + PADDING * 2, width, 2100 - (TARGET_HEIGHT + PADDING * 2));
 }
 
 export async function renderAccountB50Graphic({ account, songCatalog, themeDir }) {
@@ -535,15 +735,7 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
       (await resolveThemeAsset(resolvedDir, `logo-${visualVersion}`)) ||
       (await resolveThemeAsset(resolvedDir, 'logo')),
     ratingPlate: resolveRatingPlatePath(account.metrics?.rating, visualVersion),
-    titleTrophy: join(
-      process.cwd(),
-      'data',
-      'assets',
-      'tomomai',
-      'res',
-      'trophy',
-      `${String(account.extra?.titleType || 'normal').toLowerCase()}.png`
-    ),
+    titleTrophy: join(process.cwd(), 'data', 'assets', 'tomomai', 'res', 'trophy', `${String(account.extra?.titleType || 'normal').toLowerCase()}.png`),
     profileIcon: account.player?.iconUrl || account.extra?.iconUrl || null,
     classRank: account.extra?.classRankUrl || null,
     courseRank: account.extra?.courseRankUrl || null
@@ -575,9 +767,11 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
     assets.profileIcon,
     assets.classRank,
     assets.courseRank,
+    ...[...b15, ...b35].map((entry) => resolveTypeBadgeUrl(entry.type)),
+    ...[...b15, ...b35].map((entry) => resolveFcBadgePath(visualVersion, entry.fc)),
+    ...[...b15, ...b35].map((entry) => resolveFsBadgePath(visualVersion, entry.fs)),
     ...b15.map((entry) => entry.imagePath),
     ...b35.map((entry) => entry.imagePath),
-    ...[...b15, ...b35].map((entry) => resolveDifficultyBadgePath(entry.difficulty)),
     resolveSectionLabelPath('new'),
     resolveSectionLabelPath('old')
   ]);
@@ -589,85 +783,21 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
     drawFallbackBackground(ctx, width, height, theme);
   }
 
-  const overlayTop = 276;
-  const gradient = ctx.createLinearGradient(0, height, 0, 0);
-  gradient.addColorStop(1, '#00000020');
-  gradient.addColorStop(0, '#00000020');
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, overlayTop, width, height - overlayTop);
-
-  const headerOverlay = await imageCache.get(assets.headerOverlay);
-  if (headerOverlay) {
-    ctx.save();
-    ctx.globalAlpha = 0.95;
-    drawImageContain(ctx, headerOverlay, width - 540, -30, 360, 260);
-    ctx.restore();
-  }
-
-  const logo = await imageCache.get(assets.logo);
-  if (logo) {
-    drawImageContain(ctx, logo, width - 530, 120, 320, 110);
-  }
-
-  const icon = await imageCache.get(assets.profileIcon);
-  const trophy = await imageCache.get(assets.titleTrophy);
-  const ratingPlate = await imageCache.get(assets.ratingPlate);
-  const classRank = await imageCache.get(assets.classRank);
-  const courseRank = await imageCache.get(assets.courseRank);
-
-  if (icon) {
-    drawImageContain(ctx, icon, 36, 36, 204, 204);
-  }
-
-  if (trophy) {
-    drawImageContain(ctx, trophy, 272, 36, 345, 74);
-    ctx.fillStyle = '#f9f0f4';
-    ctx.font = `450 18px ${fontFamily}`;
-    const title = trimText(String(account.player?.title || account.extra?.title || ''), 40);
-    const trophyTextWidth = ctx.measureText(title).width;
-    ctx.fillText(title, 272 + 345 / 2 - trophyTextWidth / 2, 82);
-  }
-
-  roundedRectPath(ctx, 272, 130, 345, 74, 10);
-  ctx.save();
-  ctx.globalAlpha = 0.2;
-  ctx.fillStyle = 'black';
-  ctx.fill();
-  ctx.restore();
-  ctx.fillStyle = '#f9f0f4';
-  ctx.font = `700 28px ${fontFamily}`;
-  const playerName = trimText(String(account.player?.name || 'Unknown Player'), 24);
-  const playerNameWidth = ctx.measureText(playerName).width;
-  ctx.fillText(playerName, 272 + 345 / 2 - playerNameWidth / 2, 174);
-
-  if (ratingPlate) {
-    drawImageContain(ctx, ratingPlate, 270, 220, 160, 46);
-    ctx.fillStyle = '#f9f0f4';
-    ctx.font = `600 24px ${fontFamily}`;
-    ctx.textAlign = 'right';
-    ctx.fillText(String(Math.round(account.metrics?.rating || 0)), 270 + 130, 251);
-    ctx.textAlign = 'left';
-  }
-
-  if (classRank) {
-    drawImageContain(ctx, classRank, 442, 218, 70, 52);
-  }
-  if (courseRank) {
-    drawImageContain(ctx, courseRank, 522, 220, 64, 46);
-  }
+  await drawHeader(ctx, imageCache, fontFamily, account, visualVersion, width);
 
   ctx.fillStyle = '#ffffff';
   ctx.font = `600 14px ${fontFamily}`;
   ctx.fillText(`B15 ${b15.length}/15`, 36, 316);
   ctx.fillText(`B35 ${b35.length}/35`, 36, 856);
 
+  const overlayTop = 276;
   const b15YOffset = 60;
   for (let index = 0; index < b15.length; index += 1) {
     const col = index % columns;
     const row = Math.floor(index / columns);
     const x = overlayLeft + col * (cardWidth + cardGap);
     const y = overlayTop + b15YOffset + row * (cardHeight + 2 + cardGap);
-    await drawSongCard(ctx, imageCache, theme, fontFamily, b15[index], x, y, cardWidth, cardHeight);
+    await drawSongCard(ctx, imageCache, theme, fontFamily, b15[index], x, y, cardWidth, cardHeight, visualVersion);
   }
 
   const b35YOffset = 110;
@@ -677,7 +807,7 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
     const row = Math.floor(absoluteIndex / columns);
     const x = overlayLeft + col * (cardWidth + cardGap);
     const y = overlayTop + b35YOffset + row * (cardHeight + 2 + cardGap);
-    await drawSongCard(ctx, imageCache, theme, fontFamily, b35[index], x, y, cardWidth, cardHeight);
+    await drawSongCard(ctx, imageCache, theme, fontFamily, b35[index], x, y, cardWidth, cardHeight, visualVersion);
   }
 
   ctx.fillStyle = '#ffffffaa';
