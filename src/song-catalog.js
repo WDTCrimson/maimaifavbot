@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 const DEFAULT_PLAYLIST_ID_MAP_FILE = './data/reference/playlist-id-map.json';
+const SEARCH_CACHE_LIMIT = 200;
 
 function normalizeText(value) {
   return String(value || '')
@@ -91,6 +92,31 @@ function buildSongLabel(song) {
   return truncate(`${prefix} ${body}`, 100);
 }
 
+function insertRankedResult(results, candidate, limit) {
+  let inserted = false;
+
+  for (let index = 0; index < results.length; index += 1) {
+    const existing = results[index];
+    if (
+      candidate.score > existing.score ||
+      (candidate.score === existing.score &&
+        candidate.song.title.localeCompare(existing.song.title) < 0)
+    ) {
+      results.splice(index, 0, candidate);
+      inserted = true;
+      break;
+    }
+  }
+
+  if (!inserted) {
+    results.push(candidate);
+  }
+
+  if (results.length > limit) {
+    results.length = limit;
+  }
+}
+
 export class SongCatalog {
   constructor(filePath) {
     this.filePath = filePath;
@@ -102,6 +128,9 @@ export class SongCatalog {
     this.bySongId = new Map();
     this.byFavoriteId = new Map();
     this.byLegacyFavoriteId = new Map();
+    this.byNormTitle = new Map();
+    this.byNormTitleArtist = new Map();
+    this.searchCache = new Map();
   }
 
   async ensureReady() {
@@ -134,6 +163,8 @@ export class SongCatalog {
       const bySongId = new Map();
       const byFavoriteId = new Map();
       const byLegacyFavoriteId = new Map();
+      const byNormTitle = new Map();
+      const byNormTitleArtist = new Map();
 
       for (const sourceSong of sourceSongs) {
         const playlistKey = `${normalizeText(sourceSong.title)}::${normalizeText(sourceSong.artist)}`;
@@ -185,10 +216,22 @@ export class SongCatalog {
         }
       }
 
+      this.songs = [...bySongId.values()].sort((a, b) => a.title.localeCompare(b.title));
+
+      for (const song of this.songs) {
+        const titleMatches = byNormTitle.get(song.normTitle) || [];
+        titleMatches.push(song);
+        byNormTitle.set(song.normTitle, titleMatches);
+
+        byNormTitleArtist.set(`${song.normTitle}::${song.normArtist}`, song);
+      }
+
       this.bySongId = bySongId;
       this.byFavoriteId = byFavoriteId;
       this.byLegacyFavoriteId = byLegacyFavoriteId;
-      this.songs = [...bySongId.values()].sort((a, b) => a.title.localeCompare(b.title));
+      this.byNormTitle = byNormTitle;
+      this.byNormTitleArtist = byNormTitleArtist;
+      this.searchCache = new Map();
       this.available = true;
       this.error = null;
     } catch (error) {
@@ -197,6 +240,9 @@ export class SongCatalog {
       this.bySongId = new Map();
       this.byFavoriteId = new Map();
       this.byLegacyFavoriteId = new Map();
+      this.byNormTitle = new Map();
+      this.byNormTitleArtist = new Map();
+      this.searchCache = new Map();
       this.songs = [];
     } finally {
       this.loaded = true;
@@ -243,23 +289,75 @@ export class SongCatalog {
     return this.getBySongId(songId) || this.getByFavoriteId(songId) || this.getByLegacyFavoriteId(songId);
   }
 
+  getByNormalizedTitle(normalizedTitle) {
+    const key = normalizeText(normalizedTitle);
+    return this.byNormTitle.get(key) || [];
+  }
+
+  getUniqueByNormalizedTitle(normalizedTitle) {
+    const matches = this.getByNormalizedTitle(normalizedTitle);
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  getByNormalizedTitleArtist(normalizedTitle, normalizedArtist) {
+    const title = normalizeText(normalizedTitle);
+    const artist = normalizeText(normalizedArtist);
+    if (!title || !artist) {
+      return null;
+    }
+    return this.byNormTitleArtist.get(`${title}::${artist}`) || null;
+  }
+
   search(query, limit = 10) {
     this.requireAvailable();
     const normalized = normalizeText(query);
+    const safeLimit = Math.max(1, Number(limit) || 10);
 
-    const ranked = this.songs
-      .map((song) => ({ song, score: scoreSong(song, normalized) }))
-      .filter((item) => item.score > 0)
-      .sort((a, b) => {
-        if (b.score !== a.score) {
-          return b.score - a.score;
-        }
-        return a.song.title.localeCompare(b.song.title);
-      })
-      .slice(0, limit)
-      .map((item) => item.song);
+    if (!normalized) {
+      return this.songs.slice(0, safeLimit);
+    }
 
-    return ranked;
+    const cacheKey = `${normalized}::${safeLimit}`;
+    const cached = this.searchCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    const direct = this.getByStoredId(normalized);
+    if (direct) {
+      const directResults = [direct];
+      this.searchCache.set(cacheKey, directResults);
+      return directResults;
+    }
+
+    const ranked = [];
+    for (const song of this.songs) {
+      const score = scoreSong(song, normalized);
+      if (score <= 0) {
+        continue;
+      }
+
+      if (ranked.length < safeLimit) {
+        insertRankedResult(ranked, { song, score }, safeLimit);
+        continue;
+      }
+
+      const weakest = ranked[ranked.length - 1];
+      if (
+        score > weakest.score ||
+        (score === weakest.score && song.title.localeCompare(weakest.song.title) < 0)
+      ) {
+        insertRankedResult(ranked, { song, score }, safeLimit);
+      }
+    }
+
+    const results = ranked.map((item) => item.song);
+    this.searchCache.set(cacheKey, results);
+    if (this.searchCache.size > SEARCH_CACHE_LIMIT) {
+      const oldestKey = this.searchCache.keys().next().value;
+      this.searchCache.delete(oldestKey);
+    }
+    return results;
   }
 
   resolveSong(query) {

@@ -48,8 +48,7 @@ function normalizeSources(value) {
 }
 
 function uniqueExactTitleSong(songCatalog, normalizedTitle) {
-  const matches = songCatalog.songs.filter((song) => song.normTitle === normalizedTitle);
-  return matches.length === 1 ? matches[0] : null;
+  return songCatalog.getUniqueByNormalizedTitle(normalizedTitle);
 }
 
 function resolveRecommendedSong(songCatalog, rawEntry) {
@@ -61,9 +60,7 @@ function resolveRecommendedSong(songCatalog, rawEntry) {
   const normalizedArtist = normalizeText(rawEntry.artist);
 
   if (normalizedTitle && normalizedArtist) {
-    const exact = songCatalog.songs.find(
-      (song) => song.normTitle === normalizedTitle && song.normArtist === normalizedArtist
-    );
+    const exact = songCatalog.getByNormalizedTitleArtist(normalizedTitle, normalizedArtist);
     if (exact) {
       return exact;
     }

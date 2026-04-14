@@ -1771,11 +1771,11 @@ function resolveSongIdFromImportedTitle(title) {
     return { songId: null, reason: 'not_found' };
   }
 
-  const exactMatches = songCatalog.songs.filter((song) => song.normTitle === normalized);
-  if (exactMatches.length === 1) {
-    return { songId: exactMatches[0].songId, reason: 'exact' };
+  const exactMatch = songCatalog.getUniqueByNormalizedTitle(normalized);
+  if (exactMatch) {
+    return { songId: exactMatch.songId, reason: 'exact' };
   }
-  if (exactMatches.length > 1) {
+  if (songCatalog.getByNormalizedTitle(normalized).length > 1) {
     return { songId: null, reason: 'ambiguous' };
   }
 
@@ -1897,6 +1897,8 @@ function buildSafeAttachmentName(prefix, filename) {
   return `${safePrefix}-${filename}`;
 }
 
+const artworkPathCache = new Map();
+
 async function resolveArtworkAttachment(song, namePrefix = '') {
   const candidates = [
     song.jacket?.dxratingFile
@@ -1908,18 +1910,21 @@ async function resolveArtworkAttachment(song, namePrefix = '') {
   ].filter(Boolean);
 
   for (const path of candidates) {
-    try {
-      const fileStat = await stat(path);
-      if (!fileStat.isFile()) {
-        continue;
-      }
+    if (!artworkPathCache.has(path)) {
+      artworkPathCache.set(
+        path,
+        stat(path)
+          .then((fileStat) => fileStat.isFile())
+          .catch(() => false)
+      );
+    }
+
+    if (await artworkPathCache.get(path)) {
       const filename = buildSafeAttachmentName(namePrefix, basename(path));
       return {
         attachment: new AttachmentBuilder(path, { name: filename }),
         imageUrl: `attachment://${filename}`
       };
-    } catch {
-      // try next
     }
   }
 
@@ -2314,18 +2319,15 @@ async function replyPlaylistShow(interaction, playlist) {
   const chunks = chunkArray(entries, 10);
   for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex += 1) {
     const chunk = chunks[chunkIndex];
-    const embeds = [];
-    const files = [];
-
-    for (let songIndex = 0; songIndex < chunk.length; songIndex += 1) {
-      const song = chunk[songIndex];
-      const artwork = await resolveArtworkAttachment(song, `show-${chunkIndex}-${songIndex}`);
-      const embed = createSongEmbed(song, playlist, artwork?.imageUrl);
-      embeds.push(embed);
-      if (artwork) {
-        files.push(artwork.attachment);
-      }
-    }
+    const artworkEntries = await Promise.all(
+      chunk.map((song, songIndex) =>
+        resolveArtworkAttachment(song, `show-${chunkIndex}-${songIndex}`)
+      )
+    );
+    const embeds = chunk.map((song, songIndex) =>
+      createSongEmbed(song, playlist, artworkEntries[songIndex]?.imageUrl)
+    );
+    const files = artworkEntries.filter(Boolean).map((artwork) => artwork.attachment);
 
     const payload = {
       embeds
