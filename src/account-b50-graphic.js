@@ -258,9 +258,9 @@ function createImageCache() {
               return null;
             }
             const arrayBuffer = await response.arrayBuffer();
-            return loadImage(Buffer.from(arrayBuffer));
+            return await loadImage(Buffer.from(arrayBuffer));
           }
-          return loadImage(path);
+          return await loadImage(path);
         } catch {
           return null;
         }
