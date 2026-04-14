@@ -1,6 +1,6 @@
 import { stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
-import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits } from 'discord.js';
+import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
 import {
   accountLinkCallbackServerEnabled,
@@ -393,7 +393,7 @@ async function handlePlaylistCommand(interaction) {
     }
 
     case 'apply': {
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       songCatalog.requireAvailable();
       const name = interaction.options.getString('name', true);
       const playlist = store.getLoadout(userId, name);
@@ -617,7 +617,7 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      await interaction.deferReply({ ephemeral: true });
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
       const linkedAuth = restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret);
       if (!linkedAuth || linkedAuth.region !== 'intl' || linkedAuth.type !== 'clal') {
@@ -2332,11 +2332,11 @@ async function replySafely(interaction, content) {
 
 async function replyPayload(interaction, payload) {
   if (interaction.deferred || interaction.replied) {
-    await interaction.followUp({ ...payload, ephemeral: true });
+    await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral });
     return;
   }
 
-  await interaction.reply({ ...payload, ephemeral: true });
+  await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
 }
 
 process.on('unhandledRejection', (error) => {

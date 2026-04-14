@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import { existsSync } from 'node:fs';
 
-dotenv.config();
+dotenv.config({ quiet: true });
 
 function requireEnv(name) {
   const value = process.env[name];
