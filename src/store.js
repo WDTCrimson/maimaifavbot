@@ -242,6 +242,68 @@ export class LoadoutStore {
     };
   }
 
+  async scrubAccountLinkState(now = Date.now()) {
+    let changed = false;
+    let accountsScrubbed = 0;
+    let sessionsDeleted = 0;
+    let sessionFieldsRemoved = 0;
+
+    for (const user of Object.values(this.state.users || {})) {
+      if (!user || typeof user !== 'object' || !user.account || typeof user.account !== 'object') {
+        continue;
+      }
+
+      if (Object.prototype.hasOwnProperty.call(user.account, 'linkSession')) {
+        delete user.account.linkSession;
+        changed = true;
+        accountsScrubbed += 1;
+      }
+    }
+
+    const sessions = this.getAccountLinkSessions();
+    for (const [token, session] of Object.entries(sessions)) {
+      if (!session || typeof session !== 'object') {
+        delete sessions[token];
+        changed = true;
+        sessionsDeleted += 1;
+        continue;
+      }
+
+      if (session.status !== 'pending') {
+        delete sessions[token];
+        changed = true;
+        sessionsDeleted += 1;
+        continue;
+      }
+
+      for (const field of ['linkUrl', 'callbackUrl', 'provider', 'playerName', 'accountUpdatedAt', 'completedAt']) {
+        if (Object.prototype.hasOwnProperty.call(session, field)) {
+          delete session[field];
+          changed = true;
+          sessionFieldsRemoved += 1;
+        }
+      }
+
+      const expiresAt = Date.parse(session.expiresAt || '');
+      if (!Number.isFinite(expiresAt) || expiresAt <= now) {
+        delete sessions[token];
+        changed = true;
+        sessionsDeleted += 1;
+      }
+    }
+
+    if (changed) {
+      await this.save();
+    }
+
+    return {
+      changed,
+      accountsScrubbed,
+      sessionsDeleted,
+      sessionFieldsRemoved
+    };
+  }
+
   getUser(userId) {
     if (!this.state.users[userId]) {
       this.state.users[userId] = { loadouts: {}, account: null };
@@ -276,12 +338,14 @@ export class LoadoutStore {
     const user = this.getUser(userId);
     const now = new Date().toISOString();
     const previous = user.account || null;
-
-    user.account = {
+    const nextAccount = {
       ...account,
       linkedAt: previous?.linkedAt || account.linkedAt || now,
       updatedAt: now
     };
+    delete nextAccount.linkSession;
+
+    user.account = nextAccount;
 
     await this.save();
     return user.account;
@@ -331,8 +395,21 @@ export class LoadoutStore {
         continue;
       }
 
+      if (session.status !== 'pending') {
+        delete sessions[token];
+        changed = true;
+        continue;
+      }
+
+      for (const field of ['linkUrl', 'callbackUrl', 'provider', 'playerName', 'accountUpdatedAt', 'completedAt']) {
+        if (Object.prototype.hasOwnProperty.call(session, field)) {
+          delete session[field];
+          changed = true;
+        }
+      }
+
       const expiresAt = Date.parse(session.expiresAt || '');
-      if (session.status === 'pending' && (!Number.isFinite(expiresAt) || expiresAt <= now)) {
+      if (!Number.isFinite(expiresAt) || expiresAt <= now) {
         delete sessions[token];
         changed = true;
       }
@@ -363,9 +440,7 @@ export class LoadoutStore {
       userId,
       status: 'pending',
       createdAt: session.createdAt,
-      expiresAt: session.expiresAt,
-      linkUrl: session.linkUrl || null,
-      callbackUrl: session.callbackUrl || null
+      expiresAt: session.expiresAt
     };
 
     await this.save();
@@ -378,14 +453,17 @@ export class LoadoutStore {
       return null;
     }
 
-    session.status = 'completed';
-    session.completedAt = details.completedAt || new Date().toISOString();
-    session.provider = details.provider || session.provider || null;
-    session.playerName = details.playerName || session.playerName || null;
-    session.accountUpdatedAt = details.accountUpdatedAt || null;
+    const completedSession = {
+      token: session.token,
+      userId: session.userId,
+      createdAt: session.createdAt,
+      expiresAt: session.expiresAt,
+      completedAt: details.completedAt || new Date().toISOString()
+    };
 
+    delete this.getAccountLinkSessions()[token];
     await this.save();
-    return session;
+    return completedSession;
   }
 
   listLoadouts(userId) {

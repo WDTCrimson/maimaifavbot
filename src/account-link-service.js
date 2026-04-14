@@ -145,26 +145,16 @@ export async function startAccountLinkCallbackServer({
         const storedAccount = await store.setAccount(session.userId, {
           ...normalizedAccount,
           linkMethod: 'web',
-          linkedAuth,
-          linkSession: {
-            reference: `${session.token.slice(0, 4)}...${session.token.slice(-4)}`,
-            createdAt: session.createdAt,
-            expiresAt: session.expiresAt,
-            completedAt: new Date().toISOString()
-          }
+          linkedAuth
         });
 
         await store.completeAccountLinkSession(token, {
-          completedAt: new Date().toISOString(),
-          provider: storedAccount.provider,
-          playerName: storedAccount.player?.name || null,
-          accountUpdatedAt: storedAccount.updatedAt
+          completedAt: new Date().toISOString()
         });
 
         writeJson(response, 200, {
           ok: true,
-          provider: storedAccount.provider,
-          playerName: storedAccount.player?.name || null
+          provider: storedAccount.provider
         });
       } catch (error) {
         const reference = createCallbackErrorCode();

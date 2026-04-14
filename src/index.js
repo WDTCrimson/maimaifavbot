@@ -22,6 +22,13 @@ import { LoadoutStore } from './store.js';
 const store = new LoadoutStore(config.dataFile, limits);
 await store.ensureReady();
 
+const accountLinkStateScrub = await store.scrubAccountLinkState();
+if (accountLinkStateScrub.changed) {
+  console.log(
+    `Scrubbed stored account-link state. Accounts cleaned: ${accountLinkStateScrub.accountsScrubbed}, sessions deleted: ${accountLinkStateScrub.sessionsDeleted}, session fields removed: ${accountLinkStateScrub.sessionFieldsRemoved}`
+  );
+}
+
 const songCatalog = new SongCatalog(config.songCatalogFile);
 await songCatalog.ensureReady();
 
@@ -599,8 +606,9 @@ async function handleAccountCommand(interaction) {
 
       if (!account) {
         if (pendingSession) {
+          const pendingLinkUrl = buildAccountLinkUrlForSession(pendingSession);
           await replyPayload(interaction, {
-            content: pendingSession.linkUrl || undefined,
+            content: pendingLinkUrl || undefined,
             embeds: [buildPendingAccountLinkEmbed(pendingSession)]
           });
           return;
@@ -665,8 +673,7 @@ async function handleAccountCommand(interaction) {
         ...refreshed.snapshot,
         provider: account.provider || refreshed.snapshot.provider,
         linkMethod: account.linkMethod || refreshed.snapshot.linkMethod,
-        linkedAuth: account.linkedAuth,
-        linkSession: account.linkSession || null
+        linkedAuth: account.linkedAuth
       });
 
       await replyPayload(interaction, {
@@ -890,11 +897,35 @@ async function createPendingAccountLinkSession(userId) {
     signature
   });
 
-  return store.createAccountLinkSession(userId, {
+  const session = await store.createAccountLinkSession(userId, {
     token,
     createdAt,
-    expiresAt,
+    expiresAt
+  });
+  return {
+    ...session,
     linkUrl
+  };
+}
+
+function buildAccountLinkUrlForSession(session) {
+  const token = String(session?.token || '').trim();
+  const expiresAt = String(session?.expiresAt || '').trim();
+  if (!token || !expiresAt || !config.accountLinkBaseUrl || !config.accountLinkSigningSecret) {
+    return null;
+  }
+
+  const signature = createAccountLinkSignature({
+    token,
+    expiresAt,
+    signingSecret: config.accountLinkSigningSecret
+  });
+
+  return buildAccountLinkUrl({
+    baseUrl: config.accountLinkBaseUrl,
+    token,
+    expiresAt,
+    signature
   });
 }
 
@@ -2158,12 +2189,7 @@ function buildAccountStatusEmbed(account) {
   const timelineLines = [
     `Linked: ${formatDateTime(account.linkedAt)}`,
     `Updated: ${formatDateTime(account.updatedAt)}`,
-    account.sourceFetchedAt ? `Source fetched: ${formatDateTime(account.sourceFetchedAt)}` : null,
-    account.linkedAuth?.region ? `Sync auth: ${String(account.linkedAuth.region).toUpperCase()} ${String(account.linkedAuth.type || 'unknown').toUpperCase()}` : null,
-    account.linkSession?.reference ? `Session: ${account.linkSession.reference}` : null,
-    account.linkSession?.completedAt
-      ? `Link completed: ${formatDateTime(account.linkSession.completedAt)}`
-      : null
+    account.sourceFetchedAt ? `Source fetched: ${formatDateTime(account.sourceFetchedAt)}` : null
   ].filter(Boolean);
 
   const best50Lines = buildAccountBest50Lines(account.best50);
