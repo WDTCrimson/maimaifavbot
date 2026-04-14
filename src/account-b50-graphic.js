@@ -250,10 +250,21 @@ function createImageCache() {
       return null;
     }
     if (!cache.has(path)) {
-      cache.set(
-        path,
-        loadImage(path).catch(() => null)
-      );
+      cache.set(path, (async () => {
+        try {
+          if (/^https?:\/\//i.test(path) || /^data:/i.test(path)) {
+            const response = await fetch(path);
+            if (!response.ok) {
+              return null;
+            }
+            const arrayBuffer = await response.arrayBuffer();
+            return loadImage(Buffer.from(arrayBuffer));
+          }
+          return loadImage(path);
+        } catch {
+          return null;
+        }
+      })());
     }
     return cache.get(path);
   }
@@ -361,7 +372,8 @@ async function buildRenderEntries(entries, songCatalog) {
         ...entry,
         index,
         imagePath: await resolveSongImagePath(song),
-        jacketSong: song
+        jacketSong: song,
+        bucket: entry.bucket || 'old'
       };
     })
   );
@@ -373,103 +385,135 @@ function buildSectionSummary(label, entries) {
 }
 
 async function drawSongCard(ctx, cache, theme, fontFamily, card, x, y, width, height) {
-  roundedRectPath(ctx, x, y, width, height, 16);
-  ctx.fillStyle = theme.cardFill;
-  ctx.globalAlpha = Number(theme.cardFillOpacity) || 0.78;
-  ctx.fill();
-  ctx.globalAlpha = 1;
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = theme.cardStroke;
-  ctx.stroke();
-
-  roundedRectPath(ctx, x + 10, y + 10, width - 20, 22, 8);
-  ctx.fillStyle = theme.cardTitleBar;
-  ctx.fill();
-
-  const labelImage = await cache.get(resolveSectionLabelPath(card.bucket));
-  if (labelImage) {
-    drawImageContain(ctx, labelImage, x + width - 64, y + 8, 48, 24);
-  }
-
-  ctx.fillStyle = theme.titleColor;
-  ctx.font = `700 12px ${fontFamily}`;
-  ctx.fillText(`#${card.index + 1}`, x + 18, y + 25);
-
-  const jacketSize = 88;
-  const jacketX = x + 16;
-  const jacketY = y + 42;
-
-  roundedRectPath(ctx, jacketX, jacketY, jacketSize, jacketSize, 10);
-  ctx.save();
-  ctx.clip();
   const jacketImage = await cache.get(card.imagePath);
+  const difficultyColor = getDifficultyTextColor(theme, card.difficulty);
+
+  ctx.save();
+  roundedRectPath(ctx, x, y, width, height, 10);
+  ctx.clip();
   if (jacketImage) {
-    drawImageCover(ctx, jacketImage, jacketX, jacketY, jacketSize, jacketSize);
+    drawImageCover(ctx, jacketImage, x - 4, y - 4, width + 8, height + 8);
   } else {
-    ctx.fillStyle = '#3d2748';
-    ctx.fillRect(jacketX, jacketY, jacketSize, jacketSize);
-    ctx.fillStyle = '#f7d5eb';
-    ctx.font = `700 12px ${fontFamily}`;
-    ctx.textAlign = 'center';
-    ctx.fillText('NO', jacketX + jacketSize / 2, jacketY + 38);
-    ctx.fillText('JACKET', jacketX + jacketSize / 2, jacketY + 54);
-    ctx.textAlign = 'left';
+    ctx.fillStyle = '#43253e';
+    ctx.fillRect(x, y, width, height);
   }
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = '#00000026';
+  ctx.shadowBlur = 10;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
+  const coverGradient = ctx.createLinearGradient(0, y + height, 0, y);
+  coverGradient.addColorStop(0, '#0000003c');
+  coverGradient.addColorStop(0.5, '#00000029');
+  coverGradient.addColorStop(1, '#0000001c');
+  ctx.fillStyle = coverGradient;
+  ctx.strokeStyle = difficultyColor;
+  ctx.lineWidth = 4;
+  roundedRectPath(ctx, x, y, width, height, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  const infoHeight = 70;
+  const infoGradient = ctx.createLinearGradient(0, y + height, 0, y + height - infoHeight);
+  infoGradient.addColorStop(0, '#00000060');
+  infoGradient.addColorStop(1, '#00000000');
+  ctx.save();
+  ctx.globalAlpha = 0.3;
+  roundedRectPath(ctx, x, y, width, height, 10);
+  ctx.clip();
+  ctx.fillStyle = infoGradient;
+  ctx.fillRect(x, y + height - infoHeight, width, infoHeight);
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = '#000000';
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetX = 4;
+  ctx.shadowOffsetY = 4;
+  ctx.font = `700 18px ${fontFamily}`;
+  ctx.fillStyle = '#f5f5f5';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.beginPath();
+  ctx.rect(x + 2, y + 2, width - 14, height - 14);
+  ctx.clip();
+  ctx.fillText(trimTextToWidth(ctx, card.title || 'Unknown Song', width - 24), x + 12, y + height - 39);
+  ctx.shadowColor = '#00000030';
+  ctx.fillText(trimTextToWidth(ctx, card.title || 'Unknown Song', width - 24), x + 12, y + height - 39);
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = '#000000';
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
+  ctx.font = `550 16px ${fontFamily}`;
+  ctx.fillStyle = '#f5f5f5';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(formatAchievement(card.achievement), x + 12, y + height - 14);
+  ctx.shadowColor = '#00000030';
+  ctx.fillText(formatAchievement(card.achievement), x + 12, y + height - 14);
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = '#000000';
+  ctx.shadowBlur = 16;
+  ctx.shadowOffsetX = 2;
+  ctx.shadowOffsetY = 2;
+  ctx.font = `600 26px ${fontFamily}`;
+  ctx.fillStyle = '#f5f5f5';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(String(card.rating || 0), x + width - 10, y + height - 8);
+  ctx.restore();
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+
+  ctx.save();
+  ctx.font = `500 14px ${fontFamily}`;
+  const diffText = formatConstant(card.internalLevelValue);
+  const diffWidth = ctx.measureText(diffText).width;
+  ctx.fillStyle = difficultyColor;
+  roundedRectPath(ctx, x, y, width, height, 10);
+  ctx.clip();
+  roundedRectPath(ctx, x + width - diffWidth - 30, y - 10, diffWidth + 30, 34, 10);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = `500 14px ${fontFamily}`;
+  ctx.fillStyle = String(card.difficulty || '').toLowerCase() === 'remaster' ? '#591a8b' : '#f2f2f2';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText(diffText, x + width - 10, y + 4);
   ctx.restore();
 
   const badge = await cache.get(resolveDifficultyBadgePath(card.difficulty));
   if (badge) {
-    drawImageContain(ctx, badge, jacketX - 2, jacketY - 6, 50, 18);
+    drawImageContain(ctx, badge, x + 8, y + 8, 48, 16);
   }
 
-  const textX = jacketX + jacketSize + 14;
-  const textW = width - textX + x - 16;
-
-  ctx.fillStyle = theme.titleColor;
-  ctx.font = `700 16px ${fontFamily}`;
-  const title = trimTextToWidth(ctx, trimText(card.title || 'Unknown', 60), textW);
-  ctx.fillText(title, textX, y + 60);
-
-  ctx.fillStyle = theme.artistColor;
-  ctx.font = `500 12px ${fontFamily}`;
-  const artist = trimTextToWidth(ctx, trimText(card.artist || 'Unknown Artist', 48), textW);
-  ctx.fillText(artist, textX, y + 80);
-
-  const typeText = String(card.type || '').toUpperCase() || 'UNK';
-  roundedRectPath(ctx, textX, y + 90, 42, 18, 9);
-  ctx.fillStyle = typeText === 'DX' ? '#f59e0b' : '#3b82f6';
+  roundedRectPath(ctx, x + 12, y + 28, 34, 14, 7);
+  ctx.fillStyle = String(card.type || '').toLowerCase() === 'dx' ? '#f59e0b' : '#3b82f6';
   ctx.fill();
   ctx.fillStyle = '#ffffff';
-  ctx.font = `700 10px ${fontFamily}`;
+  ctx.font = `700 9px ${fontFamily}`;
   ctx.textAlign = 'center';
-  ctx.fillText(typeText, textX + 21, y + 102);
+  ctx.fillText(String(card.type || 'std').toUpperCase(), x + 29, y + 38);
   ctx.textAlign = 'left';
 
-  ctx.fillStyle = getDifficultyTextColor(theme, card.difficulty);
-  ctx.font = `700 12px ${fontFamily}`;
-  ctx.fillText(
-    `${DIFFICULTY_SHORT[String(card.difficulty || '').toLowerCase()] || 'CHT'} ${card.level || '?'}`,
-    textX + 54,
-    y + 103
-  );
-
-  ctx.fillStyle = theme.chartColor;
-  ctx.font = `600 14px ${fontFamily}`;
-  ctx.fillText(`Achv ${formatAchievement(card.achievement)}`, textX, y + 126);
-  ctx.fillText(`Const ${formatConstant(card.internalLevelValue)}`, textX, y + 146);
-
   ctx.fillStyle = theme.subtitleColor;
-  ctx.font = `600 13px ${fontFamily}`;
+  ctx.font = `600 12px ${fontFamily}`;
   const fcFs = [card.fc && card.fc !== 'none' ? String(card.fc).toUpperCase() : null, card.fs && card.fs !== 'none' ? String(card.fs).toUpperCase() : null]
     .filter(Boolean)
     .join(' / ');
-  ctx.fillText(fcFs || 'No FC/FS badge', textX, y + 164);
-
-  ctx.fillStyle = '#ffffff';
-  ctx.font = `800 24px ${fontFamily}`;
-  ctx.textAlign = 'right';
-  ctx.fillText(String(card.rating || 0), x + width - 16, y + 165);
-  ctx.textAlign = 'left';
+  if (fcFs) {
+    ctx.fillText(fcFs, x + 12, y + 60);
+  }
 }
 
 export async function renderAccountB50Graphic({ account, songCatalog, themeDir }) {
@@ -490,38 +534,34 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
     logo:
       (await resolveThemeAsset(resolvedDir, `logo-${visualVersion}`)) ||
       (await resolveThemeAsset(resolvedDir, 'logo')),
-    cardFrame: await resolveThemeAsset(resolvedDir, 'card-frame'),
-    ratingPlate: resolveRatingPlatePath(account.metrics?.rating, visualVersion)
+    ratingPlate: resolveRatingPlatePath(account.metrics?.rating, visualVersion),
+    titleTrophy: join(
+      process.cwd(),
+      'data',
+      'assets',
+      'tomomai',
+      'res',
+      'trophy',
+      `${String(account.extra?.titleType || 'normal').toLowerCase()}.png`
+    ),
+    profileIcon: account.player?.iconUrl || account.extra?.iconUrl || null,
+    classRank: account.extra?.classRankUrl || null,
+    courseRank: account.extra?.courseRankUrl || null
   };
 
   const b15 = await buildRenderEntries(best50.b15, songCatalog);
   const b35 = await buildRenderEntries(best50.b35, songCatalog);
 
-  const width = 1920;
-  const margin = 34;
-  const cardGap = 14;
+  const width = 1200;
+  const height = 2100;
+  const margin = 36;
+  const cardGap = 16;
   const columns = 5;
-  const cardWidth = Math.floor((width - margin * 2 - cardGap * (columns - 1)) / columns);
-  const cardHeight = 182;
-  const headerHeight = 220;
-  const sectionTitleHeight = 36;
-  const b15Rows = Math.max(1, Math.ceil(Math.max(b15.length, 15) / columns));
-  const b35Rows = Math.max(1, Math.ceil(Math.max(b35.length, 35) / columns));
-  const sectionGap = 28;
-  const footerHeight = 40;
-  const height =
-    margin +
-    headerHeight +
-    sectionGap +
-    sectionTitleHeight +
-    b15Rows * cardHeight +
-    (b15Rows - 1) * cardGap +
-    sectionGap +
-    sectionTitleHeight +
-    b35Rows * cardHeight +
-    (b35Rows - 1) * cardGap +
-    footerHeight +
-    margin;
+  const overlayLeft = margin;
+  const overlayWidth = width - margin * 2;
+  const cardWidth = (overlayWidth - cardGap * 4) / columns;
+  const cardHeight = (cardWidth / 16) * 11;
+  const headerHeight = 276;
 
   const canvas = new Canvas(width, height);
   const ctx = canvas.getContext('2d');
@@ -530,8 +570,11 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
     assets.background,
     assets.headerOverlay,
     assets.logo,
-    assets.cardFrame,
     assets.ratingPlate,
+    assets.titleTrophy,
+    assets.profileIcon,
+    assets.classRank,
+    assets.courseRank,
     ...b15.map((entry) => entry.imagePath),
     ...b35.map((entry) => entry.imagePath),
     ...[...b15, ...b35].map((entry) => resolveDifficultyBadgePath(entry.difficulty)),
@@ -546,101 +589,94 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
     drawFallbackBackground(ctx, width, height, theme);
   }
 
-  roundedRectPath(ctx, margin, margin, width - margin * 2, headerHeight, 24);
-  ctx.fillStyle = theme.headerFill;
-  ctx.globalAlpha = 0.74;
-  ctx.fill();
-  ctx.globalAlpha = 1;
+  const overlayTop = 276;
+  const gradient = ctx.createLinearGradient(0, height, 0, 0);
+  gradient.addColorStop(1, '#00000020');
+  gradient.addColorStop(0, '#00000020');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, overlayTop, width, height - overlayTop);
 
   const headerOverlay = await imageCache.get(assets.headerOverlay);
   if (headerOverlay) {
     ctx.save();
     ctx.globalAlpha = 0.95;
-    drawImageContain(ctx, headerOverlay, width - 410, margin - 10, 320, 240);
+    drawImageContain(ctx, headerOverlay, width - 540, -30, 360, 260);
     ctx.restore();
   }
 
   const logo = await imageCache.get(assets.logo);
   if (logo) {
-    drawImageContain(ctx, logo, width - 370, margin + 16, 250, 82);
+    drawImageContain(ctx, logo, width - 530, 120, 320, 110);
   }
 
-  const title = String(account.player?.title || account.extra?.title || '').trim();
-  if (title) {
-    roundedRectPath(ctx, margin + 24, margin + 20, 320, 30, 15);
-    ctx.fillStyle = '#ffffff22';
-    ctx.fill();
-    ctx.fillStyle = theme.subtitleColor;
-    ctx.font = `600 16px ${fontFamily}`;
-    ctx.fillText(trimTextToWidth(ctx, title, 290), margin + 40, margin + 40);
-  }
-
-  ctx.fillStyle = theme.titleColor;
-  ctx.font = `800 44px ${fontFamily}`;
-  ctx.fillText(trimText(String(account.player?.name || 'Unknown Player'), 32), margin + 24, margin + 96);
-
-  ctx.fillStyle = theme.subtitleColor;
-  ctx.font = `600 20px ${fontFamily}`;
-  ctx.fillText('True B50 Split', margin + 24, margin + 128);
-  ctx.fillText(
-    trimText(`Region: ${String(account.player?.region || 'intl').toUpperCase()} • Linked via ${String(account.linkMethod || 'web')}`, 60),
-    margin + 24,
-    margin + 154
-  );
-  ctx.fillText(
-    trimText(`B15 = ${b15.length} songs • B35 = ${b35.length} songs • Total = ${Math.round(best50.totalRating || 0)}`, 70),
-    margin + 24,
-    margin + 180
-  );
-
+  const icon = await imageCache.get(assets.profileIcon);
+  const trophy = await imageCache.get(assets.titleTrophy);
   const ratingPlate = await imageCache.get(assets.ratingPlate);
-  if (ratingPlate) {
-    const plateX = margin + 24;
-    const plateY = margin + 182 - 36;
-    drawImageContain(ctx, ratingPlate, plateX, plateY, 140, 40);
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `700 24px ${fontFamily}`;
-    ctx.textAlign = 'right';
-    ctx.fillText(String(Math.round(account.metrics?.rating || 0)), plateX + 124, plateY + 28);
-    ctx.textAlign = 'left';
-  } else {
-    ctx.fillStyle = theme.titleColor;
-    ctx.font = `700 30px ${fontFamily}`;
-    ctx.fillText(`Rating ${Math.round(account.metrics?.rating || 0)}`, margin + 24, margin + 200);
+  const classRank = await imageCache.get(assets.classRank);
+  const courseRank = await imageCache.get(assets.courseRank);
+
+  if (icon) {
+    drawImageContain(ctx, icon, 36, 36, 204, 204);
   }
 
-  const sectionStartY = margin + headerHeight + sectionGap;
-  ctx.fillStyle = theme.titleColor;
-  ctx.font = `800 28px ${fontFamily}`;
-  ctx.fillText('B15', margin, sectionStartY + 26);
-  ctx.fillStyle = theme.subtitleColor;
-  ctx.font = `600 16px ${fontFamily}`;
-  ctx.fillText(buildSectionSummary('New Songs', b15), margin + 74, sectionStartY + 26);
+  if (trophy) {
+    drawImageContain(ctx, trophy, 272, 36, 345, 74);
+    ctx.fillStyle = '#f9f0f4';
+    ctx.font = `450 18px ${fontFamily}`;
+    const title = trimText(String(account.player?.title || account.extra?.title || ''), 40);
+    const trophyTextWidth = ctx.measureText(title).width;
+    ctx.fillText(title, 272 + 345 / 2 - trophyTextWidth / 2, 82);
+  }
 
-  const b15GridTop = sectionStartY + sectionTitleHeight;
+  roundedRectPath(ctx, 272, 130, 345, 74, 10);
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  ctx.fillStyle = 'black';
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#f9f0f4';
+  ctx.font = `700 28px ${fontFamily}`;
+  const playerName = trimText(String(account.player?.name || 'Unknown Player'), 24);
+  const playerNameWidth = ctx.measureText(playerName).width;
+  ctx.fillText(playerName, 272 + 345 / 2 - playerNameWidth / 2, 174);
+
+  if (ratingPlate) {
+    drawImageContain(ctx, ratingPlate, 270, 220, 160, 46);
+    ctx.fillStyle = '#f9f0f4';
+    ctx.font = `600 24px ${fontFamily}`;
+    ctx.textAlign = 'right';
+    ctx.fillText(String(Math.round(account.metrics?.rating || 0)), 270 + 130, 251);
+    ctx.textAlign = 'left';
+  }
+
+  if (classRank) {
+    drawImageContain(ctx, classRank, 442, 218, 70, 52);
+  }
+  if (courseRank) {
+    drawImageContain(ctx, courseRank, 522, 220, 64, 46);
+  }
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `600 14px ${fontFamily}`;
+  ctx.fillText(`B15 ${b15.length}/15`, 36, 316);
+  ctx.fillText(`B35 ${b35.length}/35`, 36, 856);
+
+  const b15YOffset = 60;
   for (let index = 0; index < b15.length; index += 1) {
     const col = index % columns;
     const row = Math.floor(index / columns);
-    const x = margin + col * (cardWidth + cardGap);
-    const y = b15GridTop + row * (cardHeight + cardGap);
+    const x = overlayLeft + col * (cardWidth + cardGap);
+    const y = overlayTop + b15YOffset + row * (cardHeight + 2 + cardGap);
     await drawSongCard(ctx, imageCache, theme, fontFamily, b15[index], x, y, cardWidth, cardHeight);
   }
 
-  const b35SectionTop =
-    b15GridTop + b15Rows * cardHeight + (b15Rows - 1) * cardGap + sectionGap;
-  ctx.fillStyle = theme.titleColor;
-  ctx.font = `800 28px ${fontFamily}`;
-  ctx.fillText('B35', margin, b35SectionTop + 26);
-  ctx.fillStyle = theme.subtitleColor;
-  ctx.font = `600 16px ${fontFamily}`;
-  ctx.fillText(buildSectionSummary('Old Songs', b35), margin + 74, b35SectionTop + 26);
-
-  const b35GridTop = b35SectionTop + sectionTitleHeight;
+  const b35YOffset = 110;
   for (let index = 0; index < b35.length; index += 1) {
     const col = index % columns;
-    const row = Math.floor(index / columns);
-    const x = margin + col * (cardWidth + cardGap);
-    const y = b35GridTop + row * (cardHeight + cardGap);
+    const absoluteIndex = index + 15;
+    const row = Math.floor(absoluteIndex / columns);
+    const x = overlayLeft + col * (cardWidth + cardGap);
+    const y = overlayTop + b35YOffset + row * (cardHeight + 2 + cardGap);
     await drawSongCard(ctx, imageCache, theme, fontFamily, b35[index], x, y, cardWidth, cardHeight);
   }
 
@@ -649,7 +685,7 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
   ctx.textAlign = 'right';
   ctx.fillText(
     `Generated ${new Date().toLocaleString('en-GB')} • maimai Favorite Bot`,
-    width - margin,
+    width - 36,
     height - 18
   );
   ctx.textAlign = 'left';

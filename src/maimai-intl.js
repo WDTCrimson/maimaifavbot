@@ -126,11 +126,12 @@ function getRatingFactor(accuracy) {
   return 0.05;
 }
 
-function calculateChartRating({ achievement, fc, internalLevelValue }) {
+function calculateChartRating({ achievement, fc, internalLevelValue, gameVersion }) {
   const accuracy = achievement / 10000;
   const factor = getRatingFactor(accuracy);
-  const extra = fc === 'ap' || fc === 'ap+' ? 1 : 0;
-  return Math.floor(factor * Math.min(accuracy, 100.5) * internalLevelValue / 10 + extra);
+  const preciseLevel = Number(internalLevelValue) * 10;
+  const extra = gameVersion >= 12 && (fc === 'ap' || fc === 'ap+') ? 1 : 0;
+  return Math.floor(factor * Math.min(accuracy, 100.5) * preciseLevel / 10 + extra);
 }
 
 const VERSION_ID_BY_NAME = new Map(
@@ -429,12 +430,44 @@ async function extractPlayerSnapshot(html) {
     ? Number.parseInt(totalMatch[1].replaceAll(',', ''), 10)
     : null;
   const title = block.find('.trophy_block').first().text().trim() || null;
+  const titleClass = block.find('.trophy_block').first().attr('class') || '';
+  let titleType = 'normal';
+  if (titleClass.includes('trophy_Rainbow')) titleType = 'rainbow';
+  else if (titleClass.includes('trophy_Gold')) titleType = 'gold';
+  else if (titleClass.includes('trophy_Silver')) titleType = 'silver';
+  else if (titleClass.includes('trophy_Bronze')) titleType = 'bronze';
+
+  const iconSrc = block.find('img.w_112').first().attr('src') || '';
+  const iconUrl = iconSrc
+    ? iconSrc.startsWith('http')
+      ? iconSrc
+      : `https://maimaidx-eng.com${iconSrc}`
+    : null;
+
+  const starsText = block.find('.p_l_10.f_l.f_14').first().text().trim();
+  const starsMatch = starsText.match(/[×x](\d+)/);
+  const stars = starsMatch ? Number.parseInt(starsMatch[1], 10) : null;
+
+  const rankElements = block.find('.h_35.f_l');
+  const courseRankSrc = rankElements.eq(0).attr('src') || '';
+  const classRankSrc = rankElements.eq(1).attr('src') || '';
+  const courseRankUrl = courseRankSrc
+    ? courseRankSrc.startsWith('http')
+      ? courseRankSrc
+      : `https://maimaidx-eng.com${courseRankSrc}`
+    : null;
+  const classRankUrl = classRankSrc
+    ? classRankSrc.startsWith('http')
+      ? classRankSrc
+      : `https://maimaidx-eng.com${classRankSrc}`
+    : null;
 
   return {
     player: {
       name,
       region: 'intl',
-      title
+      title,
+      iconUrl
     },
     metrics: {
       rating,
@@ -443,7 +476,12 @@ async function extractPlayerSnapshot(html) {
     extra: {
       currentVersionPlayCount,
       totalPlayCount,
-      title
+      title,
+      titleType,
+      stars,
+      iconUrl,
+      courseRankUrl,
+      classRankUrl
     }
   };
 }
@@ -626,7 +664,8 @@ function buildBest50(scores, songCatalog) {
     const rating = calculateChartRating({
       achievement: score.achievement,
       fc: score.fc,
-      internalLevelValue
+      internalLevelValue,
+      gameVersion: currentVersionId ?? 0
     });
 
     const addedVersion = resolveChartVersionId(matched.chart.version);
@@ -677,6 +716,7 @@ function buildBest50(scores, songCatalog) {
 }
 
 function enrichRecentPlays(recentPlays, songCatalog) {
+  const currentVersionId = getCurrentIntlVersionId();
   if (!songCatalog?.available) {
     return recentPlays.slice(0, 15);
   }
@@ -693,7 +733,8 @@ function enrichRecentPlays(recentPlays, songCatalog) {
       ? calculateChartRating({
           achievement: play.achievement,
           fc: play.fc,
-          internalLevelValue
+          internalLevelValue,
+          gameVersion: currentVersionId ?? 0
         })
       : null;
 
@@ -733,6 +774,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
         bestCount: best50 ? best50.top50.length : null,
         recentCount: recentSessions.length
       },
+      gameVersion: best50?.currentVersionId ?? getCurrentIntlVersionId(),
       sourceFetchedAt: new Date().toISOString(),
       best50,
       recentSessions,
