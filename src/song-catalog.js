@@ -101,6 +101,7 @@ export class SongCatalog {
     this.songs = [];
     this.bySongId = new Map();
     this.byFavoriteId = new Map();
+    this.byLegacyFavoriteId = new Map();
   }
 
   async ensureReady() {
@@ -132,11 +133,12 @@ export class SongCatalog {
 
       const bySongId = new Map();
       const byFavoriteId = new Map();
+      const byLegacyFavoriteId = new Map();
 
       for (const sourceSong of sourceSongs) {
         const playlistKey = `${normalizeText(sourceSong.title)}::${normalizeText(sourceSong.artist)}`;
-        const frozenPlaylistId = normalizeFavoriteId(playlistIdMap.get(playlistKey));
-        const favoriteId = frozenPlaylistId || resolveStableFavoriteId(sourceSong);
+        const legacyFavoriteId = normalizeFavoriteId(playlistIdMap.get(playlistKey));
+        const favoriteId = resolveStableFavoriteId(sourceSong);
         if (!favoriteId) {
           continue;
         }
@@ -150,6 +152,7 @@ export class SongCatalog {
         const song = {
           songId: buildCanonicalSongId(title, artist),
           favoriteId,
+          legacyFavoriteId: legacyFavoriteId && legacyFavoriteId !== favoriteId ? legacyFavoriteId : null,
           title,
           artist: artist || 'Unknown',
           bpm: sourceSong.bpm ?? null,
@@ -163,18 +166,28 @@ export class SongCatalog {
             : [],
           normTitle: normalizeText(title),
           normArtist: normalizeText(artist),
-          searchBlob: normalizeText(`${favoriteId} ${title} ${artist}`)
+          searchBlob: normalizeText(`${favoriteId} ${legacyFavoriteId || ''} ${title} ${artist}`)
         };
 
         const existing = bySongId.get(song.songId);
         if (!existing || song.difficultyLevels.length > existing.difficultyLevels.length) {
+          if (existing) {
+            byFavoriteId.delete(existing.favoriteId);
+            if (existing.legacyFavoriteId) {
+              byLegacyFavoriteId.delete(existing.legacyFavoriteId);
+            }
+          }
           bySongId.set(song.songId, song);
           byFavoriteId.set(favoriteId, song);
+          if (song.legacyFavoriteId) {
+            byLegacyFavoriteId.set(song.legacyFavoriteId, song);
+          }
         }
       }
 
       this.bySongId = bySongId;
       this.byFavoriteId = byFavoriteId;
+      this.byLegacyFavoriteId = byLegacyFavoriteId;
       this.songs = [...bySongId.values()].sort((a, b) => a.title.localeCompare(b.title));
       this.available = true;
       this.error = null;
@@ -183,6 +196,7 @@ export class SongCatalog {
       this.error = error;
       this.bySongId = new Map();
       this.byFavoriteId = new Map();
+      this.byLegacyFavoriteId = new Map();
       this.songs = [];
     } finally {
       this.loaded = true;
@@ -209,6 +223,14 @@ export class SongCatalog {
     return this.byFavoriteId.get(normalized) || null;
   }
 
+  getByLegacyFavoriteId(favoriteId) {
+    const normalized = normalizeFavoriteId(favoriteId);
+    if (!normalized) {
+      return null;
+    }
+    return this.byLegacyFavoriteId.get(normalized) || null;
+  }
+
   getBySongId(songId) {
     const normalized = String(songId || '').trim();
     if (!/^song:[a-f0-9]{16}$/.test(normalized)) {
@@ -218,7 +240,7 @@ export class SongCatalog {
   }
 
   getByStoredId(songId) {
-    return this.getBySongId(songId) || this.getByFavoriteId(songId);
+    return this.getBySongId(songId) || this.getByFavoriteId(songId) || this.getByLegacyFavoriteId(songId);
   }
 
   search(query, limit = 10) {

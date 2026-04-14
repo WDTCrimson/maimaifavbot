@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
+const LOADOUT_SCHEMA_VERSION = 2;
+
 function normalizeLoadoutName(name) {
   return name.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -48,13 +50,21 @@ function validateLoadoutName(name, maxNameLength) {
   return value;
 }
 
+function buildDefaultMetadata() {
+  return {
+    loadoutSchemaVersion: 1,
+    loadoutSchemaMigratedAt: null,
+    legacySongIdsRemaining: null
+  };
+}
+
 export class LoadoutStore {
   constructor(filePath, limits) {
     this.filePath = filePath;
     this.maxSongsPerLoadout = limits.maxSongsPerLoadout;
     this.maxNameLength = limits.maxNameLength;
     this.loaded = false;
-    this.state = { users: {}, accountLinkSessions: {} };
+    this.state = { users: {}, accountLinkSessions: {}, metadata: buildDefaultMetadata() };
   }
 
   async load() {
@@ -74,6 +84,14 @@ export class LoadoutStore {
           typeof this.state.accountLinkSessions !== 'object'
         ) {
           this.state.accountLinkSessions = {};
+        }
+        if (!this.state.metadata || typeof this.state.metadata !== 'object') {
+          this.state.metadata = buildDefaultMetadata();
+        } else {
+          this.state.metadata = {
+            ...buildDefaultMetadata(),
+            ...this.state.metadata
+          };
         }
       }
     } catch (error) {
@@ -99,6 +117,9 @@ export class LoadoutStore {
   async migrateLoadouts(resolveSongByStoredId) {
     let changed = false;
     const unresolved = [];
+    let totalSongs = 0;
+    let canonicalSongs = 0;
+    let legacySongs = 0;
 
     for (const [userId, user] of Object.entries(this.state.users || {})) {
       const loadouts = user?.loadouts;
@@ -117,7 +138,9 @@ export class LoadoutStore {
 
         for (const rawId of loadout.songs) {
           const normalized = normalizeSongId(rawId);
+          totalSongs += 1;
           if (/^song:[a-f0-9]{16}$/.test(normalized)) {
+            canonicalSongs += 1;
             if (!seen.has(normalized)) {
               seen.add(normalized);
               nextSongs.push(normalized);
@@ -125,6 +148,7 @@ export class LoadoutStore {
             continue;
           }
 
+          legacySongs += 1;
           const song = typeof resolveSongByStoredId === 'function' ? resolveSongByStoredId(normalized) : null;
           const migratedId = song?.songId || normalized;
           if (!song) {
@@ -156,13 +180,65 @@ export class LoadoutStore {
       }
     }
 
-    if (changed) {
+    const remainingLegacySongs = Object.values(this.state.users || {}).reduce((sum, user) => {
+      const loadouts = user?.loadouts;
+      if (!loadouts || typeof loadouts !== 'object') {
+        return sum;
+      }
+
+      return (
+        sum +
+        Object.values(loadouts).reduce((loadoutSum, loadout) => {
+          if (!loadout || !Array.isArray(loadout.songs)) {
+            return loadoutSum;
+          }
+          return (
+            loadoutSum +
+            loadout.songs.filter((songId) => /^\d{1,8}$/.test(String(songId || '').trim())).length
+          );
+        }, 0)
+      );
+    }, 0);
+
+    const metadata = this.state.metadata || buildDefaultMetadata();
+    const previousSchemaVersion = Number(metadata.loadoutSchemaVersion) || 1;
+    const previousMigratedAt = metadata.loadoutSchemaMigratedAt || null;
+    const previousLegacySongIdsRemaining =
+      typeof metadata.legacySongIdsRemaining === 'number' ? metadata.legacySongIdsRemaining : null;
+    metadata.loadoutSchemaVersion = LOADOUT_SCHEMA_VERSION;
+    metadata.loadoutSchemaMigratedAt = changed
+      ? new Date().toISOString()
+      : metadata.loadoutSchemaMigratedAt || new Date().toISOString();
+    metadata.legacySongIdsRemaining = remainingLegacySongs;
+    this.state.metadata = metadata;
+
+    if (
+      changed ||
+      previousSchemaVersion !== metadata.loadoutSchemaVersion ||
+      previousMigratedAt !== metadata.loadoutSchemaMigratedAt ||
+      previousLegacySongIdsRemaining !== metadata.legacySongIdsRemaining
+    ) {
       await this.save();
     }
 
     return {
       changed,
-      unresolved
+      unresolved,
+      totalSongs,
+      canonicalSongs,
+      legacySongs,
+      remainingLegacySongs,
+      schemaVersion: LOADOUT_SCHEMA_VERSION
+    };
+  }
+
+  getLoadoutStorageStatus() {
+    const metadata = this.state.metadata || buildDefaultMetadata();
+    return {
+      schemaVersion: Number(metadata.loadoutSchemaVersion) || 1,
+      migratedAt: metadata.loadoutSchemaMigratedAt || null,
+      legacySongIdsRemaining:
+        typeof metadata.legacySongIdsRemaining === 'number' ? metadata.legacySongIdsRemaining : null
     };
   }
 

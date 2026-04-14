@@ -26,7 +26,19 @@ await songCatalog.ensureReady();
 
 const loadoutMigration = await store.migrateLoadouts((storedId) => songCatalog.getByStoredId(storedId));
 if (loadoutMigration.changed) {
-  console.log(`Migrated loadouts to canonical song IDs. Unresolved legacy entries: ${loadoutMigration.unresolved.length}`);
+  console.log(
+    `Migrated loadouts to canonical song IDs. Legacy scanned: ${loadoutMigration.legacySongs}, unresolved legacy entries: ${loadoutMigration.unresolved.length}`
+  );
+}
+const loadoutStorageStatus = store.getLoadoutStorageStatus();
+if (loadoutStorageStatus.legacySongIdsRemaining > 0) {
+  console.warn(
+    `Loadout storage still has ${loadoutStorageStatus.legacySongIdsRemaining} legacy numeric song IDs. Schema v${loadoutStorageStatus.schemaVersion}.`
+  );
+} else {
+  console.log(
+    `Loadout storage schema v${loadoutStorageStatus.schemaVersion} ready. All stored playlist song IDs are canonical.`
+  );
 }
 
 const recommendationCatalog = new RecommendationCatalog(config.recommendationFile, songCatalog);

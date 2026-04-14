@@ -105,6 +105,14 @@ If you linked an International maimai account with `/account link`, you can appl
 
 This updates the website favorites to match the playlist as closely as the current favorites page allows, then reports added/removed/missing songs.
 
+## Playlist storage
+
+Playlists are now stored with canonical internal song IDs, not upstream website numeric IDs.
+
+- Existing legacy playlists auto-migrate on bot startup.
+- Old share codes with numeric song IDs are still accepted for import.
+- Website-facing favorite IDs are resolved only when exporting or applying a playlist.
+
 ### Rebuild extension CSS (Tailwind)
 
 - Source: `extension/popup.tailwind.css`
