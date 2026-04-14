@@ -6,6 +6,10 @@ import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 const FONT_EXTENSIONS = new Set(['.ttf', '.otf', '.woff', '.woff2']);
 const loadedThemeFonts = new Map();
+const sharedImageCache = new Map();
+const SHARED_IMAGE_CACHE_LIMIT = 256;
+const REMOTE_IMAGE_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+const FAILED_REMOTE_IMAGE_CACHE_TTL_MS = 1000 * 60 * 5;
 
 const defaultTheme = {
   backgroundStart: '#fbdffe',
@@ -269,21 +273,7 @@ function createImageCache() {
       return null;
     }
     if (!cache.has(path)) {
-      cache.set(path, (async () => {
-        try {
-          if (/^https?:\/\//i.test(path) || /^data:/i.test(path)) {
-            const response = await fetch(path);
-            if (!response.ok) {
-              return null;
-            }
-            const arrayBuffer = await response.arrayBuffer();
-            return await loadImage(Buffer.from(arrayBuffer));
-          }
-          return await loadImage(path);
-        } catch {
-          return null;
-        }
-      })());
+      cache.set(path, loadSharedImage(path));
     }
     return cache.get(path);
   }
@@ -379,10 +369,74 @@ function resolveSectionLabelPath(bucket) {
   return join(process.cwd(), 'data', 'assets', 'tomomai', 'res', 'label', `${bucket}.png`);
 }
 
-function resolveTypeBadgeUrl(type) {
-  return String(type || '').toLowerCase() === 'dx'
-    ? 'https://maimaidx-eng.com/maimai-mobile/img/music/music_dx.png'
-    : 'https://maimaidx-eng.com/maimai-mobile/img/music/music_standard.png';
+function trimSharedImageCache() {
+  while (sharedImageCache.size > SHARED_IMAGE_CACHE_LIMIT) {
+    const oldestKey = sharedImageCache.keys().next().value;
+    sharedImageCache.delete(oldestKey);
+  }
+}
+
+async function loadSharedImage(path) {
+  const isRemote = /^https?:\/\//i.test(path) || /^data:/i.test(path);
+  const now = Date.now();
+  const cached = sharedImageCache.get(path);
+  if (cached && (!cached.expiresAt || cached.expiresAt > now)) {
+    return cached.promise;
+  }
+
+  const promise = (async () => {
+    try {
+      if (isRemote) {
+        const response = await fetch(path);
+        if (!response.ok) {
+          return null;
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return await loadImage(Buffer.from(arrayBuffer));
+      }
+      return await loadImage(path);
+    } catch {
+      return null;
+    }
+  })();
+
+  sharedImageCache.set(path, {
+    promise,
+    expiresAt: isRemote ? now + REMOTE_IMAGE_CACHE_TTL_MS : null
+  });
+  trimSharedImageCache();
+
+  const image = await promise;
+  if (!image && isRemote) {
+    sharedImageCache.set(path, {
+      promise: Promise.resolve(null),
+      expiresAt: now + FAILED_REMOTE_IMAGE_CACHE_TTL_MS
+    });
+  }
+
+  return image;
+}
+
+function drawTypeBadge(ctx, fontFamily, type, x, y) {
+  const normalized = String(type || '').toLowerCase() === 'dx' ? 'dx' : 'std';
+  const label = normalized.toUpperCase();
+  const width = normalized === 'dx' ? 42 : 46;
+  const height = 18;
+
+  roundedRectPath(ctx, x, y, width, height, 9);
+  ctx.fillStyle = normalized === 'dx' ? '#f59e0b' : '#3b82f6';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `700 10px ${fontFamily}`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, x + width / 2, y + height / 2 + 0.5);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
 }
 
 function resolveFcBadgePath(gameVersion, fc) {
@@ -543,19 +597,7 @@ async function drawSongCard(ctx, cache, theme, fontFamily, card, x, y, width, he
   ctx.fillText(diffText, x + width - 10, y + 4);
   ctx.restore();
 
-  const typeBadge = await cache.get(resolveTypeBadgeUrl(card.type));
-  if (typeBadge) {
-    drawImageContain(ctx, typeBadge, x + 12, y + 12, typeBadge.width * 0.45, typeBadge.height * 0.45);
-  } else {
-    roundedRectPath(ctx, x + 12, y + 12, 38, 16, 8);
-    ctx.fillStyle = String(card.type || '').toLowerCase() === 'dx' ? '#f59e0b' : '#3b82f6';
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `700 9px ${fontFamily}`;
-    ctx.textAlign = 'center';
-    ctx.fillText(String(card.type || 'std').toUpperCase(), x + 31, y + 23);
-    ctx.textAlign = 'left';
-  }
+  drawTypeBadge(ctx, fontFamily, card.type, x + 12, y + 12);
 
   const fcBadge = await cache.get(resolveFcBadgePath(gameVersion, card.fc));
   const fsBadge = await cache.get(resolveFsBadgePath(gameVersion, card.fs));
@@ -767,7 +809,6 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir }
     assets.profileIcon,
     assets.classRank,
     assets.courseRank,
-    ...[...b15, ...b35].map((entry) => resolveTypeBadgeUrl(entry.type)),
     ...[...b15, ...b35].map((entry) => resolveFcBadgePath(visualVersion, entry.fc)),
     ...[...b15, ...b35].map((entry) => resolveFsBadgePath(visualVersion, entry.fs)),
     ...b15.map((entry) => entry.imagePath),
