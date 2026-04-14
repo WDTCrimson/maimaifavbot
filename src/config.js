@@ -55,6 +55,8 @@ export const config = {
   accountLinkCallbackBind: optionalEnv('ACCOUNT_LINK_CALLBACK_BIND') || '127.0.0.1',
   accountLinkCallbackPort: parseOptionalInteger('ACCOUNT_LINK_CALLBACK_PORT'),
   accountLinkSharedSecret: optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
+  accountLinkSigningSecret:
+    optionalEnv('ACCOUNT_LINK_SIGNING_SECRET') || optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
   accountLinkTtlMinutes: parseOptionalInteger('ACCOUNT_LINK_TTL_MINUTES', 15)
 };
 

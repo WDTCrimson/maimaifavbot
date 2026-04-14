@@ -5,6 +5,7 @@ import {
   accountLinkCallbackServerEnabled,
   buildAccountLinkUrl,
   createAccountLinkToken,
+  createAccountLinkSignature,
   startAccountLinkCallbackServer
 } from './account-link-service.js';
 import { config, limits } from './config.js';
@@ -670,19 +671,23 @@ async function createPendingAccountLinkSession(userId) {
     Date.now() + config.accountLinkTtlMinutes * 60 * 1000
   ).toISOString();
   const token = createAccountLinkToken();
+  const signature = createAccountLinkSignature({
+    token,
+    expiresAt,
+    signingSecret: config.accountLinkSigningSecret
+  });
   const linkUrl = buildAccountLinkUrl({
     baseUrl: config.accountLinkBaseUrl,
-    callbackUrl: config.accountLinkCallbackPublicUrl,
     token,
-    expiresAt
+    expiresAt,
+    signature
   });
 
   return store.createAccountLinkSession(userId, {
     token,
     createdAt,
     expiresAt,
-    linkUrl,
-    callbackUrl: config.accountLinkCallbackPublicUrl
+    linkUrl
   });
 }
 
@@ -694,14 +699,10 @@ function buildAccountLinkEmbed(session) {
     .addFields(
       {
         name: 'Session',
-        value: [`Status: pending`, `Expires: ${formatDateTime(session.expiresAt)}`].join('\n')
-      },
-      {
-        name: 'Callback Contract',
         value: [
-          `POST \`${config.accountLinkCallbackPublicUrl}\``,
-          'Header: `x-account-link-secret: <ACCOUNT_LINK_SHARED_SECRET>`',
-          'Body: `{ "token": "...", "provider": "tomomai", "account": { ... } }`'
+          `Status: pending`,
+          `Reference: ${maskSessionToken(session.token)}`,
+          `Expires: ${formatDateTime(session.expiresAt)}`
         ].join('\n')
       }
     );
@@ -714,8 +715,20 @@ function buildPendingAccountLinkEmbed(session) {
     .setDescription('A web-based account link session is still open for this Discord account.')
     .addFields({
       name: 'Session',
-      value: [`Status: pending`, `Expires: ${formatDateTime(session.expiresAt)}`].join('\n')
+      value: [
+        `Status: pending`,
+        `Reference: ${maskSessionToken(session.token)}`,
+        `Expires: ${formatDateTime(session.expiresAt)}`
+      ].join('\n')
     });
+}
+
+function maskSessionToken(token) {
+  const value = String(token || '').trim();
+  if (value.length <= 8) {
+    return value || 'Unknown';
+  }
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
 }
 
 function decodeBase64UrlText(value) {
@@ -1139,8 +1152,7 @@ function normalizeImportedAccountSnapshot(payload, provider) {
       bestCount: firstFiniteNumber(snapshot.bestCount, fallbackSnapshot.bestCount),
       recentCount: firstFiniteNumber(snapshot.recentCount, fallbackSnapshot.recentCount)
     },
-    sourceFetchedAt: firstValidIsoDate(snapshot.sourceFetchedAt, fallbackSnapshot.sourceFetchedAt),
-    sourcePayload: payload
+    sourceFetchedAt: firstValidIsoDate(snapshot.sourceFetchedAt, fallbackSnapshot.sourceFetchedAt)
   };
 }
 
@@ -1940,6 +1952,7 @@ function buildAccountStatusEmbed(account) {
     `Linked: ${formatDateTime(account.linkedAt)}`,
     `Updated: ${formatDateTime(account.updatedAt)}`,
     account.sourceFetchedAt ? `Source fetched: ${formatDateTime(account.sourceFetchedAt)}` : null,
+    account.linkSession?.reference ? `Session: ${account.linkSession.reference}` : null,
     account.linkSession?.completedAt
       ? `Link completed: ${formatDateTime(account.linkSession.completedAt)}`
       : null

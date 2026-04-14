@@ -162,6 +162,7 @@ If you set all of these environment variables:
 - `ACCOUNT_LINK_CALLBACK_PUBLIC_URL`
 - `ACCOUNT_LINK_CALLBACK_PORT`
 - `ACCOUNT_LINK_SHARED_SECRET`
+- `ACCOUNT_LINK_SIGNING_SECRET` (optional, recommended if you want a separate signer for public link URLs)
 
 then `/account link` will generate a one-time external URL and the bot will start a local callback listener.
 
@@ -185,6 +186,9 @@ content-type: application/json
 ```
 
 The external service is responsible for obtaining maimai session data, transforming it into a safe profile snapshot, and POSTing it to the callback URL. The bot only stores the normalized snapshot plus minimal session metadata.
+
+The public `/account link` URL is now signed. The callback URL is no longer exposed in the browser query string.
+Raw imported account payloads are no longer persisted in the bot state file.
 
 ## Community recommendations
 

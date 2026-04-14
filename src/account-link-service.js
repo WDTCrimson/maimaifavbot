@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -45,11 +45,31 @@ export function createAccountLinkToken() {
   return randomBytes(24).toString('base64url');
 }
 
-export function buildAccountLinkUrl({ baseUrl, callbackUrl, token, expiresAt }) {
+function buildSigningPayload({ token, expiresAt }) {
+  return `${token}:${expiresAt}`;
+}
+
+export function createAccountLinkSignature({ token, expiresAt, signingSecret }) {
+  return createHmac('sha256', signingSecret)
+    .update(buildSigningPayload({ token, expiresAt }))
+    .digest('base64url');
+}
+
+export function verifyAccountLinkSignature({ token, expiresAt, signature, signingSecret }) {
+  const expected = createAccountLinkSignature({ token, expiresAt, signingSecret });
+  const actualBuffer = Buffer.from(String(signature || ''), 'utf8');
+  const expectedBuffer = Buffer.from(expected, 'utf8');
+  if (actualBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+export function buildAccountLinkUrl({ baseUrl, token, expiresAt, signature }) {
   const url = new URL(baseUrl);
   url.searchParams.set('token', token);
-  url.searchParams.set('callback', callbackUrl);
   url.searchParams.set('expires_at', expiresAt);
+  url.searchParams.set('sig', signature);
   return url.toString();
 }
 
@@ -97,6 +117,12 @@ export async function startAccountLinkCallbackServer({
           return;
         }
 
+        const expiresAt = Date.parse(session.expiresAt || '');
+        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+          writeJson(response, 410, { ok: false, error: 'Link session expired.' });
+          return;
+        }
+
         if (session.status !== 'pending') {
           writeJson(response, 409, { ok: false, error: 'Link session is not pending.' });
           return;
@@ -114,8 +140,9 @@ export async function startAccountLinkCallbackServer({
           ...normalizedAccount,
           linkMethod: 'web',
           linkSession: {
-            token: session.token,
+            reference: `${session.token.slice(0, 4)}...${session.token.slice(-4)}`,
             createdAt: session.createdAt,
+            expiresAt: session.expiresAt,
             completedAt: new Date().toISOString()
           }
         });
