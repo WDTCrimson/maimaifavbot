@@ -17,7 +17,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "cheerio": "^1.2.0",
+    "cheerio": "1.0.0-rc.12",
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
     "skia-canvas": "^3.0.8"
