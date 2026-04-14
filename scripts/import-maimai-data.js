@@ -131,6 +131,43 @@ function sanitizeFileName(value) {
   return String(value).replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
+function parseInternalLevelValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getOtogeDifficultySuffix(difficulty) {
+  switch (String(difficulty || '').toLowerCase()) {
+    case 'basic':
+      return 'bas';
+    case 'advanced':
+      return 'adv';
+    case 'expert':
+      return 'exp';
+    case 'master':
+      return 'mas';
+    case 'remaster':
+      return 'rem';
+    default:
+      return null;
+  }
+}
+
+function getOtogeInternalLevelValue(song, type, difficulty) {
+  const suffix = getOtogeDifficultySuffix(difficulty);
+  if (!suffix) {
+    return null;
+  }
+
+  const normalizedType = String(type || '').toLowerCase();
+  const prefix = normalizedType === 'dx' ? 'dx_' : '';
+  return parseInternalLevelValue(song?.[`${prefix}lev_${suffix}_i`]);
+}
+
 async function downloadBinary(url, destPath, { force, retries }) {
   if (!force && (await existsNonEmpty(destPath))) {
     return { status: 'skipped', error: null };
@@ -246,14 +283,20 @@ function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
         dxratingFile: `${dxSong.imageName}.jpg`,
         otogeFile: matchedOtoge?.image_url || null
       },
-      difficultyLevels: (dxSong.sheets || []).map((sheet) => ({
-        type: sheet.type,
-        difficulty: sheet.difficulty,
-        level: sheet.level,
-        internalLevelValue: sheet.internalLevelValue,
-        version: sheet.version,
-        releaseDate: sheet.releaseDate || null
-      })),
+      difficultyLevels: (dxSong.sheets || []).map((sheet) => {
+        const otogeInternalLevelValue = matchedOtoge
+          ? getOtogeInternalLevelValue(matchedOtoge, sheet.type, sheet.difficulty)
+          : null;
+
+        return {
+          type: sheet.type,
+          difficulty: sheet.difficulty,
+          level: sheet.level,
+          internalLevelValue: otogeInternalLevelValue ?? sheet.internalLevelValue,
+          version: sheet.version,
+          releaseDate: sheet.releaseDate || null
+        };
+      }),
       regions: {
         jp: (dxSong.sheets || []).some((sheet) => Boolean(sheet.regions?.jp)),
         intl: (dxSong.sheets || []).some((sheet) => Boolean(sheet.regions?.intl)),
@@ -282,11 +325,36 @@ function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
         otogeFile: otogeSong.image_url || null
       },
       difficultyLevels: [
-        { type: 'unknown', difficulty: 'basic', level: otogeSong.lev_bas || null },
-        { type: 'unknown', difficulty: 'advanced', level: otogeSong.lev_adv || null },
-        { type: 'unknown', difficulty: 'expert', level: otogeSong.lev_exp || null },
-        { type: 'unknown', difficulty: 'master', level: otogeSong.lev_mas || null },
-        { type: 'unknown', difficulty: 'remaster', level: otogeSong.lev_rem || null }
+        {
+          type: 'unknown',
+          difficulty: 'basic',
+          level: otogeSong.lev_bas || null,
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_bas_i)
+        },
+        {
+          type: 'unknown',
+          difficulty: 'advanced',
+          level: otogeSong.lev_adv || null,
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_adv_i)
+        },
+        {
+          type: 'unknown',
+          difficulty: 'expert',
+          level: otogeSong.lev_exp || null,
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_exp_i)
+        },
+        {
+          type: 'unknown',
+          difficulty: 'master',
+          level: otogeSong.lev_mas || null,
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_mas_i)
+        },
+        {
+          type: 'unknown',
+          difficulty: 'remaster',
+          level: otogeSong.lev_rem || null,
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_rem_i)
+        }
       ].filter((item) => item.level),
       regions: {
         jp: true,
@@ -369,7 +437,9 @@ async function main() {
     ]);
     otogeMusicEx = JSON.parse(otogeMusicExRaw);
     dxratingData = JSON.parse(dxratingDataRaw);
-    console.log('Skipped data fetch. Using existing source JSON files.');
+    const normalized = buildNormalizedDataset({ otogeMusicEx, dxratingData });
+    await writeJson(normalizedFile, normalized);
+    console.log(`Skipped data fetch. Rebuilt normalized dataset from existing source JSON files: ${normalized.totalSongs} songs`);
   }
 
   let logoReport = { total: 0, downloaded: 0, skipped: 0, failed: 0, failures: [], durationMs: 0 };
