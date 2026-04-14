@@ -8,9 +8,11 @@ import {
   createAccountLinkSignature,
   startAccountLinkCallbackServer
 } from './account-link-service.js';
+import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './account-link-auth.js';
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderLoadoutGraphic } from './loadout-graphic.js';
+import { fetchIntlAccountSnapshotFromClal } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -30,7 +32,13 @@ if (accountLinkCallbackServerEnabled(config)) {
     port: config.accountLinkCallbackPort,
     sharedSecret: config.accountLinkSharedSecret,
     store,
-    normalizeImportedAccountSnapshot
+    normalizeImportedAccountSnapshot,
+    prepareLinkedAuth: (rawAuth) => {
+      if (!config.accountLinkDataSecret) {
+        return null;
+      }
+      return prepareLinkedAuthForStorage(rawAuth, config.accountLinkDataSecret);
+    }
   });
   console.log(
     `Account link callback server listening on ${config.accountLinkCallbackBind}:${config.accountLinkCallbackPort}`
@@ -503,6 +511,60 @@ async function handleAccountCommand(interaction) {
       }
 
       await replyPayload(interaction, { embeds });
+      return;
+    }
+
+    case 'sync': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(
+          interaction,
+          'No linked account snapshot found. Use `/account link` first.'
+        );
+        return;
+      }
+
+      if (!account.linkedAuth) {
+        await replySafely(
+          interaction,
+          'This linked account does not have reusable sync auth yet. Re-link with `/account link` using the International web flow.'
+        );
+        return;
+      }
+
+      if (!config.accountLinkDataSecret) {
+        await replySafely(
+          interaction,
+          'Automatic account sync is not configured on this bot host. Set `ACCOUNT_LINK_DATA_SECRET` or reuse `ACCOUNT_LINK_SHARED_SECRET`.'
+        );
+        return;
+      }
+
+      await interaction.deferReply({ ephemeral: true });
+
+      const linkedAuth = restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret);
+      if (!linkedAuth || linkedAuth.region !== 'intl' || linkedAuth.type !== 'clal') {
+        await replySafely(
+          interaction,
+          'The stored linked auth is not usable for automatic sync. Re-link the International account.'
+        );
+        return;
+      }
+
+      const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token);
+      const stored = await store.setAccount(userId, {
+        ...account,
+        ...refreshed.snapshot,
+        provider: account.provider || refreshed.snapshot.provider,
+        linkMethod: account.linkMethod || refreshed.snapshot.linkMethod,
+        linkedAuth: account.linkedAuth,
+        linkSession: account.linkSession || null
+      });
+
+      await replyPayload(interaction, {
+        content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.`,
+        embeds: [buildAccountStatusEmbed(stored)]
+      });
       return;
     }
 
@@ -1952,6 +2014,7 @@ function buildAccountStatusEmbed(account) {
     `Linked: ${formatDateTime(account.linkedAt)}`,
     `Updated: ${formatDateTime(account.updatedAt)}`,
     account.sourceFetchedAt ? `Source fetched: ${formatDateTime(account.sourceFetchedAt)}` : null,
+    account.linkedAuth?.region ? `Sync auth: ${String(account.linkedAuth.region).toUpperCase()} ${String(account.linkedAuth.type || 'unknown').toUpperCase()}` : null,
     account.linkSession?.reference ? `Session: ${account.linkSession.reference}` : null,
     account.linkSession?.completedAt
       ? `Link completed: ${formatDateTime(account.linkSession.completedAt)}`

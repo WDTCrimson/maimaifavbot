@@ -31,6 +31,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/account link`
 - `/account import provider:<auto|manual|maimaijson|tomomai|mimixd> data:<json-or-base64>`
 - `/account status`
+- `/account sync`
 - `/account unlink`
 
 `/song search` also supports exact constant queries (examples: `12.3`, `13.7 mas`, `11.8 dx`).
@@ -68,6 +69,8 @@ All bot replies are ephemeral (private).
 - `ACCOUNT_LINK_CALLBACK_BIND` (optional, default `127.0.0.1`)
 - `ACCOUNT_LINK_CALLBACK_PORT` (optional, enables the built-in callback listener when set)
 - `ACCOUNT_LINK_SHARED_SECRET` (optional, required with callback port for secure web linking)
+- `ACCOUNT_LINK_SIGNING_SECRET` (optional, defaults to `ACCOUNT_LINK_SHARED_SECRET`)
+- `ACCOUNT_LINK_DATA_SECRET` (optional, encrypts saved sync auth, defaults to `ACCOUNT_LINK_SHARED_SECRET`)
 - `ACCOUNT_LINK_TTL_MINUTES` (optional, default `15`)
 
 ## Using bookmarklet flow
@@ -124,6 +127,7 @@ Current supported flows:
 - import a profile snapshot from another tool or manual export
 - generate a one-time web-link session with `/account link`
 - inspect the current snapshot or pending session with `/account status`
+- refresh a linked International web-linked snapshot with `/account sync`
 - remove the linked snapshot with `/account unlink`
 
 Recommended import mode:
@@ -163,6 +167,7 @@ If you set all of these environment variables:
 - `ACCOUNT_LINK_CALLBACK_PORT`
 - `ACCOUNT_LINK_SHARED_SECRET`
 - `ACCOUNT_LINK_SIGNING_SECRET` (optional, recommended if you want a separate signer for public link URLs)
+- `ACCOUNT_LINK_DATA_SECRET` (optional, recommended if you want a separate encryption key for saved sync auth)
 
 then `/account link` will generate a one-time external URL and the bot will start a local callback listener.
 
@@ -185,7 +190,7 @@ content-type: application/json
 }
 ```
 
-The external service is responsible for obtaining maimai session data, transforming it into a safe profile snapshot, and POSTing it to the callback URL. The bot only stores the normalized snapshot plus minimal session metadata.
+The external service is responsible for obtaining maimai session data, transforming it into a safe profile snapshot, and POSTing it to the callback URL. For the International cookie-based web flow, the bot can also store encrypted sync auth so `/account sync` can refresh the snapshot later.
 
 The public `/account link` URL is now signed. The callback URL is no longer exposed in the browser query string.
 Raw imported account payloads are no longer persisted in the bot state file.

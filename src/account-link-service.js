@@ -83,6 +83,7 @@ export async function startAccountLinkCallbackServer({
   sharedSecret,
   store,
   normalizeImportedAccountSnapshot,
+  prepareLinkedAuth,
   logger = console
 }) {
   const server = createServer(async (request, response) => {
@@ -136,9 +137,11 @@ export async function startAccountLinkCallbackServer({
 
         const provider = String(body.provider || 'manual').trim().toLowerCase() || 'manual';
         const normalizedAccount = normalizeImportedAccountSnapshot(payload, provider);
+        const linkedAuth = prepareLinkedAuth ? prepareLinkedAuth(body.auth || null) : null;
         const storedAccount = await store.setAccount(session.userId, {
           ...normalizedAccount,
           linkMethod: 'web',
+          linkedAuth,
           linkSession: {
             reference: `${session.token.slice(0, 4)}...${session.token.slice(-4)}`,
             createdAt: session.createdAt,

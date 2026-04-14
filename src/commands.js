@@ -210,6 +210,11 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('sync')
+      .setDescription('Refresh your linked International account snapshot')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('unlink')
       .setDescription('Remove your linked account snapshot')
   );
