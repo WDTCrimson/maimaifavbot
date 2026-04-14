@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 const DEFAULT_PLAYLIST_ID_MAP_FILE = './data/reference/playlist-id-map.json';
@@ -16,6 +17,14 @@ function normalizeFavoriteId(value) {
     return null;
   }
   return id;
+}
+
+function buildCanonicalSongId(title, artist) {
+  const digest = createHash('sha1')
+    .update(`${normalizeText(title)}::${normalizeText(artist)}`, 'utf8')
+    .digest('hex')
+    .slice(0, 16);
+  return `song:${digest}`;
 }
 
 function resolveStableFavoriteId(sourceSong) {
@@ -46,6 +55,9 @@ function scoreSong(song, query) {
 
   let score = 0;
 
+  if (song.songId === query) {
+    score += 3000;
+  }
   if (song.favoriteId === query) {
     score += 2000;
   }
@@ -87,6 +99,7 @@ export class SongCatalog {
     this.available = false;
     this.error = null;
     this.songs = [];
+    this.bySongId = new Map();
     this.byFavoriteId = new Map();
   }
 
@@ -117,7 +130,8 @@ export class SongCatalog {
         }
       }
 
-      const byId = new Map();
+      const bySongId = new Map();
+      const byFavoriteId = new Map();
 
       for (const sourceSong of sourceSongs) {
         const playlistKey = `${normalizeText(sourceSong.title)}::${normalizeText(sourceSong.artist)}`;
@@ -134,6 +148,7 @@ export class SongCatalog {
         }
 
         const song = {
+          songId: buildCanonicalSongId(title, artist),
           favoriteId,
           title,
           artist: artist || 'Unknown',
@@ -151,19 +166,22 @@ export class SongCatalog {
           searchBlob: normalizeText(`${favoriteId} ${title} ${artist}`)
         };
 
-        const existing = byId.get(favoriteId);
+        const existing = bySongId.get(song.songId);
         if (!existing || song.difficultyLevels.length > existing.difficultyLevels.length) {
-          byId.set(favoriteId, song);
+          bySongId.set(song.songId, song);
+          byFavoriteId.set(favoriteId, song);
         }
       }
 
-      this.byFavoriteId = byId;
-      this.songs = [...byId.values()].sort((a, b) => a.title.localeCompare(b.title));
+      this.bySongId = bySongId;
+      this.byFavoriteId = byFavoriteId;
+      this.songs = [...bySongId.values()].sort((a, b) => a.title.localeCompare(b.title));
       this.available = true;
       this.error = null;
     } catch (error) {
       this.available = false;
       this.error = error;
+      this.bySongId = new Map();
       this.byFavoriteId = new Map();
       this.songs = [];
     } finally {
@@ -191,6 +209,18 @@ export class SongCatalog {
     return this.byFavoriteId.get(normalized) || null;
   }
 
+  getBySongId(songId) {
+    const normalized = String(songId || '').trim();
+    if (!/^song:[a-f0-9]{16}$/.test(normalized)) {
+      return null;
+    }
+    return this.bySongId.get(normalized) || null;
+  }
+
+  getByStoredId(songId) {
+    return this.getBySongId(songId) || this.getByFavoriteId(songId);
+  }
+
   search(query, limit = 10) {
     this.requireAvailable();
     const normalized = normalizeText(query);
@@ -212,7 +242,7 @@ export class SongCatalog {
 
   resolveSong(query) {
     this.requireAvailable();
-    const direct = this.getByFavoriteId(query);
+    const direct = this.getByStoredId(query);
     if (direct) {
       return direct;
     }
@@ -225,7 +255,7 @@ export class SongCatalog {
     this.requireAvailable();
     return this.search(query, limit).map((song) => ({
       name: buildSongLabel(song),
-      value: song.favoriteId
+      value: song.songId
     }));
   }
 }

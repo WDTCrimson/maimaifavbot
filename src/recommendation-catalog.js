@@ -54,7 +54,7 @@ function uniqueExactTitleSong(songCatalog, normalizedTitle) {
 
 function resolveRecommendedSong(songCatalog, rawEntry) {
   if (rawEntry.songId) {
-    return songCatalog.getByFavoriteId(rawEntry.songId);
+    return songCatalog.getByStoredId(rawEntry.songId);
   }
 
   const normalizedTitle = normalizeText(rawEntry.title);
@@ -167,7 +167,7 @@ export class RecommendationCatalog {
         const weight = Number.isFinite(Number(rawEntry.weight)) ? Number(rawEntry.weight) : 1;
 
         resolvedEntries.push({
-          songId: song.favoriteId,
+          songId: song.songId,
           song,
           note,
           tags,

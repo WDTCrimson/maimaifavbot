@@ -24,6 +24,11 @@ await store.ensureReady();
 const songCatalog = new SongCatalog(config.songCatalogFile);
 await songCatalog.ensureReady();
 
+const loadoutMigration = await store.migrateLoadouts((storedId) => songCatalog.getByStoredId(storedId));
+if (loadoutMigration.changed) {
+  console.log(`Migrated loadouts to canonical song IDs. Unresolved legacy entries: ${loadoutMigration.unresolved.length}`);
+}
+
 const recommendationCatalog = new RecommendationCatalog(config.recommendationFile, songCatalog);
 await recommendationCatalog.ensureReady();
 
@@ -215,7 +220,7 @@ function getPlaylistSongChoices(userId, playlistName, query) {
 
   const entries = playlist.songs
     .map((songId) => {
-      const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
+      const song = songCatalog.available ? songCatalog.getByStoredId(songId) : null;
       const label = song ? `${song.title} - ${song.artist}` : songId;
       return {
         label,
@@ -294,7 +299,7 @@ async function handlePlaylistCommand(interaction) {
         return;
       }
 
-      const songs = playlist.songs.map((songId) => songCatalog.getByFavoriteId(songId)).filter(Boolean);
+      const songs = playlist.songs.map((songId) => songCatalog.getByStoredId(songId)).filter(Boolean);
       if (!songs.length) {
         throw new Error('No songs from this playlist are available in the local song catalog.');
       }
@@ -332,11 +337,11 @@ async function handlePlaylistCommand(interaction) {
         throw new Error(`No matching song found for "${songQuery}".`);
       }
 
-      const playlist = await store.addSong(userId, name, song.favoriteId);
+      const playlist = await store.addSong(userId, name, song.songId);
       await replySongAdded(interaction, {
         playlist,
         song,
-        songId: song.favoriteId
+        songId: song.songId
       });
       return;
     }
@@ -348,7 +353,7 @@ async function handlePlaylistCommand(interaction) {
       const playlistBefore = store.getLoadout(userId, name);
       const songId = resolveSongIdInPlaylist(playlistBefore, songQuery);
       const playlist = await store.removeSong(userId, name, songId);
-      const removedSong = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
+      const removedSong = songCatalog.available ? songCatalog.getByStoredId(songId) : null;
       if (removedSong) {
         await replySafely(
           interaction,
@@ -391,9 +396,10 @@ async function handlePlaylistCommand(interaction) {
       }
 
       const songs = playlist.songs
-        .map((songId) => songCatalog.getByFavoriteId(songId))
+        .map((songId) => songCatalog.getByStoredId(songId))
         .filter(Boolean)
         .map((song) => ({
+          songId: song.songId,
           favoriteId: song.favoriteId,
           title: song.title
         }));
@@ -1535,7 +1541,7 @@ function resolveSongIdInPlaylist(playlist, songQuery) {
     throw new Error('Song query cannot be empty.');
   }
 
-  if (/^\d{1,8}$/.test(query)) {
+  if (/^(?:\d{1,8}|song:[a-f0-9]{16})$/.test(query)) {
     return query;
   }
 
@@ -1544,13 +1550,13 @@ function resolveSongIdInPlaylist(playlist, songQuery) {
   }
 
   const exact = songCatalog.resolveSong(query);
-  if (exact && playlist.songs.includes(exact.favoriteId)) {
-    return exact.favoriteId;
+  if (exact && playlist.songs.includes(exact.songId)) {
+    return exact.songId;
   }
 
   const normalizedQuery = query.toLowerCase();
   const partial = playlist.songs.find((songId) => {
-    const song = songCatalog.getByFavoriteId(songId);
+    const song = songCatalog.getByStoredId(songId);
     if (!song) {
       return false;
     }
@@ -1608,7 +1614,7 @@ function decodeLoadoutCode(rawCode) {
   const songIds = [];
   for (const value of Array.isArray(payload.songIds) ? payload.songIds : []) {
     const songId = String(value || '').trim();
-    if (!/^\d{1,8}$/.test(songId)) {
+    if (!/^(?:\d{1,8}|song:[a-f0-9]{16})$/.test(songId)) {
       continue;
     }
     if (seen.has(songId)) {
@@ -1693,7 +1699,7 @@ function resolveSongIdFromImportedTitle(title) {
 
   const exactMatches = songCatalog.songs.filter((song) => song.normTitle === normalized);
   if (exactMatches.length === 1) {
-    return { songId: exactMatches[0].favoriteId, reason: 'exact' };
+    return { songId: exactMatches[0].songId, reason: 'exact' };
   }
   if (exactMatches.length > 1) {
     return { songId: null, reason: 'ambiguous' };
@@ -1704,7 +1710,7 @@ function resolveSongIdFromImportedTitle(title) {
     return { songId: null, reason: 'not_found' };
   }
 
-  return { songId: fallback.favoriteId, reason: 'fuzzy' };
+  return { songId: fallback.songId, reason: 'fuzzy' };
 }
 
 function formatUnresolvedTitleSummary(unresolvedTitles, maxItems = 5) {
@@ -1722,7 +1728,7 @@ function formatUnresolvedTitleSummary(unresolvedTitles, maxItems = 5) {
 
 function buildPayloadSongs(playlist) {
   return playlist.songs.map((songId) => {
-    const song = songCatalog.available ? songCatalog.getByFavoriteId(songId) : null;
+    const song = songCatalog.available ? songCatalog.getByStoredId(songId) : null;
     if (!song) {
       return { id: songId };
     }
@@ -2227,7 +2233,7 @@ async function replyPlaylistShow(interaction, playlist) {
   }
 
   const entries = playlist.songs
-    .map((songId) => songCatalog.getByFavoriteId(songId))
+    .map((songId) => songCatalog.getByStoredId(songId))
     .filter(Boolean);
   const missingCount = playlist.songs.length - entries.length;
 
@@ -2288,7 +2294,7 @@ async function replyPlaylistStats(interaction, playlist) {
   }
 
   const songs = playlist.songs
-    .map((songId) => songCatalog.getByFavoriteId(songId))
+    .map((songId) => songCatalog.getByStoredId(songId))
     .filter(Boolean);
   const missingCount = playlist.songs.length - songs.length;
 

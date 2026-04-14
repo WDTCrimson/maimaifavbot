@@ -7,8 +7,8 @@ function normalizeLoadoutName(name) {
 
 function normalizeSongId(songId) {
   const value = String(songId).trim();
-  if (!/^\d{1,8}$/.test(value)) {
-    throw new Error('Song ID must be numeric (1-8 digits).');
+  if (!/^(?:\d{1,8}|song:[a-f0-9]{16})$/.test(value)) {
+    throw new Error('Song ID must be a numeric legacy ID or canonical song ID.');
   }
   return value;
 }
@@ -94,6 +94,76 @@ export class LoadoutStore {
 
   async ensureReady() {
     await this.load();
+  }
+
+  async migrateLoadouts(resolveSongByStoredId) {
+    let changed = false;
+    const unresolved = [];
+
+    for (const [userId, user] of Object.entries(this.state.users || {})) {
+      const loadouts = user?.loadouts;
+      if (!loadouts || typeof loadouts !== 'object') {
+        continue;
+      }
+
+      for (const loadout of Object.values(loadouts)) {
+        if (!loadout || !Array.isArray(loadout.songs)) {
+          continue;
+        }
+
+        let loadoutChanged = false;
+        const nextSongs = [];
+        const seen = new Set();
+
+        for (const rawId of loadout.songs) {
+          const normalized = normalizeSongId(rawId);
+          if (/^song:[a-f0-9]{16}$/.test(normalized)) {
+            if (!seen.has(normalized)) {
+              seen.add(normalized);
+              nextSongs.push(normalized);
+            }
+            continue;
+          }
+
+          const song = typeof resolveSongByStoredId === 'function' ? resolveSongByStoredId(normalized) : null;
+          const migratedId = song?.songId || normalized;
+          if (!song) {
+            unresolved.push({
+              userId,
+              loadout: loadout.name,
+              songId: normalized
+            });
+          }
+
+          if (!seen.has(migratedId)) {
+            seen.add(migratedId);
+            nextSongs.push(migratedId);
+          }
+          if (migratedId !== normalized) {
+            loadoutChanged = true;
+          }
+        }
+
+        if (nextSongs.length !== loadout.songs.length) {
+          loadoutChanged = true;
+        }
+
+        if (loadoutChanged) {
+          changed = true;
+          loadout.songs = nextSongs;
+          loadout.updatedAt = new Date().toISOString();
+        }
+      }
+    }
+
+    if (changed) {
+      await this.save();
+    }
+
+    return {
+      changed,
+      unresolved
+    };
   }
 
   getUser(userId) {
