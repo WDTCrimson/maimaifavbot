@@ -16,6 +16,20 @@ function normalizeFavoriteId(value) {
   return id;
 }
 
+function resolveStableFavoriteId(sourceSong) {
+  const linkedOtogeSort = normalizeFavoriteId(sourceSong.linkedOtogeSort);
+  if (linkedOtogeSort) {
+    return linkedOtogeSort;
+  }
+
+  const sourceId = normalizeFavoriteId(sourceSong.sourceSongId);
+  if (sourceId && String(sourceSong.id || '').startsWith('otoge:')) {
+    return sourceId;
+  }
+
+  return null;
+}
+
 function truncate(text, maxLength) {
   if (text.length <= maxLength) {
     return text;
@@ -87,7 +101,7 @@ export class SongCatalog {
       const byId = new Map();
 
       for (const sourceSong of sourceSongs) {
-        const favoriteId = normalizeFavoriteId(sourceSong.linkedOtogeSort || sourceSong.sourceSongId);
+        const favoriteId = resolveStableFavoriteId(sourceSong);
         if (!favoriteId) {
           continue;
         }
