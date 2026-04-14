@@ -1,5 +1,7 @@
 import { readFile } from 'node:fs/promises';
 
+const DEFAULT_PLAYLIST_ID_MAP_FILE = './data/reference/playlist-id-map.json';
+
 function normalizeText(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -17,7 +19,7 @@ function normalizeFavoriteId(value) {
 }
 
 function resolveStableFavoriteId(sourceSong) {
-  const linkedOtogeSort = normalizeFavoriteId(sourceSong.linkedOtogeSort);
+  const linkedOtogeSort = normalizeFavoriteId(sourceSong.playlistId || sourceSong.linkedOtogeSort);
   if (linkedOtogeSort) {
     return linkedOtogeSort;
   }
@@ -80,6 +82,7 @@ function buildSongLabel(song) {
 export class SongCatalog {
   constructor(filePath) {
     this.filePath = filePath;
+    this.playlistIdMapFile = DEFAULT_PLAYLIST_ID_MAP_FILE;
     this.loaded = false;
     this.available = false;
     this.error = null;
@@ -98,10 +101,28 @@ export class SongCatalog {
       const raw = await readFile(this.filePath, 'utf8');
       const parsed = JSON.parse(raw);
       const sourceSongs = Array.isArray(parsed?.songs) ? parsed.songs : [];
+      let playlistIdMap = new Map();
+
+      try {
+        const playlistMapRaw = await readFile(this.playlistIdMapFile, 'utf8');
+        const playlistMapParsed = JSON.parse(playlistMapRaw);
+        const entries =
+          playlistMapParsed && typeof playlistMapParsed === 'object' && playlistMapParsed.entries && typeof playlistMapParsed.entries === 'object'
+            ? playlistMapParsed.entries
+            : {};
+        playlistIdMap = new Map(Object.entries(entries));
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
       const byId = new Map();
 
       for (const sourceSong of sourceSongs) {
-        const favoriteId = resolveStableFavoriteId(sourceSong);
+        const playlistKey = `${normalizeText(sourceSong.title)}::${normalizeText(sourceSong.artist)}`;
+        const frozenPlaylistId = normalizeFavoriteId(playlistIdMap.get(playlistKey));
+        const favoriteId = frozenPlaylistId || resolveStableFavoriteId(sourceSong);
         if (!favoriteId) {
           continue;
         }
