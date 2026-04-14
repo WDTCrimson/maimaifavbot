@@ -13,7 +13,7 @@ import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './acc
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderLoadoutGraphic } from './loadout-graphic.js';
-import { fetchIntlAccountSnapshotFromClal } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, fetchIntlAccountSnapshotFromClal } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -372,6 +372,53 @@ async function handlePlaylistCommand(interaction) {
         content: `Playlist: **${playlist.name}** (${playlist.songs.length}/30)\nPayload below (copy this message only):`
       });
       await replySafely(interaction, payload);
+      return;
+    }
+
+    case 'apply': {
+      songCatalog.requireAvailable();
+      const name = interaction.options.getString('name', true);
+      const playlist = store.getLoadout(userId, name);
+      const account = store.getAccount(userId);
+      if (!account?.linkedAuth) {
+        throw new Error('Link your International maimai account first with `/account link` before using `/playlist apply`.');
+      }
+
+      const linkedAuth = restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret);
+      if (!linkedAuth || linkedAuth.region !== 'intl' || linkedAuth.type !== 'clal') {
+        throw new Error('`/playlist apply` currently supports linked International accounts only. Re-link through the web flow first.');
+      }
+
+      const songs = playlist.songs
+        .map((songId) => songCatalog.getByFavoriteId(songId))
+        .filter(Boolean)
+        .map((song) => ({
+          favoriteId: song.favoriteId,
+          title: song.title
+        }));
+
+      const report = await applyIntlFavoritesFromClal(linkedAuth.token, songs);
+      const lines = [
+        `Applied **${playlist.name}** to your maimai favorites.`,
+        `Playlist songs: ${playlist.songs.length}/30`,
+        `Matched on page: ${report.matchedRows}`,
+        `Added: ${report.added}`,
+        `Removed: ${report.removed}`,
+        `Checked now: ${report.totalChecked}`,
+        `Scanned rows: ${report.scannedRows}`
+      ];
+
+      if (report.disabled.length) {
+        lines.push(`Disabled on page: ${report.disabled.slice(0, 10).join(', ')}${report.disabled.length > 10 ? ', ...' : ''}`);
+      }
+      if (report.missing.length) {
+        lines.push(`Missing on page: ${report.missing.slice(0, 10).join(', ')}${report.missing.length > 10 ? ', ...' : ''}`);
+      }
+      if (report.failedValues.length) {
+        lines.push(`Verification mismatches: ${report.failedValues.length}`);
+      }
+
+      await replySafely(interaction, lines.join('\n'));
       return;
     }
 

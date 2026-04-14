@@ -86,6 +86,14 @@ export const playlistCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('apply')
+      .setDescription('Apply a playlist directly to your linked maimai favorites')
+      .addStringOption((option) =>
+        option.setName('name').setDescription('Playlist name').setRequired(true).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('share')
       .setDescription('Generate a share code for this playlist')
       .addStringOption((option) =>

@@ -21,6 +21,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/playlist add-song name:<text> song_query:<text>`
 - `/playlist remove-song name:<text> song_query:<text>`
 - `/playlist export name:<text>`
+- `/playlist apply name:<text>`
 - `/playlist share name:<text>`
 - `/playlist import name:<text> code:<text> [replace:true|false]`
 - `/playlist graphic name:<text>`
@@ -95,6 +96,14 @@ All bot replies are ephemeral (private).
 6. To import your current website favorites into the bot:
    Click `Export Current Favorites`, then run:
    `/playlist import name:<new_playlist_name> code:<paste_code> replace:true`
+
+## Direct linked-account apply
+
+If you linked an International maimai account with `/account link`, you can apply a bot playlist directly without the bookmarklet or extension:
+
+- `/playlist apply name:<text>`
+
+This updates the website favorites to match the playlist as closely as the current favorites page allows, then reports added/removed/missing songs.
 
 ### Rebuild extension CSS (Tailwind)
 

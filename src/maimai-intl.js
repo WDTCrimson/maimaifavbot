@@ -6,6 +6,7 @@ const INTL_PLAYER_DATA_URL = 'https://maimaidx-eng.com/maimai-mobile/playerData/
 const INTL_RECORD_URL = 'https://maimaidx-eng.com/maimai-mobile/record/';
 const INTL_SCORE_SEARCH_URL =
   'https://maimaidx-eng.com/maimai-mobile/record/musicGenre/search/?genre=99&diff=';
+const INTL_FAVORITE_EDIT_URL = 'https://maimaidx-eng.com/maimai-mobile/home/userOption/favorite/updateMusic/';
 
 const CONFUSABLE_CHAR_MAP = new Map([
   ['Α', 'A'], ['α', 'a'], ['Β', 'B'], ['β', 'b'], ['Ε', 'E'], ['ε', 'e'], ['Ζ', 'Z'], ['ζ', 'z'],
@@ -53,6 +54,10 @@ function normalizeTitleLoose(value) {
     .replace(/[ーｰ]/gu, '')
     .replace(/[\s\p{P}\p{S}]+/gu, '')
     .trim();
+}
+
+function normalizeFavoriteValue(value) {
+  return String(value || '').trim();
 }
 
 function normalizeIntlClalToken(value) {
@@ -388,6 +393,25 @@ async function fetchText(url, { cookies, referer }) {
   return response.text();
 }
 
+async function postForm(url, { cookies, referer, body }) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Cookie: cookies,
+      Referer: referer,
+      'User-Agent': USER_AGENT,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body
+  });
+
+  if (response.status < 200 || response.status >= 400) {
+    throw new Error(`Failed to submit ${url}: HTTP ${response.status}`);
+  }
+
+  return response.text();
+}
+
 async function fetchPlayerDataHtml(cookies, refererUrl) {
   const html = await fetchText(INTL_PLAYER_DATA_URL, {
     cookies,
@@ -399,6 +423,180 @@ async function fetchPlayerDataHtml(cookies, refererUrl) {
   }
 
   return html;
+}
+
+async function fetchFavoriteEditHtml(cookies) {
+  const html = await fetchText(INTL_FAVORITE_EDIT_URL, {
+    cookies,
+    referer: 'https://maimaidx-eng.com/maimai-mobile/'
+  });
+
+  if (html.includes('ERROR CODE：100001') || html.includes('Please login again')) {
+    throw new Error('The maimai web session expired before favorites could be fetched.');
+  }
+
+  return html;
+}
+
+async function parseFavoriteEditPage(html) {
+  const load = await loadCheerio();
+  const $ = load(html);
+  const form = $('form[action$="/home/userOption/favorite/updateMusic/set"]').first();
+  if (!form.length) {
+    throw new Error('Could not locate the maimai favorite update form.');
+  }
+
+  const formAction = form.attr('action') || '/maimai-mobile/home/userOption/favorite/updateMusic/set';
+  const actionUrl = new URL(formAction, INTL_FAVORITE_EDIT_URL).toString();
+  const preservedFields = [];
+
+  form.find('input, select, textarea').each((_, element) => {
+    const field = $(element);
+    const name = String(field.attr('name') || '').trim();
+    if (!name || name === 'music[]') {
+      return;
+    }
+
+    const tagName = String(element.tagName || '').toLowerCase();
+    const type = String(field.attr('type') || '').toLowerCase();
+    if (tagName === 'input' && ['checkbox', 'radio', 'submit', 'button', 'image', 'file'].includes(type)) {
+      return;
+    }
+
+    const value = field.val();
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        preservedFields.push([name, String(item ?? '')]);
+      }
+      return;
+    }
+
+    preservedFields.push([name, String(value ?? '')]);
+  });
+
+  const rows = [];
+  $('label.favorite_checkbox_frame').each((_, label) => {
+    const root = $(label);
+    const input = root.find('input[name="music[]"][type="checkbox"]').first();
+    if (!input.length) {
+      return;
+    }
+
+    const value = normalizeFavoriteValue(input.attr('value'));
+    if (!value) {
+      return;
+    }
+
+    const title = root.find('.favorite_music_name').first().text().trim();
+    rows.push({
+      value,
+      title,
+      norm: normalizeTitle(title),
+      loose: normalizeTitleLoose(title),
+      checked: input.is(':checked'),
+      disabled: input.is(':disabled')
+    });
+  });
+
+  return {
+    actionUrl,
+    preservedFields,
+    rows
+  };
+}
+
+function resolveFavoriteSelections(page, desiredSongs) {
+  const byValue = new Map();
+  const byNorm = new Map();
+  const byLoose = new Map();
+
+  for (const row of page.rows) {
+    if (!byValue.has(row.value)) {
+      byValue.set(row.value, row);
+    }
+    if (row.norm && !byNorm.has(row.norm)) {
+      byNorm.set(row.norm, row);
+    }
+    if (row.loose) {
+      const bucket = byLoose.get(row.loose) || [];
+      bucket.push(row);
+      byLoose.set(row.loose, bucket);
+    }
+  }
+
+  const selectedRows = [];
+  const selectedValues = new Set();
+  const matchedTitles = [];
+  const missing = [];
+  const disabled = [];
+
+  for (const song of desiredSongs) {
+    let row = byValue.get(normalizeFavoriteValue(song.favoriteId)) || null;
+
+    if (!row) {
+      const norm = normalizeTitle(song.title);
+      if (norm) {
+        row = byNorm.get(norm) || null;
+      }
+    }
+
+    if (!row) {
+      const loose = normalizeTitleLoose(song.title);
+      const bucket = loose ? byLoose.get(loose) || [] : [];
+      if (bucket.length === 1) {
+        row = bucket[0];
+      } else if (bucket.length > 1) {
+        row = bucket.find((entry) => normalizeTitle(entry.title) === normalizeTitle(song.title)) || null;
+      }
+    }
+
+    if (!row) {
+      missing.push(song.title);
+      continue;
+    }
+
+    if (row.disabled) {
+      disabled.push(row.title || song.title);
+      continue;
+    }
+
+    if (selectedValues.has(row.value)) {
+      continue;
+    }
+
+    selectedValues.add(row.value);
+    selectedRows.push(row);
+    matchedTitles.push(row.title || song.title);
+  }
+
+  return {
+    selectedRows,
+    matchedTitles,
+    missing,
+    disabled
+  };
+}
+
+function buildFavoriteUpdateBody(preservedFields, selectedValues) {
+  const body = new URLSearchParams();
+
+  for (const [name, value] of preservedFields) {
+    body.append(name, value);
+  }
+  for (const value of selectedValues) {
+    body.append('music[]', value);
+  }
+
+  return body;
+}
+
+async function updateFavoriteSelections(cookies, page, selectedValues) {
+  const body = buildFavoriteUpdateBody(page.preservedFields, selectedValues);
+  await postForm(page.actionUrl, {
+    cookies,
+    referer: INTL_FAVORITE_EDIT_URL,
+    body
+  });
 }
 
 async function extractPlayerSnapshot(html) {
@@ -788,5 +986,44 @@ export async function fetchIntlAccountSnapshotFromClal(rawToken, songCatalog = n
   return {
     token: result.token,
     snapshot: result.snapshot
+  };
+}
+
+export async function applyIntlFavoritesFromClal(rawToken, desiredSongs) {
+  if (!Array.isArray(desiredSongs)) {
+    throw new Error('Desired songs must be an array.');
+  }
+
+  const clalToken = normalizeIntlClalToken(rawToken);
+  const validation = await validateInternationalCookie(clalToken);
+  const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
+
+  const beforePage = await parseFavoriteEditPage(await fetchFavoriteEditHtml(cookies));
+  const resolved = resolveFavoriteSelections(beforePage, desiredSongs);
+  const beforeCheckedValues = new Set(beforePage.rows.filter((row) => row.checked).map((row) => row.value));
+  const selectedValues = resolved.selectedRows.map((row) => row.value);
+
+  if (desiredSongs.length > 0 && selectedValues.length === 0) {
+    throw new Error('None of the playlist songs could be matched on the maimai favorites page. No changes were applied.');
+  }
+
+  await updateFavoriteSelections(cookies, beforePage, selectedValues);
+
+  const afterPage = await parseFavoriteEditPage(await fetchFavoriteEditHtml(cookies));
+  const afterCheckedValues = new Set(afterPage.rows.filter((row) => row.checked).map((row) => row.value));
+  const failed = selectedValues.filter((value) => !afterCheckedValues.has(value));
+
+  return {
+    scannedRows: afterPage.rows.length,
+    actionableRows: desiredSongs.length,
+    matchedRows: resolved.matchedTitles.length,
+    missing: resolved.missing,
+    disabled: resolved.disabled,
+    failedValues: failed,
+    beforeChecked: beforeCheckedValues.size,
+    totalChecked: afterCheckedValues.size,
+    added: [...afterCheckedValues].filter((value) => !beforeCheckedValues.has(value)).length,
+    removed: [...beforeCheckedValues].filter((value) => !afterCheckedValues.has(value)).length,
+    appliedCount: selectedValues.length
   };
 }
