@@ -799,8 +799,7 @@ async function handleSongCommand(interaction) {
         minConstant: constantSearch.minConstant,
         maxConstant: constantSearch.maxConstant,
         difficulty: constantSearch.difficulty,
-        chartType: constantSearch.chartType,
-        limit: 25
+        chartType: constantSearch.chartType
       });
 
       if (!matches.length) {
@@ -816,17 +815,7 @@ async function handleSongCommand(interaction) {
         return;
       }
 
-      const lines = matches.map((entry, index) => formatChartSearchResult(entry, index));
-      const moreText = matches.length >= 25 ? '\nShowing first 25 matches.' : '';
-      await replySafely(
-        interaction,
-        `Charts at internal level ${formatConstantSearchRange(
-          constantSearch
-        )}${buildConstantFilterSuffix({
-          difficulty: constantSearch.difficulty,
-          chartType: constantSearch.chartType
-        })}:\n${lines.join('\n')}${moreText}`
-      );
+      await replyChartSearchResults(interaction, constantSearch, matches);
       return;
     }
 
@@ -1554,7 +1543,7 @@ function formatDifficultyShort(value) {
   return labels[difficulty] || String(value || 'UNK').toUpperCase();
 }
 
-function findChartsByConstantRange({ minConstant, maxConstant, difficulty, chartType, limit }) {
+function findChartsByConstantRange({ minConstant, maxConstant, difficulty, chartType }) {
   const difficultyFilter = difficulty ? normalizeChartText(difficulty) : null;
   const chartTypeFilter = chartType ? normalizeChartText(chartType) : null;
 
@@ -1589,7 +1578,7 @@ function findChartsByConstantRange({ minConstant, maxConstant, difficulty, chart
     return a.song.title.localeCompare(b.song.title);
   });
 
-  return matches.slice(0, limit);
+  return matches;
 }
 
 function formatChartSearchResult(entry, index) {
@@ -1598,6 +1587,56 @@ function formatChartSearchResult(entry, index) {
   const levelText = String(entry.chart.level || '?');
   const constantText = formatInternalLevel(entry.chart.internalLevelValue);
   return `${index + 1}. [${constantText} ${typeText} ${difficultyText}] ${entry.song.title} - Lvl ${levelText}`;
+}
+
+function groupChartsByConstant(matches) {
+  const groups = new Map();
+  for (const entry of matches) {
+    const constant = formatInternalLevel(entry.chart.internalLevelValue);
+    const group = groups.get(constant) || [];
+    group.push(entry);
+    groups.set(constant, group);
+  }
+  return [...groups.entries()];
+}
+
+function buildChartSearchMessages(search, matches) {
+  const rangeText = formatConstantSearchRange(search);
+  const filterSuffix = buildConstantFilterSuffix({
+    difficulty: search.difficulty,
+    chartType: search.chartType
+  });
+  const header = `Charts at internal level ${rangeText}${filterSuffix} (${matches.length}):`;
+  const messages = [];
+  let first = true;
+
+  for (const [constant, entries] of groupChartsByConstant(matches)) {
+    let chunk = first
+      ? `${header}\n\n${constant} (${entries.length})`
+      : `${rangeText}${filterSuffix} continued\n\n${constant} (${entries.length})`;
+    first = false;
+
+    entries.forEach((entry, index) => {
+      const line = formatChartSearchResult(entry, index);
+      if (chunk.length + line.length + 1 > 1800) {
+        messages.push(chunk);
+        chunk = `${rangeText}${filterSuffix} continued - ${constant}\n${line}`;
+      } else {
+        chunk += `\n${line}`;
+      }
+    });
+
+    messages.push(chunk);
+  }
+
+  return messages;
+}
+
+async function replyChartSearchResults(interaction, search, matches) {
+  const messages = buildChartSearchMessages(search, matches);
+  for (const message of messages) {
+    await replySafely(interaction, message);
+  }
 }
 
 function buildConstantFilterSuffix({ difficulty, chartType }) {
