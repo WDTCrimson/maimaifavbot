@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-const DEFAULT_SOURCE_URL = 'https://api.yuzuchan.moe/maimaidx/maimaidxalias';
+const DEFAULT_SOURCE_URL = 'https://www.yuzuchan.moe/api/maimaidx/maimaidxalias';
 const DEFAULT_OUTPUT_FILE = './data/reference/song-aliases.json';
 const DEFAULT_REPORT_FILE = './data/reference/song-aliases-report.json';
 

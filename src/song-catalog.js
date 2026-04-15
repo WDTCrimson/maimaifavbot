@@ -225,6 +225,22 @@ function normalizeAliasFileEntries(parsed) {
 }
 
 function resolveAliasSong(entry, { bySongId, byFavoriteId, byLegacyFavoriteId, byNormTitle, byNormTitleArtist }) {
+  const normalizedTitle = normalizeText(entry.title);
+  const normalizedArtist = normalizeText(entry.artist);
+  if (normalizedTitle && normalizedArtist) {
+    const exact = byNormTitleArtist.get(`${normalizedTitle}::${normalizedArtist}`);
+    if (exact) {
+      return exact;
+    }
+  }
+
+  if (normalizedTitle) {
+    const matches = byNormTitle.get(normalizedTitle) || [];
+    if (matches.length === 1) {
+      return matches[0];
+    }
+  }
+
   if (entry.songId) {
     const song =
       bySongId.get(entry.songId) ||
@@ -239,22 +255,6 @@ function resolveAliasSong(entry, { bySongId, byFavoriteId, byLegacyFavoriteId, b
     const song = byFavoriteId.get(entry.favoriteId) || byLegacyFavoriteId.get(entry.favoriteId);
     if (song) {
       return song;
-    }
-  }
-
-  const normalizedTitle = normalizeText(entry.title);
-  const normalizedArtist = normalizeText(entry.artist);
-  if (normalizedTitle && normalizedArtist) {
-    const exact = byNormTitleArtist.get(`${normalizedTitle}::${normalizedArtist}`);
-    if (exact) {
-      return exact;
-    }
-  }
-
-  if (normalizedTitle) {
-    const matches = byNormTitle.get(normalizedTitle) || [];
-    if (matches.length === 1) {
-      return matches[0];
     }
   }
 

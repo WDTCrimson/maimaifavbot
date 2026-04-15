@@ -79,6 +79,7 @@ npm run import:aliases
 ```
 
 The importer writes `data/reference/song-aliases.json` and a small report at `data/reference/song-aliases-report.json`.
+It defaults to `https://www.yuzuchan.moe/api/maimaidx/maimaidxalias`; the older documented `api.yuzuchan.moe` host may return 403 from some networks.
 
 ## Quick start
 
