@@ -455,24 +455,47 @@ async function handlePlaylistCommand(interaction) {
         }));
 
       const report = await applyIntlFavoritesFromClal(linkedAuth.token, songs);
+      const addedTitles = report.addedTitles || [];
+      const removedTitles = report.removedTitles || [];
       const lines = [
         `Applied **${playlist.name}** to your maimai favorites.`,
         `Playlist songs: ${playlist.songs.length}/30`,
         `Matched on page: ${report.matchedRows}`,
         `Added: ${report.added}`,
-        `Removed: ${report.removed}`,
-        `Checked now: ${report.totalChecked}`,
-        `Scanned rows: ${report.scannedRows}`
+        `Removed: ${report.removed}`
       ];
+
+      if (addedTitles.length) {
+        lines.push(
+          '',
+          'Added to favorites:',
+          ...addedTitles.slice(0, 10).map((title) => `+ ${title}`)
+        );
+        if (addedTitles.length > 10) {
+          lines.push(`+ ...and ${addedTitles.length - 10} more`);
+        }
+      }
+
+      if (removedTitles.length) {
+        lines.push(
+          '',
+          'Removed from favorites:',
+          ...removedTitles.slice(0, 10).map((title) => `- ${title}`)
+        );
+        if (removedTitles.length > 10) {
+          lines.push(`- ...and ${removedTitles.length - 10} more`);
+        }
+      }
+
+      if (!addedTitles.length && !removedTitles.length) {
+        lines.push('', 'No favorite changes were needed.');
+      }
 
       if (report.disabled.length) {
         lines.push(`Disabled on page: ${report.disabled.slice(0, 10).join(', ')}${report.disabled.length > 10 ? ', ...' : ''}`);
       }
       if (report.missing.length) {
         lines.push(`Missing on page: ${report.missing.slice(0, 10).join(', ')}${report.missing.length > 10 ? ', ...' : ''}`);
-      }
-      if (report.failedValues.length) {
-        lines.push(`Verification mismatches: ${report.failedValues.length}`);
       }
       if (report.missingAfterApply.length) {
         lines.push(

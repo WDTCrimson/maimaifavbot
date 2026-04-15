@@ -602,6 +602,35 @@ function verifyFavoriteSelections(page, desiredSongs) {
   };
 }
 
+function mapCheckedTitlesByNorm(rows) {
+  const byNorm = new Map();
+  for (const row of rows) {
+    if (!row?.checked) {
+      continue;
+    }
+    const norm = row.norm || normalizeTitle(row.title);
+    if (!norm || byNorm.has(norm)) {
+      continue;
+    }
+    byNorm.set(norm, row.title || 'Unknown');
+  }
+  return byNorm;
+}
+
+function diffCheckedTitles(beforeRows, afterRows) {
+  const before = mapCheckedTitlesByNorm(beforeRows);
+  const after = mapCheckedTitlesByNorm(afterRows);
+
+  return {
+    addedTitles: [...after.entries()]
+      .filter(([norm]) => !before.has(norm))
+      .map(([, title]) => title),
+    removedTitles: [...before.entries()]
+      .filter(([norm]) => !after.has(norm))
+      .map(([, title]) => title)
+  };
+}
+
 async function updateFavoriteSelections(cookies, page, selectedValues) {
   const body = buildFavoriteUpdateBody(page.preservedFields, selectedValues);
   await postForm(page.actionUrl, {
@@ -1012,7 +1041,8 @@ export async function applyIntlFavoritesFromClal(rawToken, desiredSongs) {
 
   const beforePage = await parseFavoriteEditPage(await fetchFavoriteEditHtml(cookies));
   const resolved = resolveFavoriteSelections(beforePage, desiredSongs);
-  const beforeCheckedValues = new Set(beforePage.rows.filter((row) => row.checked).map((row) => row.value));
+  const beforeCheckedRows = beforePage.rows.filter((row) => row.checked);
+  const beforeCheckedValues = new Set(beforeCheckedRows.map((row) => row.value));
   const selectedValues = resolved.selectedRows.map((row) => row.value);
 
   if (desiredSongs.length > 0 && selectedValues.length === 0) {
@@ -1022,9 +1052,11 @@ export async function applyIntlFavoritesFromClal(rawToken, desiredSongs) {
   await updateFavoriteSelections(cookies, beforePage, selectedValues);
 
   const afterPage = await parseFavoriteEditPage(await fetchFavoriteEditHtml(cookies));
-  const afterCheckedValues = new Set(afterPage.rows.filter((row) => row.checked).map((row) => row.value));
+  const afterCheckedRows = afterPage.rows.filter((row) => row.checked);
+  const afterCheckedValues = new Set(afterCheckedRows.map((row) => row.value));
   const failed = selectedValues.filter((value) => !afterCheckedValues.has(value));
   const verification = verifyFavoriteSelections(afterPage, desiredSongs);
+  const titleDiff = diffCheckedTitles(beforeCheckedRows, afterCheckedRows);
 
   return {
     scannedRows: afterPage.rows.length,
@@ -1035,10 +1067,13 @@ export async function applyIntlFavoritesFromClal(rawToken, desiredSongs) {
     failedValues: failed,
     missingAfterApply: verification.missingAfterApply,
     unexpectedCheckedTitles: verification.unexpectedCheckedTitles,
+    checkedTitles: afterCheckedRows.map((row) => row.title).filter(Boolean),
+    addedTitles: titleDiff.addedTitles,
+    removedTitles: titleDiff.removedTitles,
     beforeChecked: beforeCheckedValues.size,
     totalChecked: afterCheckedValues.size,
-    added: [...afterCheckedValues].filter((value) => !beforeCheckedValues.has(value)).length,
-    removed: [...beforeCheckedValues].filter((value) => !afterCheckedValues.has(value)).length,
+    added: titleDiff.addedTitles.length,
+    removed: titleDiff.removedTitles.length,
     appliedCount: selectedValues.length
   };
 }
