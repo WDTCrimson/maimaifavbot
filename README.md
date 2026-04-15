@@ -26,7 +26,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/playlist import name:<text> code:<text> [replace:true|false]`
 - `/playlist graphic name:<text>`
 - `/playlist bookmarklet`
-- `/song search query:<text>`
+- `/song search query:<internal-level-or-range>`
 - `/song suggest range:<text> [focus:<text>] [count:<1-10>]`
 - `/song info query:<text>`
 - `/account link`
@@ -36,7 +36,8 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/account top`
 - `/account unlink`
 
-`/song search` also supports exact constant queries (examples: `12.3`, `13.7 mas`, `11.8 dx`).
+`/song search` searches internal chart levels only. Examples: `12.3`, `13.7 mas`, `11.8 dx`, `12.3-12.8`, `12.0-12.4 dx`.
+Use `/song info` for title, artist, ID, and alias lookup.
 
 All bot replies are ephemeral (private).
 

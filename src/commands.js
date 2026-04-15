@@ -132,11 +132,11 @@ export const songCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('search')
-      .setDescription('Search songs by title/artist/ID or exact chart constant')
+      .setDescription('Search charts by internal level or internal level range')
       .addStringOption((option) =>
         option
           .setName('query')
-          .setDescription('Song title, artist, numeric ID, or constant like 12.3 / 13.7 mas')
+          .setDescription('Internal level query like 12.7, 12.3-12.8, 13.7 mas, or 12.0-12.4 dx')
           .setRequired(true)
           .setAutocomplete(true)
       )

@@ -787,57 +787,46 @@ async function handleSongCommand(interaction) {
       const query = interaction.options.getString('query', true);
       const constantSearch = parseConstantSearchQuery(query);
 
-      if (constantSearch) {
-        const matches = findChartsByConstant({
-          constant: constantSearch.constant,
-          difficulty: constantSearch.difficulty,
-          chartType: constantSearch.chartType,
-          limit: 25
-        });
-
-        if (!matches.length) {
-          await replySafely(
-            interaction,
-            `No charts found for constant ${formatInternalLevel(
-              constantSearch.constant
-            )}${buildConstantFilterSuffix({
-              difficulty: constantSearch.difficulty,
-              chartType: constantSearch.chartType
-            })}.`
-          );
-          return;
-        }
-
-        const lines = matches.map((entry, index) => {
-          const difficultyText = formatDifficultyShort(entry.chart.difficulty);
-          const typeText = String(entry.chart.type || 'UNK').toUpperCase();
-          const levelText = String(entry.chart.level || '?');
-          const constantText = formatInternalLevel(entry.chart.internalLevelValue);
-          return `${index + 1}. [${typeText} ${difficultyText}] ${entry.song.title} - Lvl ${levelText} [${constantText}]`;
-        });
-
+      if (!constantSearch) {
         await replySafely(
           interaction,
-          `Charts at constant ${formatInternalLevel(
-            constantSearch.constant
-          )}${buildConstantFilterSuffix({
-            difficulty: constantSearch.difficulty,
-            chartType: constantSearch.chartType
-          })}:\n${lines.join('\n')}`
+          'Use `/song search` for internal level searches like `12.7`, `12.3-12.8`, `13.7 mas`, or `12.0-12.4 dx`. Use `/song info` for title/alias lookup.'
         );
         return;
       }
 
-      const songs = songCatalog.search(query, 10);
-      if (!songs.length) {
-        await replySafely(interaction, `No songs found for "${query}".`);
+      const matches = findChartsByConstantRange({
+        minConstant: constantSearch.minConstant,
+        maxConstant: constantSearch.maxConstant,
+        difficulty: constantSearch.difficulty,
+        chartType: constantSearch.chartType,
+        limit: 25
+      });
+
+      if (!matches.length) {
+        await replySafely(
+          interaction,
+          `No charts found for internal level ${formatConstantSearchRange(
+            constantSearch
+          )}${buildConstantFilterSuffix({
+            difficulty: constantSearch.difficulty,
+            chartType: constantSearch.chartType
+          })}.`
+        );
         return;
       }
 
-      const lines = songs.map(
-        (song, index) => `${index + 1}. [${song.favoriteId}] ${song.title} - ${song.artist}`
+      const lines = matches.map((entry, index) => formatChartSearchResult(entry, index));
+      const moreText = matches.length >= 25 ? '\nShowing first 25 matches.' : '';
+      await replySafely(
+        interaction,
+        `Charts at internal level ${formatConstantSearchRange(
+          constantSearch
+        )}${buildConstantFilterSuffix({
+          difficulty: constantSearch.difficulty,
+          chartType: constantSearch.chartType
+        })}:\n${lines.join('\n')}${moreText}`
       );
-      await replySafely(interaction, `Top matches for "${query}":\n${lines.join('\n')}`);
       return;
     }
 
@@ -1422,7 +1411,8 @@ function parseConstantSearchQuery(rawQuery) {
     .map((token) => token.trim())
     .filter(Boolean);
 
-  let constant = null;
+  let minConstant = null;
+  let maxConstant = null;
   let difficulty = null;
   let chartType = null;
 
@@ -1445,8 +1435,16 @@ function parseConstantSearchQuery(rawQuery) {
       continue;
     }
 
-    if (constant == null && /^\d{1,2}\.\d$/.test(token)) {
-      constant = Number.parseFloat(token);
+    if (minConstant == null && /^(\d{1,2}\.\d)(?:-|:|\\.\\.)(\d{1,2}\.\d)$/.test(token)) {
+      const [, rawMin, rawMax] = token.match(/^(\d{1,2}\.\d)(?:-|:|\\.\\.)(\d{1,2}\.\d)$/);
+      minConstant = Number.parseFloat(rawMin);
+      maxConstant = Number.parseFloat(rawMax);
+      continue;
+    }
+
+    if (minConstant == null && /^\d{1,2}\.\d$/.test(token)) {
+      minConstant = Number.parseFloat(token);
+      maxConstant = minConstant;
       continue;
     }
 
@@ -1463,15 +1461,29 @@ function parseConstantSearchQuery(rawQuery) {
     }
   }
 
-  if (constant == null) {
+  if (minConstant == null || maxConstant == null) {
     return null;
   }
 
+  if (minConstant > maxConstant) {
+    const swappedMin = maxConstant;
+    maxConstant = minConstant;
+    minConstant = swappedMin;
+  }
+
   return {
-    constant,
+    minConstant,
+    maxConstant,
     difficulty,
     chartType
   };
+}
+
+function formatConstantSearchRange(search) {
+  if (sameConstant(search.minConstant, search.maxConstant)) {
+    return formatInternalLevel(search.minConstant);
+  }
+  return `${formatInternalLevel(search.minConstant)}-${formatInternalLevel(search.maxConstant)}`;
 }
 
 function parseSuggestionRange(rawRange) {
@@ -1542,7 +1554,7 @@ function formatDifficultyShort(value) {
   return labels[difficulty] || String(value || 'UNK').toUpperCase();
 }
 
-function findChartsByConstant({ constant, difficulty, chartType, limit }) {
+function findChartsByConstantRange({ minConstant, maxConstant, difficulty, chartType, limit }) {
   const difficultyFilter = difficulty ? normalizeChartText(difficulty) : null;
   const chartTypeFilter = chartType ? normalizeChartText(chartType) : null;
 
@@ -1550,7 +1562,7 @@ function findChartsByConstant({ constant, difficulty, chartType, limit }) {
   for (const song of songCatalog.songs) {
     for (const chart of Array.isArray(song.difficultyLevels) ? song.difficultyLevels : []) {
       const chartConstant = parseInternalConstant(chart.internalLevelValue);
-      if (chartConstant == null || !sameConstant(chartConstant, constant)) {
+      if (chartConstant == null || chartConstant < minConstant || chartConstant > maxConstant) {
         continue;
       }
 
@@ -1566,14 +1578,26 @@ function findChartsByConstant({ constant, difficulty, chartType, limit }) {
   }
 
   matches.sort((a, b) => {
-    const byTitle = a.song.title.localeCompare(b.song.title);
-    if (byTitle !== 0) {
-      return byTitle;
+    const byConstant = parseInternalConstant(a.chart.internalLevelValue) - parseInternalConstant(b.chart.internalLevelValue);
+    if (byConstant !== 0) {
+      return byConstant;
     }
-    return normalizeChartText(a.chart.difficulty).localeCompare(normalizeChartText(b.chart.difficulty));
+    const byDifficulty = normalizeChartText(a.chart.difficulty).localeCompare(normalizeChartText(b.chart.difficulty));
+    if (byDifficulty !== 0) {
+      return byDifficulty;
+    }
+    return a.song.title.localeCompare(b.song.title);
   });
 
   return matches.slice(0, limit);
+}
+
+function formatChartSearchResult(entry, index) {
+  const difficultyText = formatDifficultyShort(entry.chart.difficulty);
+  const typeText = String(entry.chart.type || 'UNK').toUpperCase();
+  const levelText = String(entry.chart.level || '?');
+  const constantText = formatInternalLevel(entry.chart.internalLevelValue);
+  return `${index + 1}. [${constantText} ${typeText} ${difficultyText}] ${entry.song.title} - Lvl ${levelText}`;
 }
 
 function buildConstantFilterSuffix({ difficulty, chartType }) {
