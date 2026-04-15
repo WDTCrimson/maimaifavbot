@@ -30,6 +30,7 @@ if (accountLinkStateScrub.changed) {
 }
 
 const songCatalog = new SongCatalog(config.songCatalogFile);
+songCatalog.aliasFile = config.songAliasFile;
 await songCatalog.ensureReady();
 
 const loadoutMigration = await store.migrateLoadouts((storedId) => songCatalog.getByStoredId(storedId));

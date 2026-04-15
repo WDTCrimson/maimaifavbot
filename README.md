@@ -40,6 +40,46 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 
 All bot replies are ephemeral (private).
 
+## Song aliases
+
+Song aliases are loaded from `data/reference/song-aliases.json` and work anywhere song lookup is used:
+
+- `/song search`
+- `/song info`
+- `/playlist add-song`
+- title-based playlist imports
+
+Alias file format:
+
+```json
+{
+  "entries": [
+    {
+      "aliases": ["qzk", "qzkago"],
+      "title": "QZKago Requiem",
+      "artist": "t+pazolite"
+    },
+    {
+      "alias": "hibana",
+      "songId": "song:examplecanonicalid"
+    }
+  ],
+  "aliases": {
+    "melt": "メルト"
+  }
+}
+```
+
+Prefer `title` + `artist` for aliases maintained by hand. `songId`, current favorite ID, and legacy favorite ID are also accepted.
+
+To import a cached alias list from the Yuzu alias API:
+
+```bash
+npm run import:aliases
+```
+
+The importer writes `data/reference/song-aliases.json` and a small report at `data/reference/song-aliases-report.json`.
+
 ## Quick start
 
 1. Create a Discord application and bot in the Discord Developer Portal.
@@ -64,6 +104,7 @@ All bot replies are ephemeral (private).
 - `DISCORD_GUILD_ID` (optional but recommended for fast command updates)
 - `DATA_FILE` (optional, default `./data/loadouts.json`)
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
+- `SONG_ALIAS_FILE` (optional, default `./data/reference/song-aliases.json`)
 - `RECOMMENDATION_FILE` (optional, default `./data/recommendations/community.json`)
 - `GRAPHIC_THEME_DIR` (optional, default `./data/theme/tomomai` when present, else `./data/theme`)
 - `ACCOUNT_LINK_BASE_URL` (optional, external web service start URL for `/account link`)

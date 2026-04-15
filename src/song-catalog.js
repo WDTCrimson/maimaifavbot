@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 
 const DEFAULT_PLAYLIST_ID_MAP_FILE = './data/reference/playlist-id-map.json';
+const DEFAULT_SONG_ALIAS_FILE = './data/reference/song-aliases.json';
 const SEARCH_CACHE_LIMIT = 200;
 
 function normalizeText(value) {
@@ -77,6 +78,15 @@ function scoreSong(song, query) {
   if (song.searchBlob.includes(query)) {
     score += 250;
   }
+  if (Array.isArray(song.normAliases) && song.normAliases.includes(query)) {
+    score += 1400;
+  }
+  if (Array.isArray(song.normAliases) && song.normAliases.some((alias) => alias.startsWith(query))) {
+    score += 650;
+  }
+  if (Array.isArray(song.normAliases) && song.normAliases.some((alias) => alias.includes(query))) {
+    score += 260;
+  }
 
   const tokens = query.split(' ').filter(Boolean);
   if (tokens.length > 1 && tokens.every((token) => song.searchBlob.includes(token))) {
@@ -90,6 +100,39 @@ function buildSongLabel(song) {
   const prefix = `[${song.favoriteId}]`;
   const body = `${song.title} - ${song.artist}`;
   return truncate(`${prefix} ${body}`, 100);
+}
+
+function findMatchingAlias(song, query) {
+  const normalized = normalizeText(query);
+  if (!normalized || !Array.isArray(song.aliases) || !Array.isArray(song.normAliases)) {
+    return null;
+  }
+
+  const exactIndex = song.normAliases.indexOf(normalized);
+  if (exactIndex >= 0) {
+    return song.aliases[exactIndex] || null;
+  }
+
+  const prefixIndex = song.normAliases.findIndex((alias) => alias.startsWith(normalized));
+  if (prefixIndex >= 0) {
+    return song.aliases[prefixIndex] || null;
+  }
+
+  const partialIndex = song.normAliases.findIndex((alias) => alias.includes(normalized));
+  if (partialIndex >= 0) {
+    return song.aliases[partialIndex] || null;
+  }
+
+  return null;
+}
+
+function buildAutocompleteLabel(song, query) {
+  const base = buildSongLabel(song);
+  const alias = findMatchingAlias(song, query);
+  if (!alias || normalizeText(alias) === song.normTitle) {
+    return base;
+  }
+  return truncate(`${base} (alias: ${alias})`, 100);
 }
 
 function insertRankedResult(results, candidate, limit) {
@@ -117,10 +160,112 @@ function insertRankedResult(results, candidate, limit) {
   }
 }
 
+function normalizeAliasEntry(rawEntry) {
+  if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) {
+    return null;
+  }
+
+  const aliases = Array.isArray(rawEntry.aliases)
+    ? rawEntry.aliases
+    : [rawEntry.alias || rawEntry.name];
+  const normalizedAliases = aliases
+    .map((alias) => String(alias || '').trim())
+    .filter(Boolean);
+
+  if (!normalizedAliases.length) {
+    return null;
+  }
+
+  return {
+    aliases: normalizedAliases,
+    songId: rawEntry.songId ? String(rawEntry.songId).trim() : null,
+    favoriteId: rawEntry.favoriteId ? String(rawEntry.favoriteId).trim() : null,
+    title: rawEntry.title ? String(rawEntry.title).trim() : null,
+    artist: rawEntry.artist ? String(rawEntry.artist).trim() : null
+  };
+}
+
+function normalizeAliasFileEntries(parsed) {
+  const entries = [];
+
+  if (Array.isArray(parsed?.entries)) {
+    for (const rawEntry of parsed.entries) {
+      const entry = normalizeAliasEntry(rawEntry);
+      if (entry) {
+        entries.push(entry);
+      }
+    }
+  }
+
+  if (parsed?.aliases && typeof parsed.aliases === 'object' && !Array.isArray(parsed.aliases)) {
+    for (const [alias, target] of Object.entries(parsed.aliases)) {
+      if (typeof target === 'string') {
+        const value = target.trim();
+        const isId = /^(?:\d{1,8}|song:[a-f0-9]{16})$/.test(value);
+        entries.push({
+          aliases: [alias],
+          songId: isId ? value : null,
+          favoriteId: null,
+          title: isId ? null : value,
+          artist: null
+        });
+        continue;
+      }
+
+      if (target && typeof target === 'object' && !Array.isArray(target)) {
+        const entry = normalizeAliasEntry({ alias, ...target });
+        if (entry) {
+          entries.push(entry);
+        }
+      }
+    }
+  }
+
+  return entries;
+}
+
+function resolveAliasSong(entry, { bySongId, byFavoriteId, byLegacyFavoriteId, byNormTitle, byNormTitleArtist }) {
+  if (entry.songId) {
+    const song =
+      bySongId.get(entry.songId) ||
+      byFavoriteId.get(entry.songId) ||
+      byLegacyFavoriteId.get(entry.songId);
+    if (song) {
+      return song;
+    }
+  }
+
+  if (entry.favoriteId) {
+    const song = byFavoriteId.get(entry.favoriteId) || byLegacyFavoriteId.get(entry.favoriteId);
+    if (song) {
+      return song;
+    }
+  }
+
+  const normalizedTitle = normalizeText(entry.title);
+  const normalizedArtist = normalizeText(entry.artist);
+  if (normalizedTitle && normalizedArtist) {
+    const exact = byNormTitleArtist.get(`${normalizedTitle}::${normalizedArtist}`);
+    if (exact) {
+      return exact;
+    }
+  }
+
+  if (normalizedTitle) {
+    const matches = byNormTitle.get(normalizedTitle) || [];
+    if (matches.length === 1) {
+      return matches[0];
+    }
+  }
+
+  return null;
+}
+
 export class SongCatalog {
   constructor(filePath) {
     this.filePath = filePath;
     this.playlistIdMapFile = DEFAULT_PLAYLIST_ID_MAP_FILE;
+    this.aliasFile = DEFAULT_SONG_ALIAS_FILE;
     this.loaded = false;
     this.available = false;
     this.error = null;
@@ -130,6 +275,7 @@ export class SongCatalog {
     this.byLegacyFavoriteId = new Map();
     this.byNormTitle = new Map();
     this.byNormTitleArtist = new Map();
+    this.byAlias = new Map();
     this.searchCache = new Map();
   }
 
@@ -165,6 +311,7 @@ export class SongCatalog {
       const byLegacyFavoriteId = new Map();
       const byNormTitle = new Map();
       const byNormTitleArtist = new Map();
+      const byAlias = new Map();
 
       for (const sourceSong of sourceSongs) {
         const playlistKey = `${normalizeText(sourceSong.title)}::${normalizeText(sourceSong.artist)}`;
@@ -184,6 +331,8 @@ export class SongCatalog {
           songId: buildCanonicalSongId(title, artist),
           favoriteId,
           legacyFavoriteId: legacyFavoriteId && legacyFavoriteId !== favoriteId ? legacyFavoriteId : null,
+          aliases: [],
+          normAliases: [],
           title,
           artist: artist || 'Unknown',
           bpm: sourceSong.bpm ?? null,
@@ -226,11 +375,51 @@ export class SongCatalog {
         byNormTitleArtist.set(`${song.normTitle}::${song.normArtist}`, song);
       }
 
+      try {
+        const aliasRaw = await readFile(this.aliasFile, 'utf8');
+        const aliasParsed = JSON.parse(aliasRaw);
+        const aliasEntries = normalizeAliasFileEntries(aliasParsed);
+
+        for (const entry of aliasEntries) {
+          const song = resolveAliasSong(entry, {
+            bySongId,
+            byFavoriteId,
+            byLegacyFavoriteId,
+            byNormTitle,
+            byNormTitleArtist
+          });
+          if (!song) {
+            continue;
+          }
+
+          for (const alias of entry.aliases) {
+            const normalizedAlias = normalizeText(alias);
+            if (!normalizedAlias || byAlias.has(normalizedAlias)) {
+              continue;
+            }
+            byAlias.set(normalizedAlias, song);
+            song.aliases.push(alias);
+            song.normAliases.push(normalizedAlias);
+          }
+        }
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
+      for (const song of this.songs) {
+        if (song.aliases.length) {
+          song.searchBlob = normalizeText(`${song.searchBlob} ${song.aliases.join(' ')}`);
+        }
+      }
+
       this.bySongId = bySongId;
       this.byFavoriteId = byFavoriteId;
       this.byLegacyFavoriteId = byLegacyFavoriteId;
       this.byNormTitle = byNormTitle;
       this.byNormTitleArtist = byNormTitleArtist;
+      this.byAlias = byAlias;
       this.searchCache = new Map();
       this.available = true;
       this.error = null;
@@ -242,6 +431,7 @@ export class SongCatalog {
       this.byLegacyFavoriteId = new Map();
       this.byNormTitle = new Map();
       this.byNormTitleArtist = new Map();
+      this.byAlias = new Map();
       this.searchCache = new Map();
       this.songs = [];
     } finally {
@@ -289,6 +479,14 @@ export class SongCatalog {
     return this.getBySongId(songId) || this.getByFavoriteId(songId) || this.getByLegacyFavoriteId(songId);
   }
 
+  getByAlias(alias) {
+    const normalized = normalizeText(alias);
+    if (!normalized) {
+      return null;
+    }
+    return this.byAlias.get(normalized) || null;
+  }
+
   getByNormalizedTitle(normalizedTitle) {
     const key = normalizeText(normalizedTitle);
     return this.byNormTitle.get(key) || [];
@@ -323,7 +521,7 @@ export class SongCatalog {
       return cached;
     }
 
-    const direct = this.getByStoredId(normalized);
+    const direct = this.getByStoredId(normalized) || this.getByAlias(normalized);
     if (direct) {
       const directResults = [direct];
       this.searchCache.set(cacheKey, directResults);
@@ -362,7 +560,7 @@ export class SongCatalog {
 
   resolveSong(query) {
     this.requireAvailable();
-    const direct = this.getByStoredId(query);
+    const direct = this.getByStoredId(query) || this.getByAlias(query);
     if (direct) {
       return direct;
     }
@@ -374,7 +572,7 @@ export class SongCatalog {
   autocomplete(query, limit = 25) {
     this.requireAvailable();
     return this.search(query, limit).map((song) => ({
-      name: buildSongLabel(song),
+      name: buildAutocompleteLabel(song, query),
       value: song.songId
     }));
   }
