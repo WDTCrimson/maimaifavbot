@@ -885,16 +885,13 @@ async function handleSongCommand(interaction) {
         return;
       }
 
-      const levelSummary = formatSongLevels(song);
-      const lines = [
-        `ID: ${song.favoriteId}`,
-        `Title: ${song.title}`,
-        `Artist: ${song.artist}`,
-        `Category: ${song.category || 'Unknown'}`,
-        `BPM: ${song.bpm ?? 'Unknown'}`,
-        `Levels: ${levelSummary}`
-      ];
-      await replySafely(interaction, lines.join('\n'));
+      const artwork = await resolveArtworkAttachment(song, 'song-info');
+      const embed = buildSongInfoEmbed(song, artwork?.imageUrl);
+      const payload = { embeds: [embed] };
+      if (artwork) {
+        payload.files = [artwork.attachment];
+      }
+      await replyPublicPayload(interaction, payload);
       return;
     }
 
@@ -1631,6 +1628,40 @@ function formatSongLevels(song) {
   }
 
   return pieces.join(', ') || 'Unknown';
+}
+
+function buildSongInfoEmbed(song, imageUrl) {
+  const chartSummary = buildChartSummary(song);
+  const aliases = Array.isArray(song.aliases) ? song.aliases.slice(0, 8) : [];
+  const metadataLines = [
+    `ID: ${song.favoriteId}`,
+    song.legacyFavoriteId ? `Legacy ID: ${song.legacyFavoriteId}` : null,
+    `Category: ${song.category || 'Unknown'}`,
+    `BPM: ${song.bpm ?? 'Unknown'}`,
+    `Levels: ${formatSongLevels(song)}`
+  ].filter(Boolean);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x38bdf8)
+    .setTitle(song.title)
+    .setDescription(song.artist || 'Unknown artist')
+    .addFields(
+      { name: 'Song', value: metadataLines.join('\n') },
+      { name: 'Charts', value: chartSummary.join('\n') }
+    );
+
+  if (aliases.length) {
+    embed.addFields({
+      name: 'Aliases',
+      value: aliases.join(', ') + (song.aliases.length > aliases.length ? `, +${song.aliases.length - aliases.length} more` : '')
+    });
+  }
+
+  if (imageUrl) {
+    embed.setImage(imageUrl);
+  }
+
+  return embed;
 }
 
 function resolveSongIdInPlaylist(playlist, songQuery) {
@@ -2420,6 +2451,15 @@ async function replyPayload(interaction, payload) {
   }
 
   await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+}
+
+async function replyPublicPayload(interaction, payload) {
+  if (interaction.deferred || interaction.replied) {
+    await interaction.followUp(payload);
+    return;
+  }
+
+  await interaction.reply(payload);
 }
 
 process.on('unhandledRejection', (error) => {
