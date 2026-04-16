@@ -1771,7 +1771,6 @@ function formatSongLevels(song) {
 }
 
 function buildSongInfoEmbed(song, imageUrl) {
-  const chartSummary = buildChartSummary(song);
   const aliases = Array.isArray(song.aliases) ? song.aliases.slice(0, 8) : [];
   const metadataLines = [
     `ID: ${song.favoriteId}`,
@@ -1782,13 +1781,15 @@ function buildSongInfoEmbed(song, imageUrl) {
   ].filter(Boolean);
 
   const embed = new EmbedBuilder()
-    .setColor(0x38bdf8)
+    .setColor(0xdc2626)
     .setTitle(song.title)
     .setDescription(song.artist || 'Unknown artist')
-    .addFields(
-      { name: 'Song', value: metadataLines.join('\n') },
-      { name: 'Charts', value: chartSummary.join('\n') }
-    );
+    .addFields({ name: 'Song', value: metadataLines.join('\n') });
+
+  const chartFields = buildSongInfoChartFields(song);
+  if (chartFields.length) {
+    embed.addFields(chartFields);
+  }
 
   if (aliases.length) {
     embed.addFields({
@@ -2301,6 +2302,73 @@ function buildChartSummary(song) {
   }
 
   return limitedRows;
+}
+
+function formatNoteCountValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  return '-';
+}
+
+function buildSongInfoChartFields(song) {
+  if (!song.difficultyLevels?.length) {
+    return [{ name: 'Charts', value: 'No chart metadata available.' }];
+  }
+
+  const difficultyOrder = ['basic', 'advanced', 'expert', 'master', 'remaster'];
+  const difficultyRank = new Map(difficultyOrder.map((difficulty, index) => [difficulty, index]));
+  const difficultyLabel = {
+    basic: 'BASIC',
+    advanced: 'ADV',
+    expert: 'EXP',
+    master: 'MASTER',
+    remaster: 'Re:MASTER'
+  };
+
+  const charts = [...song.difficultyLevels]
+    .filter((chart) => chart.level)
+    .sort((a, b) => {
+      const aDifficulty = String(a.difficulty || '').toLowerCase();
+      const bDifficulty = String(b.difficulty || '').toLowerCase();
+      const aRank = difficultyRank.get(aDifficulty) ?? 999;
+      const bRank = difficultyRank.get(bDifficulty) ?? 999;
+      if (aRank !== bRank) {
+        return aRank - bRank;
+      }
+      return String(a.type || '').localeCompare(String(b.type || ''));
+    });
+
+  if (!charts.length) {
+    return [{ name: 'Charts', value: 'No chart metadata available.' }];
+  }
+
+  return charts.slice(0, 20).map((chart) => {
+    const difficulty = String(chart.difficulty || '').toLowerCase();
+    const difficultyText = difficultyLabel[difficulty] || String(chart.difficulty || 'UNKNOWN');
+    const typeText = String(chart.type || 'UNK').toUpperCase();
+    const internal = formatInternalLevel(chart.internalLevelValue);
+    const breakdown = chart.noteCounts && typeof chart.noteCounts === 'object'
+      ? [
+          `Tap ${formatNoteCountValue(chart.noteCounts.tap)}`,
+          `Hold ${formatNoteCountValue(chart.noteCounts.hold)}`,
+          `Slide ${formatNoteCountValue(chart.noteCounts.slide)}`,
+          `Touch ${formatNoteCountValue(chart.noteCounts.touch)}`,
+          `Break ${formatNoteCountValue(chart.noteCounts.break)}`
+        ].join(' | ')
+      : 'Breakdown unavailable.';
+    const detail = [
+      `Lvl ${chart.level} [${internal}]`,
+      chart.noteCounts?.total != null ? `Total ${formatNoteCountValue(chart.noteCounts.total)}` : null
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    return {
+      name: `${typeText} ${difficultyText}`,
+      value: `${detail}\n${breakdown}`
+    };
+  });
 }
 
 function formatInternalLevel(value) {

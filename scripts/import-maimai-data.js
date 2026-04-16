@@ -140,6 +140,15 @@ function parseInternalLevelValue(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseNoteCount(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function getOtogeDifficultySuffix(difficulty) {
   switch (String(difficulty || '').toLowerCase()) {
     case 'basic':
@@ -157,6 +166,23 @@ function getOtogeDifficultySuffix(difficulty) {
   }
 }
 
+function getOtogeNotesDifficultySuffix(difficulty) {
+  switch (String(difficulty || '').toLowerCase()) {
+    case 'basic':
+      return 'bas';
+    case 'advanced':
+      return 'adv';
+    case 'expert':
+      return 'exp';
+    case 'master':
+      return 'mas';
+    case 'remaster':
+      return 'remas';
+    default:
+      return null;
+  }
+}
+
 function getOtogeInternalLevelValue(song, type, difficulty) {
   const suffix = getOtogeDifficultySuffix(difficulty);
   if (!suffix) {
@@ -166,6 +192,59 @@ function getOtogeInternalLevelValue(song, type, difficulty) {
   const normalizedType = String(type || '').toLowerCase();
   const prefix = normalizedType === 'dx' ? 'dx_' : '';
   return parseInternalLevelValue(song?.[`${prefix}lev_${suffix}_i`]);
+}
+
+function normalizeDxNoteCounts(noteCounts) {
+  if (!noteCounts || typeof noteCounts !== 'object') {
+    return null;
+  }
+
+  const normalized = {
+    tap: parseNoteCount(noteCounts.tap),
+    hold: parseNoteCount(noteCounts.hold),
+    slide: parseNoteCount(noteCounts.slide),
+    touch: parseNoteCount(noteCounts.touch) ?? 0,
+    break: parseNoteCount(noteCounts.break),
+    total: parseNoteCount(noteCounts.total)
+  };
+
+  if (Object.values(normalized).every((value) => value === null)) {
+    return null;
+  }
+
+  return normalized;
+}
+
+function getOtogeNoteCounts(song, type, difficulty) {
+  const suffix = getOtogeNotesDifficultySuffix(difficulty);
+  if (!suffix) {
+    return null;
+  }
+
+  const normalizedType = String(type || '').toLowerCase();
+  if (normalizedType === 'dx') {
+    return null;
+  }
+
+  const total = parseNoteCount(song?.[`lev_${suffix}_notes`]);
+  const tap = parseNoteCount(song?.[`lev_${suffix}_notes_tap`]);
+  const hold = parseNoteCount(song?.[`lev_${suffix}_notes_hold`]);
+  const slide = parseNoteCount(song?.[`lev_${suffix}_notes_slide`]);
+  const touch = 0;
+  const breakCount = parseNoteCount(song?.[`lev_${suffix}_notes_break`]);
+
+  if ([total, tap, hold, slide, breakCount].every((value) => value === null)) {
+    return null;
+  }
+
+  return {
+    tap,
+    hold,
+    slide,
+    touch,
+    break: breakCount,
+    total
+  };
 }
 
 async function downloadBinary(url, destPath, { force, retries }) {
@@ -287,12 +366,16 @@ function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
         const otogeInternalLevelValue = matchedOtoge
           ? getOtogeInternalLevelValue(matchedOtoge, sheet.type, sheet.difficulty)
           : null;
+        const noteCounts =
+          normalizeDxNoteCounts(sheet.noteCounts) ||
+          (matchedOtoge ? getOtogeNoteCounts(matchedOtoge, sheet.type, sheet.difficulty) : null);
 
         return {
           type: sheet.type,
           difficulty: sheet.difficulty,
           level: sheet.level,
           internalLevelValue: otogeInternalLevelValue ?? sheet.internalLevelValue,
+          noteCounts,
           version: sheet.version,
           releaseDate: sheet.releaseDate || null
         };
@@ -329,31 +412,36 @@ function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
           type: 'unknown',
           difficulty: 'basic',
           level: otogeSong.lev_bas || null,
-          internalLevelValue: parseInternalLevelValue(otogeSong.lev_bas_i)
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_bas_i),
+          noteCounts: getOtogeNoteCounts(otogeSong, 'std', 'basic')
         },
         {
           type: 'unknown',
           difficulty: 'advanced',
           level: otogeSong.lev_adv || null,
-          internalLevelValue: parseInternalLevelValue(otogeSong.lev_adv_i)
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_adv_i),
+          noteCounts: getOtogeNoteCounts(otogeSong, 'std', 'advanced')
         },
         {
           type: 'unknown',
           difficulty: 'expert',
           level: otogeSong.lev_exp || null,
-          internalLevelValue: parseInternalLevelValue(otogeSong.lev_exp_i)
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_exp_i),
+          noteCounts: getOtogeNoteCounts(otogeSong, 'std', 'expert')
         },
         {
           type: 'unknown',
           difficulty: 'master',
           level: otogeSong.lev_mas || null,
-          internalLevelValue: parseInternalLevelValue(otogeSong.lev_mas_i)
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_mas_i),
+          noteCounts: getOtogeNoteCounts(otogeSong, 'std', 'master')
         },
         {
           type: 'unknown',
           difficulty: 'remaster',
           level: otogeSong.lev_rem || null,
-          internalLevelValue: parseInternalLevelValue(otogeSong.lev_rem_i)
+          internalLevelValue: parseInternalLevelValue(otogeSong.lev_rem_i),
+          noteCounts: getOtogeNoteCounts(otogeSong, 'std', 'remaster')
         }
       ].filter((item) => item.level),
       regions: {
