@@ -43,6 +43,12 @@ Use `/song info` for title, artist, ID, and alias lookup.
 
 `/playlist set-target` stores an achievement target per playlist song. `/playlist graphic` renders a DXRating-style target board from those targets.
 
+To cache DXRating rank badges locally for the target board:
+
+```bash
+npm run import:dxrating-ranks
+```
+
 Most bot replies are ephemeral (private). `/song info` is public.
 
 ## Song aliases

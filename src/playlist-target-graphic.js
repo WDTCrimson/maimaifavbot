@@ -14,6 +14,7 @@ const CELL_PADDING = 4;
 const COLUMNS = 5;
 const FOOTER_HEIGHT = 28;
 const GRID_GAP = 6;
+const DEFAULT_DXRATING_RANK_SLUG = 'prism-plus';
 
 const defaultTheme = {
   accentColor: '#c8a8f9',
@@ -253,6 +254,34 @@ function formatComboFlag(value) {
   return null;
 }
 
+function rankKeyFromAchievement(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+  if (number >= 100.5) return 'sssp';
+  if (number >= 100) return 'sss';
+  if (number >= 99.5) return 'ssp';
+  if (number >= 99) return 'ss';
+  if (number >= 98) return 'sp';
+  if (number >= 97) return 's';
+  if (number >= 94) return 'aaa';
+  if (number >= 90) return 'aa';
+  if (number >= 80) return 'a';
+  if (number >= 75) return 'bbb';
+  if (number >= 70) return 'bb';
+  if (number >= 60) return 'b';
+  if (number >= 50) return 'c';
+  return 'd';
+}
+
+function resolveDxratingRankPath(rankKey, slug = DEFAULT_DXRATING_RANK_SLUG) {
+  if (!rankKey) {
+    return null;
+  }
+  return join(process.cwd(), 'data', 'assets', 'dxrating', 'rank', slug, `${rankKey}.png`);
+}
+
 function drawBadge(ctx, { x, y, text, fill = 'rgba(0,0,0,0.35)', color = '#fff', stroke = null, font = '12px sans-serif', paddingX = 8, paddingY = 4, radius = 12 }) {
   ctx.save();
   ctx.font = font;
@@ -377,11 +406,6 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
   ctx.fillText(formatAchievementTarget(entry.target?.achievementRate), leftX + 54, y + 68);
 
   const rank = rankFromAchievement(entry.target?.achievementRate);
-  if (rank) {
-    ctx.font = `600 13px ${theme.fontFamily}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText(rank, leftX + 170, y + 68);
-  }
 
   if (entry.target?.achievementRate != null) {
     ctx.font = `500 11px ${theme.fontFamily}`;
@@ -390,6 +414,16 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
       ? `${difficultyMeta.title}${entry.target.chartType ? ` • ${typeText}` : ''}`
       : 'Auto-selected chart';
     ctx.fillText(trimTextToWidth(ctx, note, contentWidth), leftX, y + 90);
+
+    if (entry.rankImage) {
+      const rankHeight = 18;
+      const rankWidth = entry.rankImage.width * (rankHeight / entry.rankImage.height);
+      ctx.drawImage(entry.rankImage, leftX + 112, y + 79, rankWidth, rankHeight);
+    } else if (rank) {
+      ctx.font = `600 12px ${theme.fontFamily}`;
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.fillText(rank, leftX + 116, y + 91);
+    }
 
     const comboFlag = formatComboFlag(entry.target?.comboFlag);
     if (comboFlag) {
@@ -431,7 +465,8 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   const preparedEntries = await Promise.all(
     entries.map(async (entry) => ({
       ...entry,
-      cover: entry.jacketPath ? await getImage(entry.jacketPath) : null
+      cover: entry.jacketPath ? await getImage(entry.jacketPath) : null,
+      rankImage: entry.rankKey ? await getImage(resolveDxratingRankPath(entry.rankKey)) : null
     }))
   );
   const rows = Math.max(1, Math.ceil(preparedEntries.length / COLUMNS));

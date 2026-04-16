@@ -1990,6 +1990,22 @@ function buildPlaylistTargetEntries(playlist) {
         target,
         chart,
         targetRating,
+        rankKey: targetAchievement != null ? (() => {
+          if (targetAchievement >= 100.5) return 'sssp';
+          if (targetAchievement >= 100) return 'sss';
+          if (targetAchievement >= 99.5) return 'ssp';
+          if (targetAchievement >= 99) return 'ss';
+          if (targetAchievement >= 98) return 'sp';
+          if (targetAchievement >= 97) return 's';
+          if (targetAchievement >= 94) return 'aaa';
+          if (targetAchievement >= 90) return 'aa';
+          if (targetAchievement >= 80) return 'a';
+          if (targetAchievement >= 75) return 'bbb';
+          if (targetAchievement >= 70) return 'bb';
+          if (targetAchievement >= 60) return 'b';
+          if (targetAchievement >= 50) return 'c';
+          return 'd';
+        })() : null,
         jacketPath: resolveJacketPath(song),
         originalIndex: playlist.songs.indexOf(songId)
       };

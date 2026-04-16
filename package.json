@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node src/index.js",
     "register": "node src/register-commands.js",
-    "check": "node --check src/config.js && node --check src/song-catalog.js && node --check src/index.js && node --check src/register-commands.js && node --check src/recommendation-catalog.js && node --check src/account-link-service.js && node --check src/account-link-auth.js && node --check src/account-b50-graphic.js && node --check src/playlist-target-graphic.js && node --check src/maimai-intl.js && node --check scripts/import-recommendations.js && node --check scripts/import-song-aliases.js",
+    "check": "node --check src/config.js && node --check src/song-catalog.js && node --check src/index.js && node --check src/register-commands.js && node --check src/recommendation-catalog.js && node --check src/account-link-service.js && node --check src/account-link-auth.js && node --check src/account-b50-graphic.js && node --check src/playlist-target-graphic.js && node --check src/maimai-intl.js && node --check scripts/import-recommendations.js && node --check scripts/import-song-aliases.js && node --check scripts/import-dxrating-ranks.js",
     "import:data": "node scripts/import-maimai-data.js",
     "import:aliases": "node scripts/import-song-aliases.js",
+    "import:dxrating-ranks": "node scripts/import-dxrating-ranks.js",
     "import:recommendations": "node scripts/import-recommendations.js",
     "build:extension:css": "tailwindcss -c tailwind.extension.config.cjs -i ./extension/popup.tailwind.css -o ./extension/popup.css --minify && cp ./extension/popup.css ./extension-firefox/popup.css",
     "dev:extension:css": "tailwindcss -c tailwind.extension.config.cjs -i ./extension/popup.tailwind.css -o ./extension/popup.css --watch"
