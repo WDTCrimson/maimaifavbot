@@ -507,30 +507,26 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   if (logo) {
     const logoHeight = 70;
     const logoWidth = logo.width * (logoHeight / logo.height);
-    ctx.drawImage(logo, WIDTH - logoWidth - 20, 14, logoWidth, logoHeight);
+    ctx.drawImage(logo, WIDTH - logoWidth - 20, (HEADER_HEIGHT - logoHeight) / 2, logoWidth, logoHeight);
   }
 
   if (watermark) {
     const wmHeight = 70;
     const wmWidth = watermark.width * (wmHeight / watermark.height);
     ctx.globalAlpha = 0.22;
-    ctx.drawImage(watermark, WIDTH - wmWidth - 220, 14, wmWidth, wmHeight);
+    ctx.drawImage(watermark, WIDTH - wmWidth - 220, (HEADER_HEIGHT - wmHeight) / 2, wmWidth, wmHeight);
     ctx.globalAlpha = 1;
   }
 
   ctx.fillStyle = theme.titleColor;
   ctx.font = `700 34px ${theme.fontFamily}`;
   ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillText(trimText(playlistName, 42), 20, 44);
+  ctx.textBaseline = 'middle';
+  ctx.fillText(trimText(playlistName, 42), 20, HEADER_HEIGHT / 2 - 2);
 
-  ctx.fillStyle = theme.subtitleColor;
-  ctx.font = `500 14px ${theme.fontFamily}`;
-  ctx.fillText('Target board', 22, 68);
-
-  drawFact(ctx, { x: WIDTH - 26, y: 40, value: totalTargetRating || '—', label: 'Target Total' });
-  drawFact(ctx, { x: WIDTH - 180, y: 40, value: songsWithTargets, label: 'Targeted Songs' });
-  drawFact(ctx, { x: WIDTH - 330, y: 40, value: preparedEntries.length, label: 'Songs' });
+  drawFact(ctx, { x: WIDTH - 210, y: HEADER_HEIGHT / 2 - 2, value: totalTargetRating || '—', label: 'Target Rating' });
+  drawFact(ctx, { x: WIDTH - 360, y: HEADER_HEIGHT / 2 - 2, value: songsWithTargets, label: 'Targeted Songs' });
+  drawFact(ctx, { x: WIDTH - 510, y: HEADER_HEIGHT / 2 - 2, value: preparedEntries.length, label: 'Songs' });
 
   const cellWidth = WIDTH / COLUMNS;
   preparedEntries.forEach((entry, index) => {
@@ -551,7 +547,7 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   ctx.font = `700 12px ${theme.fontFamily}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Rendered by MaiFav target board', WIDTH / 2, height - FOOTER_HEIGHT / 2 - 4);
+  ctx.fillText('Rendered by MaiFav Bot', WIDTH / 2, height - FOOTER_HEIGHT / 2 - 4);
 
   const buffer = await canvas.toBuffer('png');
   return {
