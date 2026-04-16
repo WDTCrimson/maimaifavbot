@@ -73,14 +73,20 @@ Alias file format:
 
 Prefer `title` + `artist` for aliases maintained by hand. `songId`, current favorite ID, and legacy favorite ID are also accepted.
 
-To import a cached alias list from the Yuzu alias API:
+To import the tracked alias bundle used by this bot:
 
 ```bash
 npm run import:aliases
 ```
 
 The importer writes `data/reference/song-aliases.json` and a small report at `data/reference/song-aliases-report.json`.
-It defaults to `https://www.yuzuchan.moe/api/maimaidx/maimaidxalias`; the older documented `api.yuzuchan.moe` host may return 403 from some networks.
+By default it merges:
+- Yuzu maimai alias API (Chinese/community aliases)
+- GCM-bot English maimai aliases
+- GCM-bot Korean maimai aliases
+
+It also preserves any existing hand-added aliases already present in `data/reference/song-aliases.json`.
+The Yuzu source defaults to `https://www.yuzuchan.moe/api/maimaidx/maimaidxalias`; the older documented `api.yuzuchan.moe` host may return 403 from some networks.
 
 ## Quick start
 

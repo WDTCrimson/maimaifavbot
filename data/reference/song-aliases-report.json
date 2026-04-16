@@ -1,7 +1,13 @@
 {
-  "generatedAt": "2026-04-15T07:10:41.446Z",
-  "source": "https://www.yuzuchan.moe/api/maimaidx/maimaidxalias",
-  "entries": 1301,
-  "aliases": 8909,
+  "generatedAt": "2026-04-16T02:53:20.316Z",
+  "source": "combined",
+  "sources": [
+    "https://www.yuzuchan.moe/api/maimaidx/maimaidxalias",
+    "https://raw.githubusercontent.com/lomotos10/GCM-bot/main/data/aliases/en/maimai.tsv",
+    "https://raw.githubusercontent.com/lomotos10/GCM-bot/main/data/aliases/ko/maimai.tsv"
+  ],
+  "entries": 1557,
+  "aliases": 12184,
+  "preservedExistingAliases": 1,
   "unresolvedWithoutTitleOrFavoriteId": 0
 }
