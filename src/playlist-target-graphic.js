@@ -191,6 +191,22 @@ function drawImageCover(ctx, image, x, y, width, height) {
   ctx.drawImage(image, offsetX, offsetY, drawWidth, drawHeight);
 }
 
+function drawMaskedCover(ctx, image, x, y, width, height) {
+  const tempCanvas = new Canvas(width, height);
+  const tempCtx = tempCanvas.getContext('2d');
+  drawImageCover(tempCtx, image, 0, 0, width, height);
+
+  tempCtx.globalCompositeOperation = 'destination-in';
+  const fade = tempCtx.createLinearGradient(0, 0, width, 0);
+  fade.addColorStop(0, 'rgba(0,0,0,0)');
+  fade.addColorStop(0.12, 'rgba(0,0,0,0.55)');
+  fade.addColorStop(1, 'rgba(0,0,0,1)');
+  tempCtx.fillStyle = fade;
+  tempCtx.fillRect(0, 0, width, height);
+
+  ctx.drawImage(tempCanvas, x, y, width, height);
+}
+
 function formatInternal(value) {
   const number = Number(value);
   if (Number.isFinite(number)) {
@@ -300,13 +316,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
   ctx.clip();
   if (entry.cover) {
     const coverWidth = 108;
-    drawImageCover(ctx, entry.cover, x + width - coverWidth, y, coverWidth, height);
-    const fade = ctx.createLinearGradient(x + width - coverWidth - 24, y, x + width, y);
-    fade.addColorStop(0, 'rgba(255,255,255,0)');
-    fade.addColorStop(0.2, 'rgba(255,255,255,0.55)');
-    fade.addColorStop(1, 'rgba(255,255,255,1)');
-    ctx.fillStyle = fade;
-    ctx.fillRect(x + width - coverWidth - 24, y, coverWidth + 24, height);
+    drawMaskedCover(ctx, entry.cover, x + width - coverWidth, y, coverWidth, height);
   }
   ctx.restore();
 
