@@ -14,7 +14,7 @@ const CELL_PADDING = 4;
 const COLUMNS = 5;
 const FOOTER_HEIGHT = 28;
 const GRID_GAP = 6;
-const DEFAULT_DXRATING_RANK_SLUG = 'prism-plus';
+const DEFAULT_DXRATING_RANK_SLUG = 'circle-plus';
 
 const defaultTheme = {
   accentColor: '#c8a8f9',
