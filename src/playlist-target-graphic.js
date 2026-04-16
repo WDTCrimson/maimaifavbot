@@ -413,16 +413,19 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
     const note = entry.target.difficulty
       ? `${difficultyMeta.title}${entry.target.chartType ? ` • ${typeText}` : ''}`
       : 'Auto-selected chart';
-    ctx.fillText(trimTextToWidth(ctx, note, contentWidth), leftX, y + 90);
+    const noteY = y + 90;
+    const noteText = trimTextToWidth(ctx, note, contentWidth - 80);
+    ctx.fillText(noteText, leftX, noteY);
+    const noteWidth = ctx.measureText(noteText).width;
 
     if (entry.rankImage) {
-      const rankHeight = 18;
+      const rankHeight = 22;
       const rankWidth = entry.rankImage.width * (rankHeight / entry.rankImage.height);
-      ctx.drawImage(entry.rankImage, leftX + 112, y + 79, rankWidth, rankHeight);
+      ctx.drawImage(entry.rankImage, leftX + noteWidth + 8, noteY - 6, rankWidth, rankHeight);
     } else if (rank) {
       ctx.font = `600 12px ${theme.fontFamily}`;
       ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.fillText(rank, leftX + 116, y + 91);
+      ctx.fillText(rank, leftX + noteWidth + 8, noteY + 1);
     }
 
     const comboFlag = formatComboFlag(entry.target?.comboFlag);
