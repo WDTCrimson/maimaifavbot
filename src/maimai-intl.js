@@ -127,7 +127,7 @@ function getRatingFactor(accuracy) {
   return 0.05;
 }
 
-function calculateChartRating({ achievement, fc, internalLevelValue, gameVersion }) {
+export function calculateChartRating({ achievement, fc, internalLevelValue, gameVersion }) {
   const accuracy = achievement / 10000;
   const factor = getRatingFactor(accuracy);
   const preciseLevel = Number(internalLevelValue) * 10;

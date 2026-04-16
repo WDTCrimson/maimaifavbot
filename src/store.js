@@ -39,6 +39,100 @@ function normalizeSongIds(songIds, maxSongsPerLoadout) {
   return unique;
 }
 
+function isCanonicalSongId(value) {
+  return /^song:[a-f0-9]{16}$/.test(String(value || '').trim());
+}
+
+function normalizeAchievementTarget(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100.5) {
+    throw new Error('Target achievement must be between 0 and 100.5.');
+  }
+  return Number(parsed.toFixed(4));
+}
+
+function normalizeTargetDifficulty(value) {
+  if (value == null) {
+    return null;
+  }
+  const normalized = String(value || '').trim().toLowerCase();
+  const aliases = new Map([
+    ['basic', 'basic'],
+    ['bsc', 'basic'],
+    ['advanced', 'advanced'],
+    ['adv', 'advanced'],
+    ['expert', 'expert'],
+    ['exp', 'expert'],
+    ['master', 'master'],
+    ['mas', 'master'],
+    ['remaster', 'remaster'],
+    ['re:master', 'remaster'],
+    ['re:mas', 'remaster'],
+    ['remas', 'remaster']
+  ]);
+  if (!aliases.has(normalized)) {
+    throw new Error('Target difficulty must be BASIC, ADVANCED, EXPERT, MASTER, or Re:MASTER.');
+  }
+  return aliases.get(normalized);
+}
+
+function normalizeTargetChartType(value) {
+  if (value == null) {
+    return null;
+  }
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'dx') {
+    return 'dx';
+  }
+  if (normalized === 'std' || normalized === 'sd') {
+    return 'std';
+  }
+  throw new Error('Target chart type must be DX or STD.');
+}
+
+function normalizeLoadoutTargets(targets, validSongIds = null) {
+  if (!targets || typeof targets !== 'object' || Array.isArray(targets)) {
+    return {};
+  }
+
+  const allowed = validSongIds ? new Set(validSongIds.map((songId) => String(songId).trim())) : null;
+  const normalized = {};
+
+  for (const [rawSongId, rawTarget] of Object.entries(targets)) {
+    const songId = normalizeSongId(rawSongId);
+    if (allowed && !allowed.has(songId)) {
+      continue;
+    }
+
+    if (!rawTarget || typeof rawTarget !== 'object' || Array.isArray(rawTarget)) {
+      continue;
+    }
+
+    if (rawTarget.achievementRate == null) {
+      continue;
+    }
+
+    normalized[songId] = {
+      achievementRate: normalizeAchievementTarget(rawTarget.achievementRate),
+      difficulty: normalizeTargetDifficulty(rawTarget.difficulty),
+      chartType: normalizeTargetChartType(rawTarget.chartType)
+    };
+  }
+
+  return normalized;
+}
+
+function buildDefaultLoadoutState(name) {
+  const now = new Date().toISOString();
+  return {
+    name,
+    songs: [],
+    targets: {},
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
 function validateLoadoutName(name, maxNameLength) {
   const value = name.trim().replace(/\s+/g, ' ');
   if (!value) {
@@ -132,6 +226,11 @@ export class LoadoutStore {
           continue;
         }
 
+        if (!loadout.targets || typeof loadout.targets !== 'object' || Array.isArray(loadout.targets)) {
+          loadout.targets = {};
+          changed = true;
+        }
+
         let loadoutChanged = false;
         const nextSongs = [];
         const seen = new Set();
@@ -169,6 +268,12 @@ export class LoadoutStore {
         }
 
         if (nextSongs.length !== loadout.songs.length) {
+          loadoutChanged = true;
+        }
+
+        const normalizedTargets = normalizeLoadoutTargets(loadout.targets, nextSongs);
+        if (JSON.stringify(normalizedTargets) !== JSON.stringify(loadout.targets)) {
+          loadout.targets = normalizedTargets;
           loadoutChanged = true;
         }
 
@@ -497,10 +602,7 @@ export class LoadoutStore {
     }
 
     user.loadouts[key] = {
-      name: displayName,
-      songs: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      ...buildDefaultLoadoutState(displayName)
     };
 
     await this.save();
@@ -547,6 +649,9 @@ export class LoadoutStore {
     }
 
     loadout.songs = nextSongs;
+    if (loadout.targets && typeof loadout.targets === 'object') {
+      delete loadout.targets[id];
+    }
     loadout.updatedAt = new Date().toISOString();
     await this.save();
     return loadout;
@@ -567,6 +672,46 @@ export class LoadoutStore {
     }
 
     loadout.songs = normalizedSongs;
+    loadout.targets = normalizeLoadoutTargets(loadout.targets, normalizedSongs);
+    loadout.updatedAt = new Date().toISOString();
+    await this.save();
+    return loadout;
+  }
+
+  async setTargets(userId, name, targets) {
+    const loadout = this.getLoadout(userId, name);
+    loadout.targets = normalizeLoadoutTargets(targets, loadout.songs);
+    loadout.updatedAt = new Date().toISOString();
+    await this.save();
+    return loadout;
+  }
+
+  async setSongTarget(userId, name, songId, target) {
+    const loadout = this.getLoadout(userId, name);
+    const id = normalizeSongId(songId);
+    if (!loadout.songs.includes(id)) {
+      throw new Error(`Song ID ${id} is not in \"${loadout.name}\".`);
+    }
+
+    loadout.targets = normalizeLoadoutTargets(loadout.targets, loadout.songs);
+    loadout.targets[id] = {
+      achievementRate: normalizeAchievementTarget(target.achievementRate),
+      difficulty: normalizeTargetDifficulty(target.difficulty),
+      chartType: normalizeTargetChartType(target.chartType)
+    };
+    loadout.updatedAt = new Date().toISOString();
+    await this.save();
+    return loadout;
+  }
+
+  async clearSongTarget(userId, name, songId) {
+    const loadout = this.getLoadout(userId, name);
+    const id = normalizeSongId(songId);
+    if (!loadout.targets || typeof loadout.targets !== 'object' || !loadout.targets[id]) {
+      throw new Error(`Song ID ${id} has no target in \"${loadout.name}\".`);
+    }
+
+    delete loadout.targets[id];
     loadout.updatedAt = new Date().toISOString();
     await this.save();
     return loadout;

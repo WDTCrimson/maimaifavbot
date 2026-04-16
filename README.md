@@ -25,6 +25,8 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/playlist share name:<text>`
 - `/playlist import name:<text> code:<text> [replace:true|false]`
 - `/playlist graphic name:<text>`
+- `/playlist set-target name:<text> song_query:<text> target:<text> [difficulty:<text>] [type:dx|std]`
+- `/playlist clear-target name:<text> song_query:<text>`
 - `/playlist bookmarklet`
 - `/song search query:<internal-level-or-range>`
 - `/song suggest range:<text> [focus:<text>] [count:<1-10>]`
@@ -39,7 +41,9 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 `/song search` searches internal chart levels only. Examples: `12.3`, `13.7 mas`, `11.8 dx`, `12.3-12.8`, `12.0-12.4 dx`.
 Use `/song info` for title, artist, ID, and alias lookup.
 
-All bot replies are ephemeral (private).
+`/playlist set-target` stores an achievement target per playlist song. `/playlist graphic` renders a DXRating-style target board from those targets.
+
+Most bot replies are ephemeral (private). `/song info` is public.
 
 ## Song aliases
 

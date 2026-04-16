@@ -4,19 +4,32 @@ export function createLoadoutPayload(loadout, options = {}) {
   const songs = Array.isArray(options.songs)
     ? options.songs
         .map((entry) => ({
-          title: String(entry?.title || '').trim()
+          title: String(entry?.title || '').trim(),
+          target: entry?.target || null
         }))
         .filter((entry) => entry.title)
     : [];
 
+  const targets =
+    loadout.targets && typeof loadout.targets === 'object' && !Array.isArray(loadout.targets)
+      ? Object.fromEntries(
+          Object.entries(loadout.targets)
+            .filter(([, target]) => target && typeof target === 'object' && target.achievementRate != null)
+            .map(([songId, target]) => [songId, target])
+        )
+      : {};
+
   const payload = {
-    version: songs.length ? 2 : 1,
+    version: Object.keys(targets).length ? 3 : songs.length ? 2 : 1,
     name: loadout.name,
     songIds: loadout.songs
   };
 
   if (songs.length) {
     payload.songs = songs;
+  }
+  if (Object.keys(targets).length) {
+    payload.targets = targets;
   }
 
   return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
