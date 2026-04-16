@@ -116,6 +116,18 @@ export const playlistCommand = new SlashCommandBuilder()
             { name: 'STD', value: 'std' }
           )
       )
+      .addStringOption((option) =>
+        option
+          .setName('combo')
+          .setDescription('Optional combo target to show on the target board')
+          .setRequired(false)
+          .addChoices(
+            { name: 'FC', value: 'fc' },
+            { name: 'FC+', value: 'fc+' },
+            { name: 'AP', value: 'ap' },
+            { name: 'AP+', value: 'ap+' }
+          )
+      )
   )
   .addSubcommand((subcommand) =>
     subcommand

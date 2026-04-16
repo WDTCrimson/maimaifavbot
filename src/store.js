@@ -90,6 +90,25 @@ function normalizeTargetChartType(value) {
   throw new Error('Target chart type must be DX or STD.');
 }
 
+function normalizeTargetComboFlag(value) {
+  if (value == null) {
+    return null;
+  }
+  const normalized = String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+  const aliases = new Map([
+    ['fc', 'fc'],
+    ['fc+', 'fc+'],
+    ['fcp', 'fc+'],
+    ['ap', 'ap'],
+    ['ap+', 'ap+'],
+    ['app', 'ap+']
+  ]);
+  if (!aliases.has(normalized)) {
+    throw new Error('Target combo must be FC, FC+, AP, or AP+.');
+  }
+  return aliases.get(normalized);
+}
+
 function normalizeLoadoutTargets(targets, validSongIds = null) {
   if (!targets || typeof targets !== 'object' || Array.isArray(targets)) {
     return {};
@@ -115,7 +134,8 @@ function normalizeLoadoutTargets(targets, validSongIds = null) {
     normalized[songId] = {
       achievementRate: normalizeAchievementTarget(rawTarget.achievementRate),
       difficulty: normalizeTargetDifficulty(rawTarget.difficulty),
-      chartType: normalizeTargetChartType(rawTarget.chartType)
+      chartType: normalizeTargetChartType(rawTarget.chartType),
+      comboFlag: normalizeTargetComboFlag(rawTarget.comboFlag)
     };
   }
 
@@ -697,7 +717,8 @@ export class LoadoutStore {
     loadout.targets[id] = {
       achievementRate: normalizeAchievementTarget(target.achievementRate),
       difficulty: normalizeTargetDifficulty(target.difficulty),
-      chartType: normalizeTargetChartType(target.chartType)
+      chartType: normalizeTargetChartType(target.chartType),
+      comboFlag: normalizeTargetComboFlag(target.comboFlag)
     };
     loadout.updatedAt = new Date().toISOString();
     await this.save();

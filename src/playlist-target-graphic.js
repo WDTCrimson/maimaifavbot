@@ -228,6 +228,15 @@ function rankFromAchievement(value) {
   return 'D';
 }
 
+function formatComboFlag(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'fc') return 'FC';
+  if (normalized === 'fc+') return 'FC+';
+  if (normalized === 'ap') return 'AP';
+  if (normalized === 'ap+') return 'AP+';
+  return null;
+}
+
 function drawBadge(ctx, { x, y, text, fill = 'rgba(0,0,0,0.35)', color = '#fff', stroke = null, font = '12px sans-serif', paddingX = 8, paddingY = 4, radius = 12 }) {
   ctx.save();
   ctx.font = font;
@@ -316,7 +325,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
 
   const typeText = entry.chart?.chartType === 'std' ? 'STD' : 'DX';
   const badgeY = y + 38;
-  drawBadge(ctx, {
+  const typeWidth = drawBadge(ctx, {
     x: leftX,
     y: badgeY,
     text: typeText,
@@ -329,7 +338,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
     radius: 10
   });
   drawBadge(ctx, {
-    x: leftX + 40,
+    x: leftX + typeWidth + 6,
     y: badgeY,
     text: `${difficultyMeta.title} ${formatInternal(entry.chart?.internalLevelValue)}`,
     fill: 'rgba(0,0,0,0.35)',
@@ -371,6 +380,22 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
       ? `${difficultyMeta.title}${entry.target.chartType ? ` • ${typeText}` : ''}`
       : 'Auto-selected chart';
     ctx.fillText(trimTextToWidth(ctx, note, contentWidth), leftX, y + 90);
+
+    const comboFlag = formatComboFlag(entry.target?.comboFlag);
+    if (comboFlag) {
+      drawBadge(ctx, {
+        x: x + width - 62,
+        y: y + 8,
+        text: comboFlag,
+        fill: 'rgba(0,0,0,0.55)',
+        color: '#fff',
+        stroke: 'rgba(255,255,255,0.16)',
+        font: `700 10px ${theme.fontFamily}`,
+        paddingX: 8,
+        paddingY: 2,
+        radius: 10
+      });
+    }
   } else {
     ctx.font = `500 11px ${theme.fontFamily}`;
     ctx.fillStyle = 'rgba(255,255,255,0.78)';
@@ -393,7 +418,13 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
 
 export async function renderPlaylistTargetGraphic({ playlistName, entries, themeDir }) {
   const { theme, assets } = await loadTheme(themeDir);
-  const rows = Math.max(1, Math.ceil(entries.length / COLUMNS));
+  const preparedEntries = await Promise.all(
+    entries.map(async (entry) => ({
+      ...entry,
+      cover: entry.jacketPath ? await getImage(entry.jacketPath) : null
+    }))
+  );
+  const rows = Math.max(1, Math.ceil(preparedEntries.length / COLUMNS));
   const height = HEADER_HEIGHT + rows * CELL_HEIGHT + (rows - 1) * GRID_GAP + FOOTER_HEIGHT + 12;
 
   const canvas = new Canvas(WIDTH, height);
@@ -416,8 +447,8 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
 
   const logo = await getImage(assets.logo);
   const watermark = await getImage(assets.watermark);
-  const songsWithTargets = entries.filter((entry) => entry.target?.achievementRate != null).length;
-  const totalTargetRating = entries.reduce((sum, entry) => sum + (entry.targetRating || 0), 0);
+  const songsWithTargets = preparedEntries.filter((entry) => entry.target?.achievementRate != null).length;
+  const totalTargetRating = preparedEntries.reduce((sum, entry) => sum + (entry.targetRating || 0), 0);
 
   ctx.save();
   roundedRectPath(ctx, 4, 4, WIDTH - 8, HEADER_HEIGHT - 8, 10);
@@ -426,9 +457,9 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   ctx.restore();
 
   if (logo) {
-    const logoHeight = 62;
+    const logoHeight = 70;
     const logoWidth = logo.width * (logoHeight / logo.height);
-    ctx.drawImage(logo, WIDTH - logoWidth - 24, 18, logoWidth, logoHeight);
+    ctx.drawImage(logo, WIDTH - logoWidth - 20, 14, logoWidth, logoHeight);
   }
 
   if (watermark) {
@@ -451,10 +482,10 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
 
   drawFact(ctx, { x: WIDTH - 26, y: 40, value: totalTargetRating || '—', label: 'Target Total' });
   drawFact(ctx, { x: WIDTH - 180, y: 40, value: songsWithTargets, label: 'Targeted Songs' });
-  drawFact(ctx, { x: WIDTH - 330, y: 40, value: entries.length, label: 'Songs' });
+  drawFact(ctx, { x: WIDTH - 330, y: 40, value: preparedEntries.length, label: 'Songs' });
 
   const cellWidth = WIDTH / COLUMNS;
-  entries.forEach((entry, index) => {
+  preparedEntries.forEach((entry, index) => {
     const row = Math.floor(index / COLUMNS);
     const column = index % COLUMNS;
     const x = column * cellWidth + CELL_PADDING;

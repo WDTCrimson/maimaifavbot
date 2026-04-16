@@ -433,6 +433,7 @@ async function handlePlaylistCommand(interaction) {
       const targetInput = interaction.options.getString('target', true);
       const difficulty = interaction.options.getString('difficulty', false);
       const chartType = interaction.options.getString('type', false);
+      const comboFlag = interaction.options.getString('combo', false);
       const playlistBefore = store.getLoadout(userId, name);
       const songId = resolveSongIdInPlaylist(playlistBefore, songQuery);
       const targetRate = parseTargetInput(targetInput);
@@ -467,7 +468,8 @@ async function handlePlaylistCommand(interaction) {
       const playlist = await store.setSongTarget(userId, name, songId, {
         achievementRate: targetRate,
         difficulty: difficulty || resolvedChart.difficulty,
-        chartType: chartType || resolvedChart.chartType
+        chartType: chartType || resolvedChart.chartType,
+        comboFlag
       });
       const target = playlist.targets?.[songId] || null;
       await replySafely(
@@ -1899,7 +1901,22 @@ function formatPlaylistTarget(target) {
   if (target.chartType) {
     parts.push(String(target.chartType).toUpperCase());
   }
+  if (target.comboFlag) {
+    parts.push(String(target.comboFlag).toUpperCase());
+  }
   return parts.join(' • ');
+}
+
+function resolveJacketPath(song) {
+  const candidates = [
+    song?.jacket?.dxratingFile
+      ? join(process.cwd(), 'data', 'assets', 'jacket', 'dxrating', song.jacket.dxratingFile)
+      : null,
+    song?.jacket?.otogeFile
+      ? join(process.cwd(), 'data', 'assets', 'jacket', 'otoge-db', song.jacket.otogeFile)
+      : null
+  ].filter(Boolean);
+  return candidates[0] || null;
 }
 
 function resolvePlaylistTargetChart(song, target = null) {
@@ -1962,7 +1979,7 @@ function buildPlaylistTargetEntries(playlist) {
         chart && targetAchievement != null
           ? calculateChartRating({
               achievement: Math.round(targetAchievement * 10000),
-              fc: null,
+              fc: target?.comboFlag || null,
               internalLevelValue: chart.internalLevelValue,
               gameVersion: 12
             })
@@ -1972,10 +1989,33 @@ function buildPlaylistTargetEntries(playlist) {
         song,
         target,
         chart,
-        targetRating
+        targetRating,
+        jacketPath: resolveJacketPath(song),
+        originalIndex: playlist.songs.indexOf(songId)
       };
     })
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((left, right) => {
+      const leftTargeted = left.target?.achievementRate != null ? 1 : 0;
+      const rightTargeted = right.target?.achievementRate != null ? 1 : 0;
+      if (rightTargeted !== leftTargeted) {
+        return rightTargeted - leftTargeted;
+      }
+
+      const leftRating = Number(left.targetRating) || -1;
+      const rightRating = Number(right.targetRating) || -1;
+      if (rightRating !== leftRating) {
+        return rightRating - leftRating;
+      }
+
+      const leftConstant = Number(left.chart?.internalLevelValue) || -1;
+      const rightConstant = Number(right.chart?.internalLevelValue) || -1;
+      if (rightConstant !== leftConstant) {
+        return rightConstant - leftConstant;
+      }
+
+      return left.originalIndex - right.originalIndex;
+    });
 }
 
 function decodeLoadoutCode(rawCode) {
@@ -2089,7 +2129,8 @@ function decodeLoadoutCode(rawCode) {
     targets[songId] = {
       achievementRate: parseTargetInput(rawTarget.achievementRate),
       difficulty: rawTarget.difficulty ? String(rawTarget.difficulty).trim().toLowerCase() : null,
-      chartType: rawTarget.chartType ? String(rawTarget.chartType).trim().toLowerCase() : null
+      chartType: rawTarget.chartType ? String(rawTarget.chartType).trim().toLowerCase() : null,
+      comboFlag: rawTarget.comboFlag ? String(rawTarget.comboFlag).trim().toLowerCase() : null
     };
   }
 
@@ -2106,7 +2147,8 @@ function decodeLoadoutCode(rawCode) {
       targets[songId] = {
         achievementRate: parseTargetInput(rawTarget.achievementRate),
         difficulty: rawTarget.difficulty ? String(rawTarget.difficulty).trim().toLowerCase() : null,
-        chartType: rawTarget.chartType ? String(rawTarget.chartType).trim().toLowerCase() : null
+        chartType: rawTarget.chartType ? String(rawTarget.chartType).trim().toLowerCase() : null,
+        comboFlag: rawTarget.comboFlag ? String(rawTarget.comboFlag).trim().toLowerCase() : null
       };
     }
   }
@@ -2351,6 +2393,9 @@ function formatPlaylistShowTargetLine(entry, index) {
   }
   if (entry.chart?.chartType) {
     parts.push(String(entry.chart.chartType).toUpperCase());
+  }
+  if (entry.target?.comboFlag) {
+    parts.push(String(entry.target.comboFlag).toUpperCase());
   }
   if (entry.targetRating != null) {
     parts.push(String(entry.targetRating));
