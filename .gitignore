@@ -26,6 +26,7 @@ pnpm-debug.log*
 dist/
 build/
 coverage/
+backups/
 .DS_Store
 *.service
 package-lock.json

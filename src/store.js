@@ -226,6 +226,30 @@ class JsonStoreBackend {
     await writeFile(tempPath, JSON.stringify(state, null, 2), 'utf8');
     await rename(tempPath, this.filePath);
   }
+
+  async saveMetadata(state) {
+    await this.saveState(state);
+  }
+
+  async saveUser(state) {
+    await this.saveState(state);
+  }
+
+  async saveLoadout(state) {
+    await this.saveState(state);
+  }
+
+  async deleteLoadout(state) {
+    await this.saveState(state);
+  }
+
+  async saveSession(state) {
+    await this.saveState(state);
+  }
+
+  async deleteSession(state) {
+    await this.saveState(state);
+  }
 }
 
 class SqliteStoreBackend {
@@ -506,6 +530,128 @@ class SqliteStoreBackend {
 
     persist(normalized);
   }
+
+  async saveMetadata(metadata) {
+    await this.ensureReady();
+    const normalized = {
+      ...buildDefaultMetadata(),
+      ...(metadata || {})
+    };
+
+    const persist = this.db.transaction((snapshot) => {
+      this.db.prepare('DELETE FROM metadata').run();
+      const insertMetadata = this.db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)');
+      for (const [key, value] of Object.entries(snapshot)) {
+        insertMetadata.run(key, JSON.stringify(value));
+      }
+    });
+
+    persist(normalized);
+  }
+
+  async saveUser(userId, user) {
+    await this.ensureReady();
+    this.db
+      .prepare(
+        `INSERT INTO users (user_id, account_json)
+         VALUES (?, ?)
+         ON CONFLICT(user_id) DO UPDATE SET account_json = excluded.account_json`
+      )
+      .run(userId, user?.account ? JSON.stringify(user.account) : null);
+  }
+
+  async saveLoadout(userId, loadoutKey, loadout, user) {
+    await this.ensureReady();
+    const persist = this.db.transaction((accountJson, payload) => {
+      this.db
+        .prepare(
+          `INSERT INTO users (user_id, account_json)
+           VALUES (?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET account_json = excluded.account_json`
+        )
+        .run(userId, accountJson);
+
+      this.db
+        .prepare(
+          `INSERT INTO loadouts (user_id, loadout_key, name, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, loadout_key) DO UPDATE SET
+             name = excluded.name,
+             created_at = excluded.created_at,
+             updated_at = excluded.updated_at`
+        )
+        .run(userId, loadoutKey, payload.name, payload.createdAt, payload.updatedAt);
+
+      this.db
+        .prepare('DELETE FROM playlist_songs WHERE user_id = ? AND loadout_key = ?')
+        .run(userId, loadoutKey);
+      this.db
+        .prepare('DELETE FROM playlist_targets WHERE user_id = ? AND loadout_key = ?')
+        .run(userId, loadoutKey);
+
+      const insertSong = this.db.prepare(
+        'INSERT INTO playlist_songs (user_id, loadout_key, position, song_id) VALUES (?, ?, ?, ?)'
+      );
+      for (const [position, songId] of (payload.songs || []).entries()) {
+        insertSong.run(userId, loadoutKey, position, songId);
+      }
+
+      const insertTarget = this.db.prepare(
+        'INSERT INTO playlist_targets (user_id, loadout_key, song_id, achievement_rate, difficulty, chart_type, combo_flag) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      );
+      for (const [songId, target] of Object.entries(payload.targets || {})) {
+        insertTarget.run(
+          userId,
+          loadoutKey,
+          songId,
+          target.achievementRate,
+          target.difficulty ?? null,
+          target.chartType ?? null,
+          target.comboFlag ?? null
+        );
+      }
+    });
+
+    persist(user?.account ? JSON.stringify(user.account) : null, loadout);
+  }
+
+  async deleteLoadout(userId, loadoutKey, user) {
+    await this.ensureReady();
+    const persist = this.db.transaction((accountJson) => {
+      this.db
+        .prepare(
+          `INSERT INTO users (user_id, account_json)
+           VALUES (?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET account_json = excluded.account_json`
+        )
+        .run(userId, accountJson);
+      this.db
+        .prepare('DELETE FROM loadouts WHERE user_id = ? AND loadout_key = ?')
+        .run(userId, loadoutKey);
+    });
+
+    persist(user?.account ? JSON.stringify(user.account) : null);
+  }
+
+  async saveSession(token, session) {
+    await this.ensureReady();
+    this.db
+      .prepare(
+        `INSERT INTO account_link_sessions (token, user_id, status, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(token) DO UPDATE SET
+           user_id = excluded.user_id,
+           status = excluded.status,
+           created_at = excluded.created_at,
+           expires_at = excluded.expires_at`
+      )
+      .run(token, session.userId, session.status, session.createdAt, session.expiresAt);
+  }
+
+  async deleteSession(token) {
+    await this.ensureReady();
+    this.db.prepare('DELETE FROM account_link_sessions WHERE token = ?').run(token);
+  }
 }
 
 export class LoadoutStore {
@@ -542,6 +688,35 @@ export class LoadoutStore {
 
   async save() {
     await this.backend.saveState(this.state);
+  }
+
+  async saveMetadata() {
+    await this.backend.saveMetadata(this.state.metadata, this.state);
+  }
+
+  async saveUser(userId) {
+    const user = this.getUser(userId);
+    await this.backend.saveUser(userId, user, this.state);
+  }
+
+  async saveLoadout(userId, loadoutKey) {
+    const user = this.getUser(userId);
+    const loadout = user.loadouts[loadoutKey];
+    await this.backend.saveLoadout(userId, loadoutKey, loadout, user, this.state);
+  }
+
+  async deletePersistedLoadout(userId, loadoutKey) {
+    const user = this.getUser(userId);
+    await this.backend.deleteLoadout(userId, loadoutKey, user, this.state);
+  }
+
+  async saveSession(token) {
+    const session = this.getAccountLinkSession(token);
+    await this.backend.saveSession(token, session, this.state);
+  }
+
+  async deleteSession(token) {
+    await this.backend.deleteSession(token, this.state);
   }
 
   async ensureReady() {
@@ -795,7 +970,7 @@ export class LoadoutStore {
 
     user.account = nextAccount;
 
-    await this.save();
+    await this.saveUser(userId);
     return user.account;
   }
 
@@ -803,7 +978,7 @@ export class LoadoutStore {
     const user = this.getUser(userId);
     const previous = user.account || null;
     user.account = null;
-    await this.save();
+    await this.saveUser(userId);
     return previous;
   }
 
@@ -871,6 +1046,7 @@ export class LoadoutStore {
   async createAccountLinkSession(userId, session) {
     const sessions = this.getAccountLinkSessions();
     const now = Date.now();
+    const deletedTokens = [];
 
     for (const [token, existing] of Object.entries(sessions)) {
       if (
@@ -880,6 +1056,7 @@ export class LoadoutStore {
         Date.parse(existing.expiresAt || '') > now
       ) {
         delete sessions[token];
+        deletedTokens.push(token);
       }
     }
 
@@ -891,7 +1068,10 @@ export class LoadoutStore {
       expiresAt: session.expiresAt
     };
 
-    await this.save();
+    for (const token of deletedTokens) {
+      await this.deleteSession(token);
+    }
+    await this.saveSession(session.token);
     return sessions[session.token];
   }
 
@@ -910,7 +1090,7 @@ export class LoadoutStore {
     };
 
     delete this.getAccountLinkSessions()[token];
-    await this.save();
+    await this.deleteSession(token);
     return completedSession;
   }
 
@@ -948,7 +1128,7 @@ export class LoadoutStore {
       ...buildDefaultLoadoutState(displayName)
     };
 
-    await this.save();
+    await this.saveLoadout(userId, key);
     return user.loadouts[key];
   }
 
@@ -961,13 +1141,14 @@ export class LoadoutStore {
 
     const removed = user.loadouts[key];
     delete user.loadouts[key];
-    await this.save();
+    await this.deletePersistedLoadout(userId, key);
     return removed;
   }
 
   async addSong(userId, name, songId) {
     const loadout = this.getLoadout(userId, name);
     const id = normalizeSongId(songId);
+    const key = normalizeLoadoutName(name);
 
     if (loadout.songs.includes(id)) {
       throw new Error(`Song ID ${id} is already in \"${loadout.name}\".`);
@@ -978,13 +1159,14 @@ export class LoadoutStore {
 
     loadout.songs.push(id);
     loadout.updatedAt = new Date().toISOString();
-    await this.save();
+    await this.saveLoadout(userId, key);
     return loadout;
   }
 
   async removeSong(userId, name, songId) {
     const loadout = this.getLoadout(userId, name);
     const id = normalizeSongId(songId);
+    const key = normalizeLoadoutName(name);
 
     const nextSongs = loadout.songs.filter((value) => value !== id);
     if (nextSongs.length === loadout.songs.length) {
@@ -996,13 +1178,14 @@ export class LoadoutStore {
       delete loadout.targets[id];
     }
     loadout.updatedAt = new Date().toISOString();
-    await this.save();
+    await this.saveLoadout(userId, key);
     return loadout;
   }
 
   async setSongs(userId, name, songIds, options = {}) {
     const { createIfMissing = false } = options;
     const normalizedSongs = normalizeSongIds(songIds, this.maxSongsPerLoadout);
+    const key = normalizeLoadoutName(name);
     let loadout = null;
 
     try {
@@ -1017,21 +1200,23 @@ export class LoadoutStore {
     loadout.songs = normalizedSongs;
     loadout.targets = normalizeLoadoutTargets(loadout.targets, normalizedSongs);
     loadout.updatedAt = new Date().toISOString();
-    await this.save();
+    await this.saveLoadout(userId, key);
     return loadout;
   }
 
   async setTargets(userId, name, targets) {
     const loadout = this.getLoadout(userId, name);
+    const key = normalizeLoadoutName(name);
     loadout.targets = normalizeLoadoutTargets(targets, loadout.songs);
     loadout.updatedAt = new Date().toISOString();
-    await this.save();
+    await this.saveLoadout(userId, key);
     return loadout;
   }
 
   async setSongTarget(userId, name, songId, target) {
     const loadout = this.getLoadout(userId, name);
     const id = normalizeSongId(songId);
+    const key = normalizeLoadoutName(name);
     if (!loadout.songs.includes(id)) {
       throw new Error(`Song ID ${id} is not in \"${loadout.name}\".`);
     }
@@ -1044,20 +1229,21 @@ export class LoadoutStore {
       comboFlag: normalizeTargetComboFlag(target.comboFlag)
     };
     loadout.updatedAt = new Date().toISOString();
-    await this.save();
+    await this.saveLoadout(userId, key);
     return loadout;
   }
 
   async clearSongTarget(userId, name, songId) {
     const loadout = this.getLoadout(userId, name);
     const id = normalizeSongId(songId);
+    const key = normalizeLoadoutName(name);
     if (!loadout.targets || typeof loadout.targets !== 'object' || !loadout.targets[id]) {
       throw new Error(`Song ID ${id} has no target in \"${loadout.name}\".`);
     }
 
     delete loadout.targets[id];
     loadout.updatedAt = new Date().toISOString();
-    await this.save();
+    await this.saveLoadout(userId, key);
     return loadout;
   }
 }

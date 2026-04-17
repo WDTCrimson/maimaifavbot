@@ -194,6 +194,18 @@ In that configuration:
 - `DATA_FILE` remains the legacy JSON import source
 - `SQLITE_FILE` becomes the active runtime store
 
+To export the current storage state to a timestamped JSON snapshot:
+
+```bash
+npm run export:loadouts
+```
+
+Optional custom output path:
+
+```bash
+node scripts/export-loadouts.js --output=./backups/manual-export.json
+```
+
 ### Rebuild extension CSS (Tailwind)
 
 - Source: `extension/popup.tailwind.css`
