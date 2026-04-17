@@ -206,6 +206,14 @@ Optional custom output path:
 node scripts/export-loadouts.js --output=./backups/manual-export.json
 ```
 
+Optional retention cleanup during export:
+
+```bash
+node scripts/export-loadouts.js --retention-days=30
+```
+
+This deletes older `loadouts-export-*.json` files in the same backup directory after writing the new export.
+
 To restore from an exported JSON snapshot:
 
 ```bash
