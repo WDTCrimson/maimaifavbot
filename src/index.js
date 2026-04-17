@@ -19,7 +19,14 @@ import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
 
-const store = new LoadoutStore(config.dataFile, limits);
+const store = new LoadoutStore(
+  {
+    backend: config.dataBackend,
+    jsonFile: config.dataFile,
+    sqliteFile: config.sqliteFile
+  },
+  limits
+);
 await store.ensureReady();
 
 const accountLinkStateScrub = await store.scrubAccountLinkState();
@@ -40,6 +47,13 @@ if (loadoutMigration.changed) {
   );
 }
 const loadoutStorageStatus = store.getLoadoutStorageStatus();
+if (loadoutStorageStatus.backend === 'sqlite') {
+  console.log(
+    `Loadout storage backend: SQLite (${loadoutStorageStatus.sqliteFile}). Legacy import source: ${loadoutStorageStatus.jsonFile}`
+  );
+} else {
+  console.log(`Loadout storage backend: JSON (${loadoutStorageStatus.jsonFile})`);
+}
 if (loadoutStorageStatus.legacySongIdsRemaining > 0) {
   console.warn(
     `Loadout storage still has ${loadoutStorageStatus.legacySongIdsRemaining} legacy numeric song IDs. Schema v${loadoutStorageStatus.schemaVersion}.`

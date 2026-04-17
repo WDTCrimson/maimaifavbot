@@ -120,7 +120,9 @@ The Yuzu source defaults to `https://www.yuzuchan.moe/api/maimaidx/maimaidxalias
 - `DISCORD_TOKEN` (required)
 - `DISCORD_CLIENT_ID` (required)
 - `DISCORD_GUILD_ID` (optional but recommended for fast command updates)
+- `DATA_BACKEND` (optional, `json` or `sqlite`, default `json`)
 - `DATA_FILE` (optional, default `./data/loadouts.json`)
+- `SQLITE_FILE` (optional, default `./data/loadouts.sqlite`, used when `DATA_BACKEND=sqlite`)
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
 - `SONG_ALIAS_FILE` (optional, default `./data/reference/song-aliases.json`)
 - `RECOMMENDATION_FILE` (optional, default `./data/recommendations/community.json`)
@@ -171,6 +173,26 @@ Playlists are now stored with canonical internal song IDs, not upstream website 
 - Existing legacy playlists auto-migrate on bot startup.
 - Old share codes with numeric song IDs are still accepted for import.
 - Website-facing favorite IDs are resolved only when exporting or applying a playlist.
+
+### SQLite backend
+
+User state can now be stored in SQLite instead of JSON.
+
+- default backend: JSON
+- opt-in backend: SQLite
+- first SQLite startup imports existing JSON state automatically if the database is empty
+
+Example:
+
+```env
+DATA_BACKEND=sqlite
+DATA_FILE=./data/loadouts.json
+SQLITE_FILE=./data/loadouts.sqlite
+```
+
+In that configuration:
+- `DATA_FILE` remains the legacy JSON import source
+- `SQLITE_FILE` becomes the active runtime store
 
 ### Rebuild extension CSS (Tailwind)
 

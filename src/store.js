@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -172,56 +173,375 @@ function buildDefaultMetadata() {
   };
 }
 
-export class LoadoutStore {
-  constructor(filePath, limits) {
+function buildDefaultState() {
+  return { users: {}, accountLinkSessions: {}, metadata: buildDefaultMetadata() };
+}
+
+function normalizeLoadedState(state) {
+  const normalized = state && typeof state === 'object' ? { ...state } : buildDefaultState();
+  if (!normalized.users || typeof normalized.users !== 'object' || Array.isArray(normalized.users)) {
+    normalized.users = {};
+  }
+  if (
+    !normalized.accountLinkSessions ||
+    typeof normalized.accountLinkSessions !== 'object' ||
+    Array.isArray(normalized.accountLinkSessions)
+  ) {
+    normalized.accountLinkSessions = {};
+  }
+  if (!normalized.metadata || typeof normalized.metadata !== 'object' || Array.isArray(normalized.metadata)) {
+    normalized.metadata = buildDefaultMetadata();
+  } else {
+    normalized.metadata = {
+      ...buildDefaultMetadata(),
+      ...normalized.metadata
+    };
+  }
+  return normalized;
+}
+
+class JsonStoreBackend {
+  constructor(filePath) {
     this.filePath = filePath;
+  }
+
+  async loadState() {
+    await mkdir(dirname(this.filePath), { recursive: true });
+
+    try {
+      const raw = await readFile(this.filePath, 'utf8');
+      return normalizeLoadedState(JSON.parse(raw));
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+      const state = buildDefaultState();
+      await this.saveState(state);
+      return state;
+    }
+  }
+
+  async saveState(state) {
+    const tempPath = `${this.filePath}.tmp`;
+    await writeFile(tempPath, JSON.stringify(state, null, 2), 'utf8');
+    await rename(tempPath, this.filePath);
+  }
+}
+
+class SqliteStoreBackend {
+  constructor(filePath, legacyJsonPath = null) {
+    this.filePath = filePath;
+    this.legacyJsonPath = legacyJsonPath;
+    this.db = null;
+  }
+
+  async ensureReady() {
+    if (this.db) {
+      return;
+    }
+
+    await mkdir(dirname(this.filePath), { recursive: true });
+    this.db = new Database(this.filePath);
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
+    this.initializeSchema();
+  }
+
+  initializeSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS metadata (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS users (
+        user_id TEXT PRIMARY KEY,
+        account_json TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS loadouts (
+        user_id TEXT NOT NULL,
+        loadout_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, loadout_key),
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS playlist_songs (
+        user_id TEXT NOT NULL,
+        loadout_key TEXT NOT NULL,
+        position INTEGER NOT NULL,
+        song_id TEXT NOT NULL,
+        PRIMARY KEY (user_id, loadout_key, position),
+        FOREIGN KEY (user_id, loadout_key) REFERENCES loadouts(user_id, loadout_key) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS playlist_targets (
+        user_id TEXT NOT NULL,
+        loadout_key TEXT NOT NULL,
+        song_id TEXT NOT NULL,
+        achievement_rate REAL NOT NULL,
+        difficulty TEXT,
+        chart_type TEXT,
+        combo_flag TEXT,
+        PRIMARY KEY (user_id, loadout_key, song_id),
+        FOREIGN KEY (user_id, loadout_key) REFERENCES loadouts(user_id, loadout_key) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS account_link_sessions (
+        token TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL
+      );
+    `);
+  }
+
+  isEmpty() {
+    const tables = ['users', 'loadouts', 'account_link_sessions', 'metadata'];
+    for (const table of tables) {
+      const row = this.db.prepare(`SELECT 1 AS present FROM ${table} LIMIT 1`).get();
+      if (row) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  async maybeImportLegacyJson() {
+    if (!this.legacyJsonPath || !this.isEmpty()) {
+      return;
+    }
+
+    try {
+      const raw = await readFile(this.legacyJsonPath, 'utf8');
+      const parsed = normalizeLoadedState(JSON.parse(raw));
+      await this.saveState(parsed);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        throw error;
+      }
+    }
+  }
+
+  readState() {
+    const state = buildDefaultState();
+
+    const metadataRows = this.db.prepare('SELECT key, value FROM metadata').all();
+    if (metadataRows.length) {
+      for (const row of metadataRows) {
+        try {
+          state.metadata[row.key] = JSON.parse(row.value);
+        } catch {
+          state.metadata[row.key] = row.value;
+        }
+      }
+      state.metadata = {
+        ...buildDefaultMetadata(),
+        ...state.metadata
+      };
+    }
+
+    const users = this.db.prepare('SELECT user_id, account_json FROM users').all();
+    for (const row of users) {
+      let account = null;
+      if (row.account_json) {
+        account = JSON.parse(row.account_json);
+      }
+      state.users[row.user_id] = {
+        loadouts: {},
+        account
+      };
+    }
+
+    const loadouts = this.db
+      .prepare('SELECT user_id, loadout_key, name, created_at, updated_at FROM loadouts ORDER BY user_id, loadout_key')
+      .all();
+    for (const row of loadouts) {
+      if (!state.users[row.user_id]) {
+        state.users[row.user_id] = { loadouts: {}, account: null };
+      }
+      state.users[row.user_id].loadouts[row.loadout_key] = {
+        name: row.name,
+        songs: [],
+        targets: {},
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      };
+    }
+
+    const songs = this.db
+      .prepare(
+        'SELECT user_id, loadout_key, position, song_id FROM playlist_songs ORDER BY user_id, loadout_key, position'
+      )
+      .all();
+    for (const row of songs) {
+      const loadout = state.users[row.user_id]?.loadouts?.[row.loadout_key];
+      if (loadout) {
+        loadout.songs.push(row.song_id);
+      }
+    }
+
+    const targets = this.db
+      .prepare(
+        'SELECT user_id, loadout_key, song_id, achievement_rate, difficulty, chart_type, combo_flag FROM playlist_targets ORDER BY user_id, loadout_key, song_id'
+      )
+      .all();
+    for (const row of targets) {
+      const loadout = state.users[row.user_id]?.loadouts?.[row.loadout_key];
+      if (loadout) {
+        loadout.targets[row.song_id] = {
+          achievementRate: row.achievement_rate,
+          difficulty: row.difficulty,
+          chartType: row.chart_type,
+          comboFlag: row.combo_flag
+        };
+      }
+    }
+
+    const sessions = this.db
+      .prepare('SELECT token, user_id, status, created_at, expires_at FROM account_link_sessions ORDER BY created_at')
+      .all();
+    for (const row of sessions) {
+      state.accountLinkSessions[row.token] = {
+        token: row.token,
+        userId: row.user_id,
+        status: row.status,
+        createdAt: row.created_at,
+        expiresAt: row.expires_at
+      };
+    }
+
+    return normalizeLoadedState(state);
+  }
+
+  async loadState() {
+    await this.ensureReady();
+    await this.maybeImportLegacyJson();
+    if (this.isEmpty()) {
+      const state = buildDefaultState();
+      await this.saveState(state);
+      return state;
+    }
+    return this.readState();
+  }
+
+  async saveState(state) {
+    await this.ensureReady();
+    const normalized = normalizeLoadedState(state);
+
+    const insertMetadata = this.db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)');
+    const insertUser = this.db.prepare('INSERT INTO users (user_id, account_json) VALUES (?, ?)');
+    const insertLoadout = this.db.prepare(
+      'INSERT INTO loadouts (user_id, loadout_key, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+    );
+    const insertSong = this.db.prepare(
+      'INSERT INTO playlist_songs (user_id, loadout_key, position, song_id) VALUES (?, ?, ?, ?)'
+    );
+    const insertTarget = this.db.prepare(
+      'INSERT INTO playlist_targets (user_id, loadout_key, song_id, achievement_rate, difficulty, chart_type, combo_flag) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    const insertSession = this.db.prepare(
+      'INSERT INTO account_link_sessions (token, user_id, status, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+    );
+
+    const persist = this.db.transaction((snapshot) => {
+      this.db.exec(`
+        DELETE FROM playlist_targets;
+        DELETE FROM playlist_songs;
+        DELETE FROM loadouts;
+        DELETE FROM users;
+        DELETE FROM account_link_sessions;
+        DELETE FROM metadata;
+      `);
+
+      for (const [key, value] of Object.entries(snapshot.metadata || {})) {
+        insertMetadata.run(key, JSON.stringify(value));
+      }
+
+      for (const [userId, user] of Object.entries(snapshot.users || {})) {
+        insertUser.run(userId, user?.account ? JSON.stringify(user.account) : null);
+
+        const loadouts = user?.loadouts || {};
+        for (const [loadoutKey, loadout] of Object.entries(loadouts)) {
+          insertLoadout.run(
+            userId,
+            loadoutKey,
+            loadout.name,
+            loadout.createdAt,
+            loadout.updatedAt
+          );
+
+          for (const [position, songId] of (loadout.songs || []).entries()) {
+            insertSong.run(userId, loadoutKey, position, songId);
+          }
+
+          for (const [songId, target] of Object.entries(loadout.targets || {})) {
+            insertTarget.run(
+              userId,
+              loadoutKey,
+              songId,
+              target.achievementRate,
+              target.difficulty ?? null,
+              target.chartType ?? null,
+              target.comboFlag ?? null
+            );
+          }
+        }
+      }
+
+      for (const session of Object.values(snapshot.accountLinkSessions || {})) {
+        insertSession.run(
+          session.token,
+          session.userId,
+          session.status,
+          session.createdAt,
+          session.expiresAt
+        );
+      }
+    });
+
+    persist(normalized);
+  }
+}
+
+export class LoadoutStore {
+  constructor(options, limits) {
+    const normalizedOptions =
+      typeof options === 'string'
+        ? { jsonFile: options, backend: 'json', sqliteFile: null }
+        : {
+            jsonFile: options?.jsonFile || './data/loadouts.json',
+            backend: String(options?.backend || 'json').trim().toLowerCase(),
+            sqliteFile: options?.sqliteFile || './data/loadouts.sqlite'
+          };
+
+    this.filePath = normalizedOptions.jsonFile;
+    this.backendName = normalizedOptions.backend === 'sqlite' ? 'sqlite' : 'json';
+    this.sqliteFile = normalizedOptions.sqliteFile;
     this.maxSongsPerLoadout = limits.maxSongsPerLoadout;
     this.maxNameLength = limits.maxNameLength;
     this.loaded = false;
-    this.state = { users: {}, accountLinkSessions: {}, metadata: buildDefaultMetadata() };
+    this.state = buildDefaultState();
+    this.backend =
+      this.backendName === 'sqlite'
+        ? new SqliteStoreBackend(this.sqliteFile, this.filePath)
+        : new JsonStoreBackend(this.filePath);
   }
 
   async load() {
     if (this.loaded) {
       return;
     }
-
-    await mkdir(dirname(this.filePath), { recursive: true });
-
-    try {
-      const raw = await readFile(this.filePath, 'utf8');
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && parsed.users && typeof parsed.users === 'object') {
-        this.state = parsed;
-        if (
-          !this.state.accountLinkSessions ||
-          typeof this.state.accountLinkSessions !== 'object'
-        ) {
-          this.state.accountLinkSessions = {};
-        }
-        if (!this.state.metadata || typeof this.state.metadata !== 'object') {
-          this.state.metadata = buildDefaultMetadata();
-        } else {
-          this.state.metadata = {
-            ...buildDefaultMetadata(),
-            ...this.state.metadata
-          };
-        }
-      }
-    } catch (error) {
-      if (error.code !== 'ENOENT') {
-        throw error;
-      }
-      await this.save();
-    }
-
+    this.state = normalizeLoadedState(await this.backend.loadState());
     this.loaded = true;
   }
 
   async save() {
-    const tempPath = `${this.filePath}.tmp`;
-    await writeFile(tempPath, JSON.stringify(this.state, null, 2), 'utf8');
-    await rename(tempPath, this.filePath);
+    await this.backend.saveState(this.state);
   }
 
   async ensureReady() {
@@ -360,6 +680,9 @@ export class LoadoutStore {
   getLoadoutStorageStatus() {
     const metadata = this.state.metadata || buildDefaultMetadata();
     return {
+      backend: this.backendName,
+      sqliteFile: this.backendName === 'sqlite' ? this.sqliteFile : null,
+      jsonFile: this.filePath,
       schemaVersion: Number(metadata.loadoutSchemaVersion) || 1,
       migratedAt: metadata.loadoutSchemaMigratedAt || null,
       legacySongIdsRemaining:

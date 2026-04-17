@@ -33,6 +33,14 @@ function parseOptionalInteger(name, fallback = null) {
   return parsed;
 }
 
+function parseDataBackend() {
+  const value = process.env.DATA_BACKEND?.trim().toLowerCase() || 'json';
+  if (value !== 'json' && value !== 'sqlite') {
+    throw new Error('Environment variable DATA_BACKEND must be either "json" or "sqlite".');
+  }
+  return value;
+}
+
 function resolveDefaultGraphicThemeDir() {
   const tomomaiThemeDir = './data/theme/tomomai';
   if (existsSync(tomomaiThemeDir)) {
@@ -45,7 +53,9 @@ export const config = {
   token: requireEnv('DISCORD_TOKEN'),
   clientId: requireEnv('DISCORD_CLIENT_ID'),
   guildId: process.env.DISCORD_GUILD_ID?.trim() || null,
+  dataBackend: parseDataBackend(),
   dataFile: process.env.DATA_FILE?.trim() || './data/loadouts.json',
+  sqliteFile: process.env.SQLITE_FILE?.trim() || './data/loadouts.sqlite',
   songCatalogFile: process.env.SONG_CATALOG_FILE?.trim() || './data/import/songs.normalized.json',
   songAliasFile: process.env.SONG_ALIAS_FILE?.trim() || './data/reference/song-aliases.json',
   recommendationFile:
