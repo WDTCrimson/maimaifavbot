@@ -3,6 +3,7 @@ import { basename, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
+import { renderAccountRecentGraphic } from './account-recent-graphic.js';
 import {
   accountLinkCallbackServerEnabled,
   buildAccountLinkUrl,
@@ -1012,6 +1013,70 @@ async function handleAccountCommand(interaction) {
           return {
             provider: account.provider || null,
             top50Count: account.best50.top50.length
+          };
+        }
+      );
+      return;
+    }
+
+    case 'recent': {
+      await interaction.deferReply();
+      await measureUsage(
+        interaction,
+        'account_recent',
+        (result) => ({
+          provider: result.provider,
+          trackCount: result.trackCount
+        }),
+        async () => {
+          const account = store.getAccount(userId);
+          if (!account) {
+            await replySafely(
+              interaction,
+              'No linked account snapshot found. Use `/account link` first.'
+            );
+            return {
+              provider: null,
+              trackCount: 0
+            };
+          }
+
+          if (!Array.isArray(account.recentSessions) || !account.recentSessions.length) {
+            await replySafely(
+              interaction,
+              'This account snapshot does not include recent play data yet. Run `/account sync` first.'
+            );
+            return {
+              provider: account.provider || null,
+              trackCount: 0
+            };
+          }
+
+          const hasDetailedRecent = account.recentSessions.some((play) => play?.details);
+          if (!hasDetailedRecent) {
+            await replySafely(
+              interaction,
+              'This account snapshot does not include detailed recent play data yet. Run `/account sync` again.'
+            );
+            return {
+              provider: account.provider || null,
+              trackCount: 0
+            };
+          }
+
+          const graphic = await renderAccountRecentGraphic({ account });
+          const attachment = new AttachmentBuilder(graphic.buffer, {
+            name: graphic.fileName
+          });
+
+          await replyPayload(interaction, {
+            content: `Generated recent-credit graphic for **${account.player?.name || 'linked account'}**.`,
+            files: [attachment]
+          });
+
+          return {
+            provider: account.provider || null,
+            trackCount: Array.isArray(account.recentSessions) ? account.recentSessions.length : 0
           };
         }
       );

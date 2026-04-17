@@ -299,6 +299,11 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('recent')
+      .setDescription('Generate a recent-credit graphic from your linked account snapshot')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('unlink')
       .setDescription('Remove your linked account snapshot')
   );

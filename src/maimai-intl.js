@@ -4,6 +4,7 @@ const INTL_LOGIN_URL =
   'https://lng-tgk-aime-gw.am-all.net/common_auth/login?site_id=maimaidxex&redirect_url=https://maimaidx-eng.com/maimai-mobile/&back_url=https://maimai.sega.com/';
 const INTL_PLAYER_DATA_URL = 'https://maimaidx-eng.com/maimai-mobile/playerData/';
 const INTL_RECORD_URL = 'https://maimaidx-eng.com/maimai-mobile/record/';
+const INTL_PLAYLOG_DETAIL_URL = 'https://maimaidx-eng.com/maimai-mobile/record/playlogDetail/';
 const INTL_SCORE_SEARCH_URL =
   'https://maimaidx-eng.com/maimai-mobile/record/musicGenre/search/?genre=99&diff=';
 const INTL_FAVORITE_EDIT_URL = 'https://maimaidx-eng.com/maimai-mobile/home/userOption/favorite/updateMusic/';
@@ -329,6 +330,31 @@ function parseFcFsFromIcons(srcList) {
   else if (second.includes('_fc.png')) fc = 'fc';
 
   return { fc, fs };
+}
+
+function toAbsoluteIntlUrl(url) {
+  const value = String(url || '').trim();
+  if (!value) {
+    return null;
+  }
+  return value.startsWith('http') ? value : `https://maimaidx-eng.com${value}`;
+}
+
+function parseRecentPlayedAt(value) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  const match = text.match(/(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+  if (!match) {
+    return {
+      text: text || null,
+      iso: null
+    };
+  }
+
+  const [, year, month, day, hour, minute] = match;
+  return {
+    text,
+    iso: `${year}-${month}-${day}T${hour}:${minute}:00+09:00`
+  };
 }
 
 async function validateInternationalCookie(clalToken) {
@@ -775,23 +801,30 @@ async function fetchRecentPlays(cookies) {
 
       const track = Number.parseInt(record.find('.playlog_track_num').text().trim(), 10) || index + 1;
       const playedAtText = record.find('.sub_title').text().trim();
-      const playedAt = playedAtText ? playedAtText : null;
+      const playedAt = parseRecentPlayedAt(playedAtText);
 
       const musicKindIcon = record.find('img.playlog_music_kind_icon').attr('src') || '';
       const musicType = musicKindIcon.includes('music_dx.png') ? 'dx' : 'std';
+      const idx = String(
+        record.find('input[name="idx"]').attr('value')
+          || ''
+      ).trim();
 
       recent.push({
         title: songName,
         difficulty,
         level,
         type: musicType,
+        typeIconUrl: toAbsoluteIntlUrl(musicKindIcon),
         achievement: Math.round(Number.parseFloat(achievementMatch[1]) * 10000),
         dxScore: Number.parseInt(dxScoreMatch[1], 10),
         maxDxScore: Number.parseInt(dxScoreMatch[2], 10),
         fc,
         fs,
         track,
-        playedAt,
+        idx: idx || null,
+        playedAt: playedAt.text,
+        playedAtIso: playedAt.iso,
         sortIndex: index
       });
     } catch {
@@ -800,6 +833,140 @@ async function fetchRecentPlays(cookies) {
   });
 
   return recent;
+}
+
+async function fetchRecentPlayDetails(cookies, recentPlays, limit = 8) {
+  const plays = Array.isArray(recentPlays) ? recentPlays.slice(0, Math.max(0, limit)) : [];
+  if (!plays.length) {
+    return recentPlays;
+  }
+
+  const load = await loadCheerio();
+  const detailedByIdx = new Map();
+  const BATCH_SIZE = 6;
+
+  for (let batchStart = 0; batchStart < plays.length; batchStart += BATCH_SIZE) {
+    const batch = plays.slice(batchStart, batchStart + BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map(async (play) => {
+        if (!play?.idx) {
+          return null;
+        }
+
+        try {
+          const detailUrl = `${INTL_PLAYLOG_DETAIL_URL}?idx=${encodeURIComponent(play.idx)}`;
+          const html = await fetchText(detailUrl, {
+            cookies,
+            referer: INTL_RECORD_URL
+          });
+          const $ = load(html);
+
+          const flBlocks = $('.playlog_fl_block > * .p_t_5');
+          const fastCount =
+            flBlocks.length > 0 ? Number.parseInt(flBlocks.eq(0).text().trim().replace(/,/g, ''), 10) || 0 : 0;
+          const lateCount =
+            flBlocks.length > 1 ? Number.parseInt(flBlocks.eq(1).text().trim().replace(/,/g, ''), 10) || 0 : 0;
+
+          const scoreBlocks = $('.playlog_score_block > div.white');
+          const comboText = scoreBlocks.length > 1 ? scoreBlocks.eq(1).text().trim() : '';
+          const comboMatch = comboText.match(/(\d+(?:,\d+)?)\s*\/\s*(\d+(?:,\d+)?)/);
+          const combo = comboMatch ? Number.parseInt(comboMatch[1].replace(/,/g, ''), 10) : 0;
+          const maxCombo = comboMatch ? Number.parseInt(comboMatch[2].replace(/,/g, ''), 10) : 0;
+
+          const syncScoreText = scoreBlocks.length > 2 ? scoreBlocks.eq(2).text().trim() : '';
+          let syncScore = null;
+          let maxSyncScore = null;
+          if (syncScoreText.includes('/')) {
+            const syncMatch = syncScoreText.match(/(\d+(?:,\d+)?)\s*\/\s*(\d+(?:,\d+)?)/);
+            if (syncMatch) {
+              syncScore = Number.parseInt(syncMatch[1].replace(/,/g, ''), 10);
+              maxSyncScore = Number.parseInt(syncMatch[2].replace(/,/g, ''), 10);
+            }
+          }
+
+          const ratingText = $('.playlog_rating_detail_block > * .rating_block').text().trim();
+          const rating = Number.parseInt(ratingText.replace(/[^\d-]/g, ''), 10) || 0;
+
+          const ratingChangeText = $('.playlog_rating_detail_block > * span').text().trim();
+          const ratingChangeMatch = ratingChangeText.match(/([+-])(\d+)/);
+          const ratingChange = ratingChangeMatch
+            ? Number.parseInt(`${ratingChangeMatch[1]}${ratingChangeMatch[2]}`, 10)
+            : 0;
+
+          const noteRows = $('.playlog_notes_detail > * tr:not(:first-child)');
+          const noteTypes = ['tap', 'hold', 'slide', 'touch', 'break'];
+          const noteData = {};
+
+          noteRows.each((rowIndex, row) => {
+            if (rowIndex >= noteTypes.length) {
+              return;
+            }
+            const cells = $(row).find('td');
+            noteData[noteTypes[rowIndex]] = {
+              cperfect: cells.length > 0 ? Number.parseInt(cells.eq(0).text().trim(), 10) || 0 : 0,
+              perfect: cells.length > 1 ? Number.parseInt(cells.eq(1).text().trim(), 10) || 0 : 0,
+              great: cells.length > 2 ? Number.parseInt(cells.eq(2).text().trim(), 10) || 0 : 0,
+              good: cells.length > 3 ? Number.parseInt(cells.eq(3).text().trim(), 10) || 0 : 0,
+              miss: cells.length > 4 ? Number.parseInt(cells.eq(4).text().trim(), 10) || 0 : 0
+            };
+          });
+
+          return {
+            idx: play.idx,
+            details: {
+              fastCount,
+              lateCount,
+              combo,
+              maxCombo,
+              syncScore,
+              maxSyncScore,
+              rating,
+              ratingChange,
+              venue: null,
+              tapCPerfect: noteData.tap?.cperfect ?? 0,
+              tapPerfect: noteData.tap?.perfect ?? 0,
+              tapGreat: noteData.tap?.great ?? 0,
+              tapGood: noteData.tap?.good ?? 0,
+              tapMiss: noteData.tap?.miss ?? 0,
+              holdCPerfect: noteData.hold?.cperfect ?? 0,
+              holdPerfect: noteData.hold?.perfect ?? 0,
+              holdGreat: noteData.hold?.great ?? 0,
+              holdGood: noteData.hold?.good ?? 0,
+              holdMiss: noteData.hold?.miss ?? 0,
+              slideCPerfect: noteData.slide?.cperfect ?? 0,
+              slidePerfect: noteData.slide?.perfect ?? 0,
+              slideGreat: noteData.slide?.great ?? 0,
+              slideGood: noteData.slide?.good ?? 0,
+              slideMiss: noteData.slide?.miss ?? 0,
+              touchCPerfect: noteData.touch?.cperfect ?? 0,
+              touchPerfect: noteData.touch?.perfect ?? 0,
+              touchGreat: noteData.touch?.great ?? 0,
+              touchGood: noteData.touch?.good ?? 0,
+              touchMiss: noteData.touch?.miss ?? 0,
+              breakCPerfect: noteData.break?.cperfect ?? 0,
+              breakPerfect: noteData.break?.perfect ?? 0,
+              breakGreat: noteData.break?.great ?? 0,
+              breakGood: noteData.break?.good ?? 0,
+              breakMiss: noteData.break?.miss ?? 0
+            }
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    for (const result of results) {
+      if (result?.idx) {
+        detailedByIdx.set(result.idx, result.details);
+      }
+    }
+  }
+
+  return recentPlays.map((play) => ({
+    ...play,
+    details: play?.idx ? detailedByIdx.get(play.idx) || null : null
+  }));
 }
 
 async function fetchScoresForDifficulty(cookies, difficultyNumber) {
@@ -981,6 +1148,8 @@ function enrichRecentPlays(recentPlays, songCatalog) {
       ...play,
       favoriteId: matched.song.favoriteId,
       artist: matched.song.artist,
+      jacket: matched.song.jacket || null,
+      version: matched.chart.version || null,
       internalLevelValue: Number.isFinite(internalLevelValue) ? internalLevelValue : null,
       rating
     };
@@ -997,10 +1166,11 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
     fetchRecentPlays(cookies),
     fetchAllScores(cookies)
   ]);
+  const detailedRecentPlays = await fetchRecentPlayDetails(cookies, recentPlays, 8);
 
   const profile = await extractPlayerSnapshot(playerDataHtml);
   const best50 = buildBest50(scoreEntries, songCatalog);
-  const recentSessions = enrichRecentPlays(recentPlays, songCatalog);
+  const recentSessions = enrichRecentPlays(detailedRecentPlays, songCatalog);
 
   return {
     token: clalToken,
