@@ -206,6 +206,14 @@ Optional custom output path:
 node scripts/export-loadouts.js --output=./backups/manual-export.json
 ```
 
+To restore from an exported JSON snapshot:
+
+```bash
+node scripts/restore-loadouts.js --input=./backups/loadouts-export-YYYYMMDD-HHMMSS.json
+```
+
+By default this writes a pre-restore backup into `./backups/` before it overwrites the active store.
+
 ### Rebuild extension CSS (Tailwind)
 
 - Source: `extension/popup.tailwind.css`
