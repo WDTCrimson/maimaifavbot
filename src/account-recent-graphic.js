@@ -119,7 +119,13 @@ function resolveLocalJacketPath(track) {
   return candidates;
 }
 
-function getTypeBadgeUrl(track) {
+function resolveLocalTypeBadgePath(track) {
+  const normalized = String(track?.type || 'std').toLowerCase();
+  const fileName = normalized === 'dx' ? 'music_dx.png' : 'music_standard.png';
+  return join(process.cwd(), 'data', 'assets', 'maimai-ui', fileName);
+}
+
+function getRemoteTypeBadgeUrl(track) {
   if (track?.typeIconUrl) {
     return track.typeIconUrl;
   }
@@ -685,7 +691,9 @@ async function renderTrack(ctx, overlayRect, track, index, trackCount, overallSc
     ctx.drawImage(percentage, achievementX, achievementY + achievementBigSize.height * bigAchievementScale - percentage.height * percentageScale * 1.45, percentage.width * percentageScale, percentage.height * percentageScale);
   }
 
-  const typeBadge = await loadCachedImage(getTypeBadgeUrl(track));
+  const typeBadge =
+    (await loadCachedImage(resolveLocalTypeBadgePath(track)))
+    || (await loadCachedImage(getRemoteTypeBadgeUrl(track)));
   if (typeBadge) {
     const typeScale = 0.9 * overallScale;
     ctx.drawImage(typeBadge, baseLeftStart + baseWidth * 0.63, topStart + baseHeight * 0.22, typeBadge.width * typeScale, typeBadge.height * typeScale);
