@@ -15,7 +15,7 @@ import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './acc
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
-import { applyIntlFavoritesFromClal, calculateChartRating, fetchIntlAccountSnapshotFromClal } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, calculateChartRating, fetchIntlAccountSnapshotFromClal, getCurrentIntlVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -1212,6 +1212,62 @@ async function handleSongCommand(interaction) {
       return;
     }
 
+    case 'calc': {
+      const query = interaction.options.getString('query', true);
+      const targetInput = interaction.options.getString('target', true);
+      const difficulty = interaction.options.getString('difficulty');
+      const chartType = interaction.options.getString('type');
+      const comboFlag = interaction.options.getString('combo') || 'none';
+      const song = songCatalog.resolveSong(query);
+
+      if (!song) {
+        await replySafely(interaction, `No song found for "${query}".`);
+        return;
+      }
+
+      const targetAchievement = parseTargetInput(targetInput);
+      const chart = resolveSongCalculatorChart(song, {
+        difficulty,
+        chartType
+      });
+
+      if (!chart) {
+        await replySafely(
+          interaction,
+          'Could not resolve a playable chart for that song. Try specifying `difficulty` and `type`.'
+        );
+        return;
+      }
+
+      const internalLevelValue = parseInternalConstant(chart.internalLevelValue);
+      if (internalLevelValue == null) {
+        await replySafely(interaction, 'This chart is missing internal level data.');
+        return;
+      }
+
+      const rating = calculateChartRating({
+        achievement: Math.round(targetAchievement * 10000),
+        fc: comboFlag === 'none' ? null : comboFlag,
+        internalLevelValue,
+        gameVersion: getCurrentIntlVersionId() ?? 0
+      });
+
+      const artwork = await resolveArtworkAttachment(song, 'song-calc');
+      const embed = buildSongCalcEmbed({
+        song,
+        chart,
+        targetAchievement,
+        rating,
+        comboFlag: comboFlag === 'none' ? null : comboFlag
+      }, artwork?.imageUrl);
+      const payload = { embeds: [embed] };
+      if (artwork) {
+        payload.files = [artwork.attachment];
+      }
+      await replyPublicPayload(interaction, payload);
+      return;
+    }
+
     default:
       await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
   }
@@ -2226,6 +2282,78 @@ function resolvePlaylistTargetChart(song, target = null) {
     const rightType = typeRank.get(String(right.chartType || '').toLowerCase()) ?? -1;
     return rightType - leftType;
   })[0];
+}
+
+function resolveSongCalculatorChart(song, target = null) {
+  const chart = resolvePlaylistTargetChart(song, {
+    difficulty: target?.difficulty || null,
+    chartType: target?.chartType || null
+  });
+  return chart || null;
+}
+
+function rankFromAchievementValue(value) {
+  const achievement = Number(value);
+  if (!Number.isFinite(achievement)) {
+    return 'Unknown';
+  }
+  if (achievement >= 100.5) return 'SSS+';
+  if (achievement >= 100) return 'SSS';
+  if (achievement >= 99.5) return 'SS+';
+  if (achievement >= 99) return 'SS';
+  if (achievement >= 98) return 'S+';
+  if (achievement >= 97) return 'S';
+  if (achievement >= 94) return 'AAA';
+  if (achievement >= 90) return 'AA';
+  if (achievement >= 80) return 'A';
+  if (achievement >= 75) return 'BBB';
+  if (achievement >= 70) return 'BB';
+  if (achievement >= 60) return 'B';
+  if (achievement >= 50) return 'C';
+  return 'D';
+}
+
+function buildSongCalcEmbed(result, imageUrl) {
+  const { song, chart, targetAchievement, rating, comboFlag } = result;
+  const chartType = String(chart?.chartType || chart?.type || '').toUpperCase() || 'UNK';
+  const chartDifficulty = formatDifficultyShort(chart?.difficulty);
+  const level = String(chart?.level || '?');
+  const internal = formatInternalLevel(chart?.internalLevelValue);
+
+  const embed = new EmbedBuilder()
+    .setColor(0xdc2626)
+    .setTitle(`Calculator: ${song.title}`)
+    .setDescription(song.artist || 'Unknown artist')
+    .addFields(
+      {
+        name: 'Chart',
+        value: [
+          `${chartType} ${chartDifficulty} ${level}`,
+          `Internal: ${internal}`
+        ].join('\n'),
+        inline: true
+      },
+      {
+        name: 'Target',
+        value: [
+          formatTargetValue(targetAchievement),
+          `Rank: ${rankFromAchievementValue(targetAchievement)}`,
+          comboFlag ? `Combo: ${String(comboFlag).toUpperCase()}` : 'Combo: None'
+        ].join('\n'),
+        inline: true
+      },
+      {
+        name: 'Result',
+        value: `Rating: **${rating}**`,
+        inline: true
+      }
+    );
+
+  if (imageUrl) {
+    embed.setImage(imageUrl);
+  }
+
+  return embed;
 }
 
 function buildPlaylistTargetEntries(playlist) {

@@ -227,7 +227,7 @@ function resolveChartVersionId(version) {
   return VERSION_ID_BY_NAME.get(normalized) ?? null;
 }
 
-function getCurrentIntlVersionId(now = Date.now()) {
+export function getCurrentIntlVersionId(now = Date.now()) {
   let currentVersionId = null;
 
   for (const version of INTL_VERSION_RELEASES) {
