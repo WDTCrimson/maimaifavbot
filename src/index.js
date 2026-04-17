@@ -1981,7 +1981,7 @@ function buildSongInfoEmbed(song, imageUrl) {
     .setColor(0xdc2626)
     .setTitle(song.title)
     .setDescription(song.artist || 'Unknown artist')
-    .addFields({ name: 'Song', value: metadataLines.join('\n') });
+    .addFields({ name: 'Info', value: metadataLines.join('\n') });
 
   const chartFields = buildSongInfoChartFields(song);
   if (chartFields.length) {
@@ -2540,32 +2540,69 @@ function buildSongInfoChartFields(song) {
     return [{ name: 'Charts', value: 'No chart metadata available.' }];
   }
 
-  return charts.slice(0, 20).map((chart) => {
+  const grouped = new Map([
+    ['dx', []],
+    ['std', []],
+    ['other', []]
+  ]);
+
+  for (const chart of charts) {
+    const type = String(chart.type || '').toLowerCase();
+    if (type === 'dx') {
+      grouped.get('dx').push(chart);
+    } else if (type === 'std') {
+      grouped.get('std').push(chart);
+    } else {
+      grouped.get('other').push(chart);
+    }
+  }
+
+  const fieldDefs = [
+    ['dx', 'DX Charts'],
+    ['std', 'Standard Charts'],
+    ['other', 'Other Charts']
+  ];
+
+  return fieldDefs
+    .map(([groupKey, label]) => {
+      const rows = grouped.get(groupKey) || [];
+      if (!rows.length) {
+        return null;
+      }
+
+      const value = rows
+        .map((chart) => formatSongInfoChartRow(chart, difficultyLabel))
+        .join('\n');
+
+      return {
+        name: label,
+        value: value.length > 1024 ? `${value.slice(0, 1021)}…` : value
+      };
+    })
+    .filter(Boolean);
+}
+
+function formatSongInfoChartRow(chart, difficultyLabel) {
     const difficulty = String(chart.difficulty || '').toLowerCase();
     const difficultyText = difficultyLabel[difficulty] || String(chart.difficulty || 'UNKNOWN');
-    const typeText = String(chart.type || 'UNK').toUpperCase();
     const internal = formatInternalLevel(chart.internalLevelValue);
     const breakdown = chart.noteCounts && typeof chart.noteCounts === 'object'
       ? [
-          `Tap ${formatNoteCountValue(chart.noteCounts.tap)}`,
-          `Hold ${formatNoteCountValue(chart.noteCounts.hold)}`,
-          `Slide ${formatNoteCountValue(chart.noteCounts.slide)}`,
-          `Touch ${formatNoteCountValue(chart.noteCounts.touch)}`,
-          `Break ${formatNoteCountValue(chart.noteCounts.break)}`
-        ].join(' | ')
+          `T${formatNoteCountValue(chart.noteCounts.tap)}`,
+          `H${formatNoteCountValue(chart.noteCounts.hold)}`,
+          `S${formatNoteCountValue(chart.noteCounts.slide)}`,
+          `X${formatNoteCountValue(chart.noteCounts.touch)}`,
+          `B${formatNoteCountValue(chart.noteCounts.break)}`
+        ].join(' ')
       : 'Breakdown unavailable.';
     const detail = [
-      `Lvl ${chart.level} [${internal}]`,
+      `${difficultyText} ${chart.level} [${internal}]`,
       chart.noteCounts?.total != null ? `Total ${formatNoteCountValue(chart.noteCounts.total)}` : null
     ]
       .filter(Boolean)
-      .join(' | ');
+      .join(' • ');
 
-    return {
-      name: `${typeText} ${difficultyText}`,
-      value: `${detail}\n${breakdown}`
-    };
-  });
+    return `**${detail}**\n${breakdown}`;
 }
 
 function formatInternalLevel(value) {
