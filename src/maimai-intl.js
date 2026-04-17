@@ -758,13 +758,31 @@ async function fetchRecentPlays(cookies) {
   });
   const load = await loadCheerio();
   const $ = load(html);
-  const records = $('form[action*="playlogDetail/"]');
+  const recordRoots = $('.p_10.t_l.f_0.v_b');
+  const records = recordRoots.length ? recordRoots : $('form[action*="playlogDetail/"]');
   const recent = [];
 
   records.each((index, element) => {
     try {
       const record = $(element);
-      const songName = record.find('.basic_block.p_10.f_13.break').text().trim();
+      let songName = '';
+      const basicBlock = record.find('.basic_block').first();
+      if (basicBlock.length) {
+        basicBlock.contents().each((_, node) => {
+          if (songName) {
+            return;
+          }
+          if (node.type === 'text') {
+            const text = $(node).text().trim();
+            if (text) {
+              songName = text;
+            }
+          }
+        });
+      }
+      if (!songName) {
+        songName = record.find('.basic_block.p_10.f_13.break').text().trim();
+      }
       if (!songName) {
         return;
       }
@@ -780,7 +798,7 @@ async function fetchRecentPlays(cookies) {
         return;
       }
 
-      const level = record.find('.playlog_score_block > .f_r.f_14').first().text().trim();
+      const level = record.find('.music_lv_back, .playlog_score_block > .f_r.f_14').first().text().trim();
       const achievementText = record.find('.playlog_achievement_txt').text().trim();
       const achievementMatch = achievementText.match(/(\d+\.?\d*)%/);
       if (!achievementMatch) {
@@ -799,12 +817,16 @@ async function fetchRecentPlays(cookies) {
         .get();
       const { fc, fs } = parseFcFsFromIcons(resultImages);
 
-      const track = Number.parseInt(record.find('.playlog_track_num').text().trim(), 10) || index + 1;
-      const playedAtText = record.find('.sub_title').text().trim();
+      const trackText = record.find('.sub_title > .red, .playlog_track_num').first().text().trim();
+      const trackMatch = trackText.match(/TRACK\s+(\d+)/i);
+      const track = trackMatch
+        ? Number.parseInt(trackMatch[1], 10)
+        : Number.parseInt(trackText.replace(/[^\d]/g, ''), 10) || index + 1;
+      const playedAtText = record.find('.sub_title > .v_b:not(.red), .sub_title').last().text().trim();
       const playedAt = parseRecentPlayedAt(playedAtText);
 
       const musicKindIcon = record.find('img.playlog_music_kind_icon').attr('src') || '';
-      const musicType = musicKindIcon.includes('music_dx.png') ? 'dx' : 'std';
+      const musicType = mapMusicTypeFromIcon(musicKindIcon) || 'std';
       const idx = String(
         record.find('input[name="idx"]').attr('value')
           || ''
