@@ -57,6 +57,50 @@ function trimTextToWidth(ctx, text, maxWidth) {
   return `${current}…`;
 }
 
+function wrapTextToWidth(ctx, text, maxWidth, maxLines = 2) {
+  const value = String(text || '').trim();
+  if (!value) {
+    return [''];
+  }
+
+  const words = value.split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return [trimTextToWidth(ctx, value, maxWidth)];
+  }
+
+  const lines = [];
+  let current = '';
+
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index];
+    const next = current ? `${current} ${word}` : word;
+    if (ctx.measureText(next).width <= maxWidth) {
+      current = next;
+      continue;
+    }
+
+    if (!current) {
+      lines.push(trimTextToWidth(ctx, word, maxWidth));
+    } else {
+      lines.push(current);
+      current = word;
+    }
+
+    if (lines.length === maxLines - 1) {
+      const remainingWords = [current, ...words.slice(index + 1)].filter(Boolean);
+      const remaining = remainingWords.join(' ');
+      lines.push(trimTextToWidth(ctx, remaining, maxWidth));
+      return lines;
+    }
+  }
+
+  if (current) {
+    lines.push(current);
+  }
+
+  return lines.slice(0, maxLines);
+}
+
 async function fileExists(path) {
   try {
     const fileStat = await stat(path);
@@ -340,30 +384,39 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
   ctx.shadowOffsetY = 1;
   ctx.restore();
 
+  const coverWidth = entry.cover ? 108 : 0;
   ctx.save();
   roundedRectPath(ctx, x, y, width, height, 12);
   ctx.clip();
   if (entry.cover) {
-    const coverWidth = 108;
     drawMaskedCover(ctx, entry.cover, x + width - coverWidth, y, coverWidth, height);
   }
+  const leftFade = ctx.createLinearGradient(x, y, x + Math.min(width - coverWidth + 12, width), y);
+  leftFade.addColorStop(0, difficultyMeta.inverted ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)');
+  leftFade.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = leftFade;
+  ctx.fillRect(x, y, width, height);
   ctx.restore();
 
   const leftX = x + 10;
-  const topY = y + 12;
-  const contentWidth = width - 64;
+  const topY = y + 10;
+  const contentWidth = Math.max(120, width - coverWidth - 28);
+  const hasTarget = entry.target?.achievementRate != null;
 
   ctx.save();
   ctx.fillStyle = foregroundColor;
-  ctx.font = `700 15px ${theme.fontFamily}`;
+  ctx.font = `700 14px ${theme.fontFamily}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.shadowColor = shadowColor;
   ctx.shadowBlur = 2;
-  ctx.fillText(trimTextToWidth(ctx, entry.song.title, contentWidth), leftX, topY);
+  const titleLines = wrapTextToWidth(ctx, entry.song.title, contentWidth, 2);
+  titleLines.forEach((line, lineIndex) => {
+    ctx.fillText(line, leftX, topY + lineIndex * 16);
+  });
 
-  const typeText = entry.chart?.chartType === 'std' ? 'STD' : 'DX';
-  const badgeY = y + 38;
+  const typeText = String(entry.chart?.chartType || entry.chart?.type || '').toLowerCase() === 'std' ? 'STD' : 'DX';
+  const badgeY = y + 44;
   const typeWidth = drawBadge(ctx, {
     x: leftX,
     y: badgeY,
@@ -379,7 +432,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
   drawBadge(ctx, {
     x: leftX + typeWidth + 6,
     y: badgeY,
-    text: `${difficultyMeta.title} ${formatInternal(entry.chart?.internalLevelValue)}`,
+    text: trimText(`${difficultyMeta.title} ${formatInternal(entry.chart?.internalLevelValue)}`, 18),
     fill: 'rgba(0,0,0,0.35)',
     color: '#fff',
     stroke: 'rgba(255,255,255,0.2)',
@@ -391,7 +444,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
 
   drawBadge(ctx, {
     x: leftX,
-    y: y + 64,
+    y: y + 68,
     text: entry.targetRating != null ? String(entry.targetRating) : '—',
     fill: 'rgba(0,0,0,0.5)',
     color: '#fff',
@@ -401,20 +454,22 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
     radius: 10
   });
 
-  ctx.font = `700 14px ${theme.fontFamily}`;
+  ctx.font = hasTarget ? `700 15px ${theme.fontFamily}` : `700 13px ${theme.fontFamily}`;
   ctx.fillStyle = foregroundColor;
-  ctx.fillText(formatAchievementTarget(entry.target?.achievementRate), leftX + 54, y + 68);
+  ctx.fillText(
+    hasTarget ? formatAchievementTarget(entry.target?.achievementRate) : 'NO TARGET',
+    leftX + 54,
+    y + 71
+  );
 
   const rank = rankFromAchievement(entry.target?.achievementRate);
 
-  if (entry.target?.achievementRate != null) {
+  if (hasTarget) {
     ctx.font = `500 11px ${theme.fontFamily}`;
     ctx.fillStyle = 'rgba(255,255,255,0.78)';
-    const note = entry.target.difficulty
-      ? `${difficultyMeta.title}${entry.target.chartType ? ` • ${typeText}` : ''}`
-      : 'Auto-selected chart';
-    const noteY = y + 90;
-    const noteText = trimTextToWidth(ctx, note, contentWidth - 80);
+    const note = entry.target.difficulty ? `${difficultyMeta.title} • ${typeText}` : `AUTO • ${typeText}`;
+    const noteY = y + 92;
+    const noteText = trimTextToWidth(ctx, note, contentWidth - 88);
     ctx.fillText(noteText, leftX, noteY);
     const noteWidth = ctx.measureText(noteText).width;
 
@@ -446,7 +501,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
   } else {
     ctx.font = `500 11px ${theme.fontFamily}`;
     ctx.fillStyle = 'rgba(255,255,255,0.78)';
-    ctx.fillText('No explicit target set', leftX, y + 90);
+    ctx.fillText('Target not set', leftX, y + 92);
   }
 
   drawBadge(ctx, {
