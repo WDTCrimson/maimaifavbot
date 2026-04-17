@@ -50,6 +50,225 @@ function truncate(text, maxLength) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+function stripNonAlphanumeric(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+function hasCjkOrKana(value) {
+  return /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(String(value || ''));
+}
+
+function hasHangul(value) {
+  return /[\u1100-\u11ff\u3130-\u318f\uac00-\ud7af]/.test(String(value || ''));
+}
+
+function hasNonAscii(value) {
+  return /[^\x00-\x7f]/.test(String(value || ''));
+}
+
+function isAsciiLatinTitle(value) {
+  const text = String(value || '').trim();
+  return /[a-z]/i.test(text) && !hasCjkOrKana(text) && !hasHangul(text) && !hasNonAscii(text);
+}
+
+function looksLikeLatinAlias(alias, song) {
+  const text = String(alias || '').trim();
+  if (!text) {
+    return false;
+  }
+
+  if (!/[a-z]/i.test(text)) {
+    return false;
+  }
+
+  if (hasCjkOrKana(text) || hasHangul(text)) {
+    return false;
+  }
+
+  if (/^\[[^\]]+\]/.test(text)) {
+    return false;
+  }
+
+  const normalizedAlias = normalizeText(text);
+  if (!normalizedAlias || normalizedAlias === song.normTitle) {
+    return false;
+  }
+
+  if (stripNonAlphanumeric(text) === stripNonAlphanumeric(song.title)) {
+    return false;
+  }
+
+  return true;
+}
+
+function scoreDisplayAlias(alias) {
+  const text = String(alias || '').trim();
+  let score = 0;
+  const vowelCount = (text.match(/[aeiou]/gi) || []).length;
+  const titleishLength = text.replace(/[^a-z]/gi, '').length;
+
+  if (/[A-Z][a-z]/.test(text)) {
+    score += 80;
+  }
+  if (/\s/.test(text)) {
+    score += 60;
+  }
+  if (/^[a-z][a-z0-9\s'!&+./:-]*$/i.test(text)) {
+    score += 40;
+  }
+  if (/^[a-z0-9\s'!&+./:-]+$/i.test(text)) {
+    score += 30;
+  }
+  if (/^[A-Z0-9]+$/.test(text) && !/\s/.test(text)) {
+    score -= 30;
+  }
+  if (/^(.)\1{3,}$/i.test(text)) {
+    score -= 250;
+  }
+  if (/\d/.test(text)) {
+    score -= 60;
+  }
+  if (/[^a-z0-9\s'!&+./:-]/i.test(text)) {
+    score -= 120;
+  }
+  if (titleishLength > 0 && vowelCount > 0 && vowelCount < titleishLength) {
+    score += 25;
+  }
+  if (text.length >= 5) {
+    score += 20;
+  } else {
+    score -= 20;
+  }
+
+  return score;
+}
+
+function isLikelyRomajiAlias(alias) {
+  const text = String(alias || '').trim();
+  if (!/^[a-z][a-z' -]*$/i.test(text)) {
+    return false;
+  }
+
+  if (/\s/.test(text)) {
+    return false;
+  }
+
+  const lower = text.toLowerCase();
+  if (lower.length < 5) {
+    return false;
+  }
+
+  if (/[0-9]/.test(lower)) {
+    return false;
+  }
+
+  if (
+    /(tsu|shi|chi|kyo|kyu|kya|ryo|ryu|rya|sho|shu|sha|nyo|nyu|nya|myo|myu|mya|hyo|hyu|hya|gyo|gyu|gya|pyo|pyu|pya|byo|byu|bya|ja|ju|jo|fu|pp|tt|kk|ss|nn)/.test(lower)
+  ) {
+    return true;
+  }
+
+  const vowelCount = (lower.match(/[aeiou]/g) || []).length;
+  const consonantCount = (lower.match(/[bcdfghjklmnpqrstvwxyz]/g) || []).length;
+  if (!vowelCount || !consonantCount) {
+    return false;
+  }
+
+  if (lower.endsWith('te') || lower.endsWith('to') || lower.endsWith('na') || lower.endsWith('ne') || lower.endsWith('ka') || lower.endsWith('ki') || lower.endsWith('ru')) {
+    return true;
+  }
+
+  return vowelCount >= Math.ceil(lower.length * 0.35);
+}
+
+function formatEnglishDisplayAlias(alias) {
+  const text = String(alias || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  if (text === text.toLowerCase()) {
+    return text.replace(/\b([a-z])/g, (_, letter) => letter.toUpperCase());
+  }
+
+  return text;
+}
+
+function formatRomajiDisplayAlias(alias) {
+  const text = String(alias || '').trim();
+  if (!text) {
+    return null;
+  }
+
+  if (text === text.toLowerCase()) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  return text;
+}
+
+function pickDisplayAliases(song) {
+  if (!Array.isArray(song.aliases) || !song.aliases.length || isAsciiLatinTitle(song.title)) {
+    return [];
+  }
+
+  const strippedTitle = stripNonAlphanumeric(song.title);
+  let bestEnglishAlias = null;
+  let bestEnglishScore = Number.NEGATIVE_INFINITY;
+  let bestRomajiAlias = null;
+  let bestRomajiScore = Number.NEGATIVE_INFINITY;
+
+  for (const alias of song.aliases) {
+    if (!looksLikeLatinAlias(alias, song)) {
+      continue;
+    }
+
+    const strippedAlias = stripNonAlphanumeric(alias);
+    if (strippedTitle && strippedAlias && strippedTitle.includes(strippedAlias)) {
+      continue;
+    }
+
+    const score = scoreDisplayAlias(alias);
+    if (isLikelyRomajiAlias(alias)) {
+      if (
+        score > bestRomajiScore ||
+        (score === bestRomajiScore && String(alias).length < String(bestRomajiAlias || '').length)
+      ) {
+        bestRomajiAlias = alias;
+        bestRomajiScore = score;
+      }
+      continue;
+    }
+
+    if (
+      score > bestEnglishScore ||
+      (score === bestEnglishScore && String(alias).length < String(bestEnglishAlias || '').length)
+    ) {
+      bestEnglishAlias = alias;
+      bestEnglishScore = score;
+    }
+  }
+
+  const output = [];
+  const seen = new Set();
+
+  for (const value of [
+    formatEnglishDisplayAlias(bestEnglishAlias),
+    formatRomajiDisplayAlias(bestRomajiAlias)
+  ]) {
+    const normalized = normalizeText(value);
+    if (!value || !normalized || seen.has(normalized)) {
+      continue;
+    }
+    output.push(value);
+    seen.add(normalized);
+  }
+
+  return output;
+}
+
 function scoreSong(song, query) {
   if (!query) {
     return 1;
@@ -332,6 +551,8 @@ export class SongCatalog {
           favoriteId,
           legacyFavoriteId: legacyFavoriteId && legacyFavoriteId !== favoriteId ? legacyFavoriteId : null,
           aliases: [],
+          displayAlias: null,
+          displayAliases: [],
           normAliases: [],
           title,
           artist: artist || 'Unknown',
@@ -412,6 +633,8 @@ export class SongCatalog {
         if (song.aliases.length) {
           song.searchBlob = normalizeText(`${song.searchBlob} ${song.aliases.join(' ')}`);
         }
+        song.displayAliases = pickDisplayAliases(song);
+        song.displayAlias = song.displayAliases[0] || null;
       }
 
       this.bySongId = bySongId;

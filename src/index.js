@@ -1981,7 +1981,11 @@ function formatChartSearchResult(entry, index) {
   const typeText = String(entry.chart.type || 'UNK').toUpperCase();
   const levelText = String(entry.chart.level || '?');
   const constantText = formatInternalLevel(entry.chart.internalLevelValue);
-  return `${index + 1}. [${constantText} ${typeText} ${difficultyText}] ${entry.song.title} - Lvl ${levelText}`;
+  const aliasText = Array.isArray(entry.song.displayAliases) && entry.song.displayAliases.length
+    ? entry.song.displayAliases.join(' / ')
+    : entry.song.displayAlias;
+  const aliasSuffix = aliasText ? ` (${aliasText})` : '';
+  return `${index + 1}. [${constantText} ${typeText} ${difficultyText}] ${entry.song.title}${aliasSuffix} - Lvl ${levelText}`;
 }
 
 function groupChartsByConstant(matches) {
