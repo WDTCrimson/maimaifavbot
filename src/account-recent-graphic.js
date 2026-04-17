@@ -940,7 +940,7 @@ export async function renderAccountRecentGraphic({ account }) {
   const canvasHeight = long ? 3100 : 2420;
   const canvas = new Canvas(CANVAS_WIDTH, canvasHeight);
   const ctx = canvas.getContext('2d');
-  await renderBackground(ctx, snapshot.gameVersion, long);
+  await renderBackground(ctx, snapshot.gameVersion, true);
   const overlayRect = await renderHeader(ctx, snapshot);
   await renderLastCreditContent(ctx, credit, overlayRect);
   const footerText = `Recent credit at ${credit.playedAt.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}, rendered by MaiFav Bot`;
