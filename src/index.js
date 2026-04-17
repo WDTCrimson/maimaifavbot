@@ -1,4 +1,4 @@
-import { stat } from 'node:fs/promises';
+import { appendFile, mkdir, stat } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
@@ -179,6 +179,65 @@ function logInteractionError(reference, interaction, error) {
     errorMessage: error instanceof Error ? error.message : String(error),
     errorStack: error instanceof Error ? error.stack : null
   });
+}
+
+function buildUsageLogFilePath(date = new Date()) {
+  const year = String(date.getFullYear());
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return join(config.usageLogDir, `usage-${year}-${month}-${day}.log`);
+}
+
+async function logUsageEvent(event) {
+  try {
+    const filePath = buildUsageLogFilePath();
+    await mkdir(config.usageLogDir, { recursive: true });
+    await appendFile(filePath, `${JSON.stringify(event)}\n`, 'utf8');
+  } catch (error) {
+    console.error('Failed to write usage log event', {
+      errorMessage: error instanceof Error ? error.message : String(error),
+      event
+    });
+  }
+}
+
+async function measureUsage(interaction, command, detailOrFactory, operation) {
+  const startedAt = Date.now();
+  const baseEvent = {
+    ts: new Date().toISOString(),
+    cmd: command,
+    userId: interaction.user?.id || null,
+    guildId: interaction.guildId || null,
+    channelId: interaction.channelId || null
+  };
+
+  try {
+    const result = await operation();
+    const detail =
+      typeof detailOrFactory === 'function'
+        ? await detailOrFactory(result, null)
+        : detailOrFactory;
+    await logUsageEvent({
+      ...baseEvent,
+      durationMs: Date.now() - startedAt,
+      status: 'ok',
+      ...(detail && typeof detail === 'object' ? detail : {})
+    });
+    return result;
+  } catch (error) {
+    const detail =
+      typeof detailOrFactory === 'function'
+        ? await detailOrFactory(null, error)
+        : detailOrFactory;
+    await logUsageEvent({
+      ...baseEvent,
+      durationMs: Date.now() - startedAt,
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : String(error),
+      ...(detail && typeof detail === 'object' ? detail : {})
+    });
+    throw error;
+  }
 }
 
 async function handleAutocomplete(interaction) {
@@ -363,41 +422,65 @@ async function handlePlaylistCommand(interaction) {
     }
 
     case 'graphic': {
-      songCatalog.requireAvailable();
       const name = interaction.options.getString('name', true);
-      const playlist = store.getLoadout(userId, name);
-      if (!playlist.songs.length) {
-        await replySafely(interaction, `**${playlist.name}** is empty. Add songs first.`);
-        return;
-      }
+      await measureUsage(
+        interaction,
+        'playlist_graphic',
+        (result) => ({
+          playlistName: result.playlistName,
+          songCount: result.songCount,
+          targetCount: result.targetCount,
+          missingCount: result.missingCount
+        }),
+        async () => {
+          songCatalog.requireAvailable();
+          const playlist = store.getLoadout(userId, name);
+          if (!playlist.songs.length) {
+            await replySafely(interaction, `**${playlist.name}** is empty. Add songs first.`);
+            return {
+              playlistName: playlist.name,
+              songCount: 0,
+              targetCount: 0,
+              missingCount: 0
+            };
+          }
 
-      const songs = playlist.songs.map((songId) => songCatalog.getByStoredId(songId)).filter(Boolean);
-      if (!songs.length) {
-        throw new Error('No songs from this playlist are available in the local song catalog.');
-      }
+          const songs = playlist.songs.map((songId) => songCatalog.getByStoredId(songId)).filter(Boolean);
+          if (!songs.length) {
+            throw new Error('No songs from this playlist are available in the local song catalog.');
+          }
 
-      const targetEntries = buildPlaylistTargetEntries(playlist);
-      const graphic = await renderPlaylistTargetGraphic({
-        playlistName: playlist.name,
-        entries: targetEntries,
-        themeDir: config.graphicThemeDir
-      });
+          const targetEntries = buildPlaylistTargetEntries(playlist);
+          const graphic = await renderPlaylistTargetGraphic({
+            playlistName: playlist.name,
+            entries: targetEntries,
+            themeDir: config.graphicThemeDir
+          });
 
-      const attachment = new AttachmentBuilder(graphic.buffer, {
-        name: graphic.fileName
-      });
+          const attachment = new AttachmentBuilder(graphic.buffer, {
+            name: graphic.fileName
+          });
 
-      const missingCount = playlist.songs.length - songs.length;
-      const targetCount = targetEntries.filter((entry) => entry.target?.achievementRate != null).length;
-      const content =
-        missingCount > 0
-          ? `Generated target graphic for **${playlist.name}** (${songs.length} songs rendered, ${targetCount} with targets, ${missingCount} missing in catalog).`
-          : `Generated target graphic for **${playlist.name}** (${songs.length} songs rendered, ${targetCount} with targets).`;
+          const missingCount = playlist.songs.length - songs.length;
+          const targetCount = targetEntries.filter((entry) => entry.target?.achievementRate != null).length;
+          const content =
+            missingCount > 0
+              ? `Generated target graphic for **${playlist.name}** (${songs.length} songs rendered, ${targetCount} with targets, ${missingCount} missing in catalog).`
+              : `Generated target graphic for **${playlist.name}** (${songs.length} songs rendered, ${targetCount} with targets).`;
 
-      await replyPayload(interaction, {
-        content,
-        files: [attachment]
-      });
+          await replyPayload(interaction, {
+            content,
+            files: [attachment]
+          });
+
+          return {
+            playlistName: playlist.name,
+            songCount: songs.length,
+            targetCount,
+            missingCount
+          };
+        }
+      );
       return;
     }
 
@@ -523,83 +606,107 @@ async function handlePlaylistCommand(interaction) {
 
     case 'apply': {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      songCatalog.requireAvailable();
       const name = interaction.options.getString('name', true);
-      const playlist = store.getLoadout(userId, name);
-      const account = store.getAccount(userId);
-      if (!account?.linkedAuth) {
-        throw new Error('Link your International maimai account first with `/account link` before using `/playlist apply`.');
-      }
+      await measureUsage(
+        interaction,
+        'playlist_apply',
+        (result) => ({
+          playlistName: result.playlistName,
+          playlistSongs: result.playlistSongs,
+          matchedRows: result.matchedRows,
+          added: result.added,
+          removed: result.removed,
+          missing: result.missing,
+          missingAfterApply: result.missingAfterApply
+        }),
+        async () => {
+          songCatalog.requireAvailable();
+          const playlist = store.getLoadout(userId, name);
+          const account = store.getAccount(userId);
+          if (!account?.linkedAuth) {
+            throw new Error('Link your International maimai account first with `/account link` before using `/playlist apply`.');
+          }
 
-      const linkedAuth = restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret);
-      if (!linkedAuth || linkedAuth.region !== 'intl' || linkedAuth.type !== 'clal') {
-        throw new Error('`/playlist apply` currently supports linked International accounts only. Re-link through the web flow first.');
-      }
+          const linkedAuth = restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret);
+          if (!linkedAuth || linkedAuth.region !== 'intl' || linkedAuth.type !== 'clal') {
+            throw new Error('`/playlist apply` currently supports linked International accounts only. Re-link through the web flow first.');
+          }
 
-      const songs = playlist.songs
-        .map((songId) => songCatalog.getByStoredId(songId))
-        .filter(Boolean)
-        .map((song) => ({
-          songId: song.songId,
-          favoriteId: song.favoriteId,
-          title: song.title
-        }));
+          const songs = playlist.songs
+            .map((songId) => songCatalog.getByStoredId(songId))
+            .filter(Boolean)
+            .map((song) => ({
+              songId: song.songId,
+              favoriteId: song.favoriteId,
+              title: song.title
+            }));
 
-      const report = await applyIntlFavoritesFromClal(linkedAuth.token, songs);
-      const addedTitles = report.addedTitles || [];
-      const removedTitles = report.removedTitles || [];
-      const lines = [
-        `Applied **${playlist.name}** to your maimai favorites.`,
-        `Playlist songs: ${playlist.songs.length}/30`,
-        `Matched on page: ${report.matchedRows}`,
-        `Added: ${report.added}`,
-        `Removed: ${report.removed}`
-      ];
+          const report = await applyIntlFavoritesFromClal(linkedAuth.token, songs);
+          const addedTitles = report.addedTitles || [];
+          const removedTitles = report.removedTitles || [];
+          const lines = [
+            `Applied **${playlist.name}** to your maimai favorites.`,
+            `Playlist songs: ${playlist.songs.length}/30`,
+            `Matched on page: ${report.matchedRows}`,
+            `Added: ${report.added}`,
+            `Removed: ${report.removed}`
+          ];
 
-      if (addedTitles.length) {
-        lines.push(
-          '',
-          'Added to favorites:',
-          ...addedTitles.slice(0, 10).map((title) => `+ ${title}`)
-        );
-        if (addedTitles.length > 10) {
-          lines.push(`+ ...and ${addedTitles.length - 10} more`);
+          if (addedTitles.length) {
+            lines.push(
+              '',
+              'Added to favorites:',
+              ...addedTitles.slice(0, 10).map((title) => `+ ${title}`)
+            );
+            if (addedTitles.length > 10) {
+              lines.push(`+ ...and ${addedTitles.length - 10} more`);
+            }
+          }
+
+          if (removedTitles.length) {
+            lines.push(
+              '',
+              'Removed from favorites:',
+              ...removedTitles.slice(0, 10).map((title) => `- ${title}`)
+            );
+            if (removedTitles.length > 10) {
+              lines.push(`- ...and ${removedTitles.length - 10} more`);
+            }
+          }
+
+          if (!addedTitles.length && !removedTitles.length) {
+            lines.push('', 'No favorite changes were needed.');
+          }
+
+          if (report.disabled.length) {
+            lines.push(`Disabled on page: ${report.disabled.slice(0, 10).join(', ')}${report.disabled.length > 10 ? ', ...' : ''}`);
+          }
+          if (report.missing.length) {
+            lines.push(`Missing on page: ${report.missing.slice(0, 10).join(', ')}${report.missing.length > 10 ? ', ...' : ''}`);
+          }
+          if (report.missingAfterApply.length) {
+            lines.push(
+              `Missing after apply: ${report.missingAfterApply.slice(0, 10).join(', ')}${report.missingAfterApply.length > 10 ? ', ...' : ''}`
+            );
+          }
+          if (report.unexpectedCheckedTitles.length) {
+            lines.push(
+              `Unexpected checked after apply: ${report.unexpectedCheckedTitles.slice(0, 10).join(', ')}${report.unexpectedCheckedTitles.length > 10 ? ', ...' : ''}`
+            );
+          }
+
+          await replySafely(interaction, lines.join('\n'));
+          return {
+            playlistName: playlist.name,
+            playlistSongs: playlist.songs.length,
+            matchedRows: report.matchedRows,
+            added: report.added,
+            removed: report.removed,
+            missing: report.missing.length,
+            missingAfterApply: report.missingAfterApply.length
+          };
         }
-      }
-
-      if (removedTitles.length) {
-        lines.push(
-          '',
-          'Removed from favorites:',
-          ...removedTitles.slice(0, 10).map((title) => `- ${title}`)
-        );
-        if (removedTitles.length > 10) {
-          lines.push(`- ...and ${removedTitles.length - 10} more`);
-        }
-      }
-
-      if (!addedTitles.length && !removedTitles.length) {
-        lines.push('', 'No favorite changes were needed.');
-      }
-
-      if (report.disabled.length) {
-        lines.push(`Disabled on page: ${report.disabled.slice(0, 10).join(', ')}${report.disabled.length > 10 ? ', ...' : ''}`);
-      }
-      if (report.missing.length) {
-        lines.push(`Missing on page: ${report.missing.slice(0, 10).join(', ')}${report.missing.length > 10 ? ', ...' : ''}`);
-      }
-      if (report.missingAfterApply.length) {
-        lines.push(
-          `Missing after apply: ${report.missingAfterApply.slice(0, 10).join(', ')}${report.missingAfterApply.length > 10 ? ', ...' : ''}`
-        );
-      }
-      if (report.unexpectedCheckedTitles.length) {
-        lines.push(
-          `Unexpected checked after apply: ${report.unexpectedCheckedTitles.slice(0, 10).join(', ')}${report.unexpectedCheckedTitles.length > 10 ? ', ...' : ''}`
-        );
-      }
-
-      await replySafely(interaction, lines.join('\n'));
+      );
       return;
     }
 
@@ -673,44 +780,68 @@ async function handleAccountCommand(interaction) {
 
   switch (subcommand) {
     case 'link': {
-      await store.cleanupExpiredAccountLinkSessions();
+      await measureUsage(
+        interaction,
+        'account_link',
+        (result) => ({
+          linkConfigured: result.linkConfigured,
+          callbackEnabled: result.callbackEnabled,
+          sessionCreated: result.sessionCreated
+        }),
+        async () => {
+          await store.cleanupExpiredAccountLinkSessions();
 
-      if (!config.accountLinkBaseUrl || !config.accountLinkCallbackPublicUrl) {
-        const lines = [
-          'External web-based account linking is not configured on this bot yet.',
-          '',
-          'Required environment variables:',
-          '- `ACCOUNT_LINK_BASE_URL`',
-          '- `ACCOUNT_LINK_CALLBACK_PUBLIC_URL`',
-          '- `ACCOUNT_LINK_CALLBACK_PORT`',
-          '- `ACCOUNT_LINK_SHARED_SECRET`',
-          '',
-          'Currently available fallback:',
-          '- `/account import provider:auto data:<json-or-base64>`',
-          '- `/account import provider:manual data:<json-or-base64>`',
-          '- `/account import provider:maimaijson data:<json-or-base64>`',
-          '- `/account import provider:tomomai data:<json-or-base64>`',
-          '- `/account import provider:mimixd data:<json-or-base64>`'
-        ];
-        await replySafely(interaction, lines.join('\n'));
-        return;
-      }
+          if (!config.accountLinkBaseUrl || !config.accountLinkCallbackPublicUrl) {
+            const lines = [
+              'External web-based account linking is not configured on this bot yet.',
+              '',
+              'Required environment variables:',
+              '- `ACCOUNT_LINK_BASE_URL`',
+              '- `ACCOUNT_LINK_CALLBACK_PUBLIC_URL`',
+              '- `ACCOUNT_LINK_CALLBACK_PORT`',
+              '- `ACCOUNT_LINK_SHARED_SECRET`',
+              '',
+              'Currently available fallback:',
+              '- `/account import provider:auto data:<json-or-base64>`',
+              '- `/account import provider:manual data:<json-or-base64>`',
+              '- `/account import provider:maimaijson data:<json-or-base64>`',
+              '- `/account import provider:tomomai data:<json-or-base64>`',
+              '- `/account import provider:mimixd data:<json-or-base64>`'
+            ];
+            await replySafely(interaction, lines.join('\n'));
+            return {
+              linkConfigured: false,
+              callbackEnabled: accountLinkCallbackServerEnabled(config),
+              sessionCreated: false
+            };
+          }
 
-      if (!accountLinkCallbackServerEnabled(config)) {
-        await replySafely(
-          interaction,
-          'Web account linking is partially configured, but the callback server is not enabled. Set `ACCOUNT_LINK_CALLBACK_PORT` and `ACCOUNT_LINK_SHARED_SECRET` on the bot host.'
-        );
-        return;
-      }
+          if (!accountLinkCallbackServerEnabled(config)) {
+            await replySafely(
+              interaction,
+              'Web account linking is partially configured, but the callback server is not enabled. Set `ACCOUNT_LINK_CALLBACK_PORT` and `ACCOUNT_LINK_SHARED_SECRET` on the bot host.'
+            );
+            return {
+              linkConfigured: true,
+              callbackEnabled: false,
+              sessionCreated: false
+            };
+          }
 
-      const session = await createPendingAccountLinkSession(userId);
-      const embed = buildAccountLinkEmbed(session);
+          const session = await createPendingAccountLinkSession(userId);
+          const embed = buildAccountLinkEmbed(session);
 
-      await replyPayload(interaction, {
-        content: session.linkUrl,
-        embeds: [embed]
-      });
+          await replyPayload(interaction, {
+            content: session.linkUrl,
+            embeds: [embed]
+          });
+          return {
+            linkConfigured: true,
+            callbackEnabled: true,
+            sessionCreated: true
+          };
+        }
+      );
       return;
     }
 
@@ -746,92 +877,144 @@ async function handleAccountCommand(interaction) {
     }
 
     case 'sync': {
-      const account = store.getAccount(userId);
-      if (!account) {
-        await replySafely(
-          interaction,
-          'No linked account snapshot found. Use `/account link` first.'
-        );
-        return;
-      }
-
-      if (!account.linkedAuth) {
-        await replySafely(
-          interaction,
-          'This linked account does not have reusable sync auth yet. Re-link with `/account link` using the International web flow.'
-        );
-        return;
-      }
-
-      if (!config.accountLinkDataSecret) {
-        await replySafely(
-          interaction,
-          'Automatic account sync is not configured on this bot host. Set `ACCOUNT_LINK_DATA_SECRET` or reuse `ACCOUNT_LINK_SHARED_SECRET`.'
-        );
-        return;
-      }
-
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await measureUsage(
+        interaction,
+        'account_sync',
+        (result) => ({
+          provider: result.provider,
+          region: result.region,
+          hasBest50: result.hasBest50
+        }),
+        async () => {
+          const account = store.getAccount(userId);
+          if (!account) {
+            await replySafely(
+              interaction,
+              'No linked account snapshot found. Use `/account link` first.'
+            );
+            return {
+              provider: null,
+              region: null,
+              hasBest50: false
+            };
+          }
 
-      const linkedAuth = restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret);
-      if (!linkedAuth || linkedAuth.region !== 'intl' || linkedAuth.type !== 'clal') {
-        await replySafely(
-          interaction,
-          'The stored linked auth is not usable for automatic sync. Re-link the International account.'
-        );
-        return;
-      }
+          if (!account.linkedAuth) {
+            await replySafely(
+              interaction,
+              'This linked account does not have reusable sync auth yet. Re-link with `/account link` using the International web flow.'
+            );
+            return {
+              provider: account.provider || null,
+              region: null,
+              hasBest50: Boolean(account.best50?.top50?.length)
+            };
+          }
 
-      const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog);
-      const stored = await store.setAccount(userId, {
-        ...account,
-        ...refreshed.snapshot,
-        provider: account.provider || refreshed.snapshot.provider,
-        linkMethod: account.linkMethod || refreshed.snapshot.linkMethod,
-        linkedAuth: account.linkedAuth
-      });
+          if (!config.accountLinkDataSecret) {
+            await replySafely(
+              interaction,
+              'Automatic account sync is not configured on this bot host. Set `ACCOUNT_LINK_DATA_SECRET` or reuse `ACCOUNT_LINK_SHARED_SECRET`.'
+            );
+            return {
+              provider: account.provider || null,
+              region: null,
+              hasBest50: Boolean(account.best50?.top50?.length)
+            };
+          }
 
-      await replyPayload(interaction, {
-        content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.`,
-        embeds: [buildAccountStatusEmbed(stored)]
-      });
+          const linkedAuth = restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret);
+          if (!linkedAuth || linkedAuth.region !== 'intl' || linkedAuth.type !== 'clal') {
+            await replySafely(
+              interaction,
+              'The stored linked auth is not usable for automatic sync. Re-link the International account.'
+            );
+            return {
+              provider: account.provider || null,
+              region: linkedAuth?.region || null,
+              hasBest50: Boolean(account.best50?.top50?.length)
+            };
+          }
+
+          const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog);
+          const stored = await store.setAccount(userId, {
+            ...account,
+            ...refreshed.snapshot,
+            provider: account.provider || refreshed.snapshot.provider,
+            linkMethod: account.linkMethod || refreshed.snapshot.linkMethod,
+            linkedAuth: account.linkedAuth
+          });
+
+          await replyPayload(interaction, {
+            content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.`,
+            embeds: [buildAccountStatusEmbed(stored)]
+          });
+
+          return {
+            provider: stored.provider || null,
+            region: linkedAuth.region || null,
+            hasBest50: Boolean(stored.best50?.top50?.length)
+          };
+        }
+      );
       return;
     }
 
     case 'top': {
-      const account = store.getAccount(userId);
-      if (!account) {
-        await replySafely(
-          interaction,
-          'No linked account snapshot found. Use `/account link` first.'
-        );
-        return;
-      }
-
-      if (!account.best50?.top50?.length) {
-        await replySafely(
-          interaction,
-          'This account snapshot does not include top-score data yet. Run `/account sync` first.'
-        );
-        return;
-      }
-
       await interaction.deferReply();
+      await measureUsage(
+        interaction,
+        'account_top',
+        (result) => ({
+          provider: result.provider,
+          top50Count: result.top50Count
+        }),
+        async () => {
+          const account = store.getAccount(userId);
+          if (!account) {
+            await replySafely(
+              interaction,
+              'No linked account snapshot found. Use `/account link` first.'
+            );
+            return {
+              provider: null,
+              top50Count: 0
+            };
+          }
 
-      const graphic = await renderAccountB50Graphic({
-        account,
-        songCatalog,
-        themeDir: config.graphicThemeDir
-      });
+          if (!account.best50?.top50?.length) {
+            await replySafely(
+              interaction,
+              'This account snapshot does not include top-score data yet. Run `/account sync` first.'
+            );
+            return {
+              provider: account.provider || null,
+              top50Count: 0
+            };
+          }
 
-      const attachment = new AttachmentBuilder(graphic.buffer, {
-        name: graphic.fileName
-      });
+          const graphic = await renderAccountB50Graphic({
+            account,
+            songCatalog,
+            themeDir: config.graphicThemeDir
+          });
 
-      await replyPayload(interaction, {
-        content: `Generated top-score graphic for **${account.player?.name || 'linked account'}**.`,
-        files: [attachment]
-      });
+          const attachment = new AttachmentBuilder(graphic.buffer, {
+            name: graphic.fileName
+          });
+
+          await replyPayload(interaction, {
+            content: `Generated top-score graphic for **${account.player?.name || 'linked account'}**.`,
+            files: [attachment]
+          });
+
+          return {
+            provider: account.provider || null,
+            top50Count: account.best50.top50.length
+          };
+        }
+      );
       return;
     }
 

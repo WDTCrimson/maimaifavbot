@@ -123,6 +123,7 @@ The Yuzu source defaults to `https://www.yuzuchan.moe/api/maimaidx/maimaidxalias
 - `DATA_BACKEND` (optional, `json` or `sqlite`, default `json`)
 - `DATA_FILE` (optional, default `./data/loadouts.json`)
 - `SQLITE_FILE` (optional, default `./data/loadouts.sqlite`, used when `DATA_BACKEND=sqlite`)
+- `USAGE_LOG_DIR` (optional, default `./logs`, used for local expensive-command usage logs)
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
 - `SONG_ALIAS_FILE` (optional, default `./data/reference/song-aliases.json`)
 - `RECOMMENDATION_FILE` (optional, default `./data/recommendations/community.json`)
