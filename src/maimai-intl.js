@@ -1187,12 +1187,13 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const validation = await validateInternationalCookie(clalToken);
   const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
 
-  const [playerDataHtml, recentPlays, scoreEntries] = await Promise.all([
+  const recentPlaysPromise = fetchRecentPlays(cookies);
+  const [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
     fetchPlayerDataHtml(cookies, validation.redirectUrl),
-    fetchRecentPlays(cookies),
-    fetchAllScores(cookies)
+    fetchAllScores(cookies),
+    recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
-  const detailedRecentPlays = await fetchRecentPlayDetails(cookies, recentPlays, 8);
+  const recentPlays = await recentPlaysPromise;
 
   const profile = await extractPlayerSnapshot(playerDataHtml);
   const best50 = buildBest50(scoreEntries, songCatalog);
