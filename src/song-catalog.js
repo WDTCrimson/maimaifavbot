@@ -741,6 +741,8 @@ export class SongCatalog {
     const cacheKey = `${normalized}::${safeLimit}`;
     const cached = this.searchCache.get(cacheKey);
     if (cached) {
+      this.searchCache.delete(cacheKey);
+      this.searchCache.set(cacheKey, cached);
       return cached;
     }
 

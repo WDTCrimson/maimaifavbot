@@ -336,6 +336,10 @@ function truncateText(value, maxLength) {
   return `${text.slice(0, maxLength - 1)}…`;
 }
 
+function resolvePlaylistSongs(playlist) {
+  return playlist.songs.map((songId) => songCatalog.getByStoredId(songId)).filter(Boolean);
+}
+
 function getPlaylistSongChoices(userId, playlistName, query) {
   if (!playlistName) {
     return [];
@@ -446,7 +450,7 @@ async function handlePlaylistCommand(interaction) {
             };
           }
 
-          const songs = playlist.songs.map((songId) => songCatalog.getByStoredId(songId)).filter(Boolean);
+          const songs = resolvePlaylistSongs(playlist);
           if (!songs.length) {
             throw new Error('No songs from this playlist are available in the local song catalog.');
           }
@@ -633,14 +637,11 @@ async function handlePlaylistCommand(interaction) {
             throw new Error('`/playlist apply` currently supports linked International accounts only. Re-link through the web flow first.');
           }
 
-          const songs = playlist.songs
-            .map((songId) => songCatalog.getByStoredId(songId))
-            .filter(Boolean)
-            .map((song) => ({
-              songId: song.songId,
-              favoriteId: song.favoriteId,
-              title: song.title
-            }));
+          const songs = resolvePlaylistSongs(playlist).map((song) => ({
+            songId: song.songId,
+            favoriteId: song.favoriteId,
+            title: song.title
+          }));
 
           const report = await applyIntlFavoritesFromClal(linkedAuth.token, songs);
           const addedTitles = report.addedTitles || [];
@@ -2147,19 +2148,14 @@ function resolveSongIdInPlaylist(playlist, songQuery) {
   }
 
   const normalizedQuery = query.toLowerCase();
-  const partial = playlist.songs.find((songId) => {
-    const song = songCatalog.getByStoredId(songId);
-    if (!song) {
-      return false;
-    }
-    return (
+  const partial = resolvePlaylistSongs(playlist).find(
+    (song) =>
       song.title.toLowerCase().includes(normalizedQuery) ||
       song.artist.toLowerCase().includes(normalizedQuery)
-    );
-  });
+  );
 
   if (partial) {
-    return partial;
+    return partial.songId;
   }
 
   throw new Error(`No matching song in this playlist for "${songQuery}".`);
@@ -3382,9 +3378,7 @@ async function replyPlaylistStats(interaction, playlist) {
     return;
   }
 
-  const songs = playlist.songs
-    .map((songId) => songCatalog.getByStoredId(songId))
-    .filter(Boolean);
+  const songs = resolvePlaylistSongs(playlist);
   const missingCount = playlist.songs.length - songs.length;
 
   const embed = buildPlaylistStatsEmbed(playlist, songs, missingCount);

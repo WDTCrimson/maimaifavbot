@@ -227,27 +227,27 @@ class JsonStoreBackend {
     await rename(tempPath, this.filePath);
   }
 
-  async saveMetadata(state) {
+  async saveMetadata(_metadata, state) {
     await this.saveState(state);
   }
 
-  async saveUser(state) {
+  async saveUser(_userId, _user, state) {
     await this.saveState(state);
   }
 
-  async saveLoadout(state) {
+  async saveLoadout(_userId, _loadoutKey, _loadout, _user, state) {
     await this.saveState(state);
   }
 
-  async deleteLoadout(state) {
+  async deleteLoadout(_userId, _loadoutKey, _user, state) {
     await this.saveState(state);
   }
 
-  async saveSession(state) {
+  async saveSession(_token, _session, state) {
     await this.saveState(state);
   }
 
-  async deleteSession(state) {
+  async deleteSession(_token, state) {
     await this.saveState(state);
   }
 }
@@ -866,19 +866,20 @@ export class LoadoutStore {
   }
 
   async scrubAccountLinkState(now = Date.now()) {
-    let changed = false;
     let accountsScrubbed = 0;
     let sessionsDeleted = 0;
     let sessionFieldsRemoved = 0;
+    const modifiedUserIds = [];
+    const tokensToDelete = [];
 
-    for (const user of Object.values(this.state.users || {})) {
+    for (const [userId, user] of Object.entries(this.state.users || {})) {
       if (!user || typeof user !== 'object' || !user.account || typeof user.account !== 'object') {
         continue;
       }
 
       if (Object.prototype.hasOwnProperty.call(user.account, 'linkSession')) {
         delete user.account.linkSession;
-        changed = true;
+        modifiedUserIds.push(userId);
         accountsScrubbed += 1;
       }
     }
@@ -887,14 +888,14 @@ export class LoadoutStore {
     for (const [token, session] of Object.entries(sessions)) {
       if (!session || typeof session !== 'object') {
         delete sessions[token];
-        changed = true;
+        tokensToDelete.push(token);
         sessionsDeleted += 1;
         continue;
       }
 
       if (session.status !== 'pending') {
         delete sessions[token];
-        changed = true;
+        tokensToDelete.push(token);
         sessionsDeleted += 1;
         continue;
       }
@@ -902,7 +903,6 @@ export class LoadoutStore {
       for (const field of ['linkUrl', 'callbackUrl', 'provider', 'playerName', 'accountUpdatedAt', 'completedAt']) {
         if (Object.prototype.hasOwnProperty.call(session, field)) {
           delete session[field];
-          changed = true;
           sessionFieldsRemoved += 1;
         }
       }
@@ -910,15 +910,24 @@ export class LoadoutStore {
       const expiresAt = Date.parse(session.expiresAt || '');
       if (!Number.isFinite(expiresAt) || expiresAt <= now) {
         delete sessions[token];
-        changed = true;
+        tokensToDelete.push(token);
         sessionsDeleted += 1;
       }
     }
 
-    if (changed) {
+    for (const userId of modifiedUserIds) {
+      await this.saveUser(userId);
+    }
+    for (const token of tokensToDelete) {
+      await this.deleteSession(token);
+    }
+
+    // Session extra fields are not stored in SQLite; flush for JSON backend if that's all that changed.
+    if (sessionFieldsRemoved > 0 && modifiedUserIds.length === 0 && tokensToDelete.length === 0) {
       await this.save();
     }
 
+    const changed = accountsScrubbed > 0 || sessionsDeleted > 0 || sessionFieldsRemoved > 0;
     return {
       changed,
       accountsScrubbed,
@@ -1009,36 +1018,43 @@ export class LoadoutStore {
 
   async cleanupExpiredAccountLinkSessions(now = Date.now()) {
     const sessions = this.getAccountLinkSessions();
-    let changed = false;
+    const tokensToDelete = [];
+    let fieldChanges = false;
 
     for (const [token, session] of Object.entries(sessions)) {
       if (!session || typeof session !== 'object') {
         delete sessions[token];
-        changed = true;
+        tokensToDelete.push(token);
         continue;
       }
 
       if (session.status !== 'pending') {
         delete sessions[token];
-        changed = true;
+        tokensToDelete.push(token);
         continue;
       }
 
       for (const field of ['linkUrl', 'callbackUrl', 'provider', 'playerName', 'accountUpdatedAt', 'completedAt']) {
         if (Object.prototype.hasOwnProperty.call(session, field)) {
           delete session[field];
-          changed = true;
+          fieldChanges = true;
         }
       }
 
       const expiresAt = Date.parse(session.expiresAt || '');
       if (!Number.isFinite(expiresAt) || expiresAt <= now) {
         delete sessions[token];
-        changed = true;
+        tokensToDelete.push(token);
       }
     }
 
-    if (changed) {
+    for (const token of tokensToDelete) {
+      await this.deleteSession(token);
+    }
+
+    // Field-only changes affect in-memory state but have no SQLite representation;
+    // for the JSON backend we still need to flush the full state.
+    if (fieldChanges && tokensToDelete.length === 0) {
       await this.save();
     }
   }

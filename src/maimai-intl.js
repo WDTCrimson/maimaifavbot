@@ -496,6 +496,10 @@ async function parseFavoriteEditPage(html) {
     preservedFields.push([name, String(value ?? '')]);
   });
 
+  if (preservedFields.length === 0) {
+    console.warn('[parseFavoriteEditPage] No preserved form fields found — the page structure may have changed.');
+  }
+
   const rows = [];
   $('label.favorite_checkbox_frame').each((_, label) => {
     const root = $(label);
