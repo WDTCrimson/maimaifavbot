@@ -219,7 +219,7 @@ function parseIntlReleaseDate(value) {
   return Date.parse(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00+09:00`);
 }
 
-function resolveChartVersionId(version) {
+export function resolveChartVersionId(version) {
   const normalized = normalizeVersionName(version);
   if (!normalized) {
     return null;

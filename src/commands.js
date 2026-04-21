@@ -302,6 +302,60 @@ export const songCommand = new SlashCommandBuilder()
             { name: 'AP+', value: 'ap+' }
           )
       )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('estimate')
+      .setDescription('Estimate if a target score would enter or improve your B50')
+      .addStringOption((option) =>
+        option
+          .setName('query')
+          .setDescription('Song title, artist, or numeric ID')
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('target')
+          .setDescription('Target achievement like 100.5, 100, 99.5, SSS+, SSS, SS+, SS, S+, or S')
+          .setRequired(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('difficulty')
+          .setDescription('Chart difficulty to calculate for')
+          .setRequired(false)
+          .addChoices(
+            { name: 'BASIC', value: 'basic' },
+            { name: 'ADVANCED', value: 'advanced' },
+            { name: 'EXPERT', value: 'expert' },
+            { name: 'MASTER', value: 'master' },
+            { name: 'Re:MASTER', value: 'remaster' }
+          )
+      )
+      .addStringOption((option) =>
+        option
+          .setName('type')
+          .setDescription('Chart type when the song has both STD and DX charts')
+          .setRequired(false)
+          .addChoices(
+            { name: 'DX', value: 'dx' },
+            { name: 'STD', value: 'std' }
+          )
+      )
+      .addStringOption((option) =>
+        option
+          .setName('combo')
+          .setDescription('Optional combo status to include in the rating calculation')
+          .setRequired(false)
+          .addChoices(
+            { name: 'None', value: 'none' },
+            { name: 'FC', value: 'fc' },
+            { name: 'FC+', value: 'fc+' },
+            { name: 'AP', value: 'ap' },
+            { name: 'AP+', value: 'ap+' }
+          )
+      )
   );
 
 export const accountCommand = new SlashCommandBuilder()

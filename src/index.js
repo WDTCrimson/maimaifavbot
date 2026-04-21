@@ -15,7 +15,7 @@ import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './acc
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
-import { applyIntlFavoritesFromClal, calculateChartRating, fetchIntlAccountSnapshotFromClal, getCurrentIntlVersionId } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, calculateChartRating, fetchIntlAccountSnapshotFromClal, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -1269,6 +1269,60 @@ async function handleSongCommand(interaction) {
       return;
     }
 
+    case 'estimate': {
+      const query = interaction.options.getString('query', true);
+      const targetInput = interaction.options.getString('target', true);
+      const difficulty = interaction.options.getString('difficulty');
+      const chartType = interaction.options.getString('type');
+      const comboFlag = interaction.options.getString('combo') || 'none';
+      const song = songCatalog.resolveSong(query);
+
+      if (!song) {
+        await replySafely(interaction, `No song found for "${query}".`);
+        return;
+      }
+
+      const targetAchievement = parseTargetInput(targetInput);
+      const chart = resolveSongCalculatorChart(song, { difficulty, chartType });
+
+      if (!chart) {
+        await replySafely(
+          interaction,
+          'Could not resolve a playable chart for that song. Try specifying `difficulty` and `type`.'
+        );
+        return;
+      }
+
+      const internalLevelValue = parseInternalConstant(chart.internalLevelValue);
+      if (internalLevelValue == null) {
+        await replySafely(interaction, 'This chart is missing internal level data.');
+        return;
+      }
+
+      const rating = calculateChartRating({
+        achievement: Math.round(targetAchievement * 10000),
+        fc: comboFlag === 'none' ? null : comboFlag,
+        internalLevelValue,
+        gameVersion: getCurrentIntlVersionId() ?? 0
+      });
+
+      const account = store.getAccount(interaction.user.id);
+      const best50 = account?.best50?.top50?.length ? account.best50 : null;
+      const impact = best50 ? estimateB50Impact(best50, song, chart, rating) : null;
+
+      const artwork = await resolveArtworkAttachment(song, 'song-estimate');
+      const embed = buildSongEstimateEmbed(
+        { song, chart, targetAchievement, rating, comboFlag: comboFlag === 'none' ? null : comboFlag, impact },
+        artwork?.imageUrl
+      );
+      const payload = { embeds: [embed] };
+      if (artwork) {
+        payload.files = [artwork.attachment];
+      }
+      await replyPublicPayload(interaction, payload);
+      return;
+    }
+
     default:
       await replySafely(interaction, `Unknown subcommand: ${subcommand}`);
   }
@@ -2292,6 +2346,71 @@ function resolveSongCalculatorChart(song, target = null) {
   return chart || null;
 }
 
+function estimateB50Impact(best50, song, chart, newRating) {
+  const b15 = Array.isArray(best50?.b15) ? best50.b15 : [];
+  const b35 = Array.isArray(best50?.b35) ? best50.b35 : [];
+  const versionAboveIsNew = best50?.versionAboveIsNew ?? null;
+
+  const addedVersion = resolveChartVersionId(chart.version);
+  const isNew =
+    versionAboveIsNew != null && addedVersion != null && addedVersion >= versionAboveIsNew;
+  const bucketEntries = isNew ? b15 : b35;
+  const bucketLimit = isNew ? 15 : 35;
+  const bucketLabel = isNew ? 'B15' : 'B35';
+
+  const chartType = String(chart.type || chart.chartType || '').toLowerCase();
+  const existingEntry = bucketEntries.find(
+    (e) =>
+      e.favoriteId === song.favoriteId &&
+      String(e.type || '').toLowerCase() === chartType &&
+      e.difficulty === chart.difficulty
+  );
+
+  const lowestEntry = bucketEntries.length > 0 ? bucketEntries[bucketEntries.length - 1] : null;
+
+  if (existingEntry) {
+    const improves = newRating > existingEntry.rating;
+    return {
+      bucketLabel,
+      bucketLimit,
+      bucketCount: bucketEntries.length,
+      existingEntry,
+      lowestEntry,
+      alreadyIn: true,
+      wouldEnter: improves,
+      improves,
+      netRatingDelta: improves ? newRating - existingEntry.rating : 0
+    };
+  }
+
+  if (bucketEntries.length < bucketLimit) {
+    return {
+      bucketLabel,
+      bucketLimit,
+      bucketCount: bucketEntries.length,
+      existingEntry: null,
+      lowestEntry,
+      alreadyIn: false,
+      wouldEnter: true,
+      improves: false,
+      netRatingDelta: newRating
+    };
+  }
+
+  const wouldEnter = newRating > lowestEntry.rating;
+  return {
+    bucketLabel,
+    bucketLimit,
+    bucketCount: bucketEntries.length,
+    existingEntry: null,
+    lowestEntry,
+    alreadyIn: false,
+    wouldEnter,
+    improves: false,
+    netRatingDelta: wouldEnter ? newRating - lowestEntry.rating : 0
+  };
+}
+
 function rankFromAchievementValue(value) {
   const achievement = Number(value);
   if (!Number.isFinite(achievement)) {
@@ -2347,6 +2466,84 @@ function buildSongCalcEmbed(result, imageUrl) {
         value: `Rating: **${rating}**`,
         inline: true
       }
+    );
+
+  if (imageUrl) {
+    embed.setImage(imageUrl);
+  }
+
+  return embed;
+}
+
+function buildSongEstimateEmbed(result, imageUrl) {
+  const { song, chart, targetAchievement, rating, comboFlag, impact } = result;
+  const chartType = String(chart?.chartType || chart?.type || '').toUpperCase() || 'UNK';
+  const chartDifficulty = formatDifficultyShort(chart?.difficulty);
+  const level = String(chart?.level || '?');
+  const internal = formatInternalLevel(chart?.internalLevelValue);
+
+  let color;
+  let impactHeading;
+  let impactBody;
+
+  if (!impact) {
+    color = 0x6366f1;
+    impactHeading = 'B50 Impact';
+    impactBody = 'Link and sync an account with `/account link` to see B50 impact.';
+  } else if (impact.alreadyIn && impact.improves) {
+    color = 0x16a34a;
+    impactHeading = `✅ Improves your ${impact.bucketLabel}`;
+    impactBody = [
+      `Current: ${impact.existingEntry.rating} → **${rating}** (+${impact.netRatingDelta})`,
+      `Net total rating gain: **+${impact.netRatingDelta}**`
+    ].join('\n');
+  } else if (impact.alreadyIn) {
+    color = 0x6b7280;
+    impactHeading = `ℹ️ Already in your ${impact.bucketLabel}`;
+    impactBody = `Your current score is better (${impact.existingEntry.rating} vs ${rating} — no change).`;
+  } else if (impact.wouldEnter && !impact.lowestEntry) {
+    color = 0x16a34a;
+    impactHeading = `✅ Would enter your ${impact.bucketLabel}`;
+    impactBody = `Net total rating gain: **+${impact.netRatingDelta}**`;
+  } else if (impact.wouldEnter) {
+    color = 0x16a34a;
+    impactHeading = `✅ Would enter your ${impact.bucketLabel}`;
+    impactBody = [
+      `Replaces: ${truncateText(impact.lowestEntry.title, 30)} (${impact.lowestEntry.rating})`,
+      `Net total rating gain: **+${impact.netRatingDelta}**`
+    ].join('\n');
+  } else {
+    color = 0xd97706;
+    const cutoff = impact.lowestEntry?.rating ?? '?';
+    const gap = impact.lowestEntry ? impact.lowestEntry.rating - rating : '?';
+    impactHeading = `❌ Doesn't enter your ${impact.bucketLabel}`;
+    impactBody = [
+      `Cutoff: ${cutoff} (${gap} short)`,
+      `${impact.bucketLabel}: ${impact.bucketCount}/${impact.bucketLimit} songs`
+    ].join('\n');
+  }
+
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(`Estimate: ${song.title}`)
+    .setDescription(song.artist || 'Unknown artist')
+    .addFields(
+      {
+        name: 'Chart',
+        value: [`${chartType} ${chartDifficulty} ${level}`, `Internal: ${internal}`].join('\n'),
+        inline: true
+      },
+      {
+        name: 'Target',
+        value: [
+          formatTargetValue(targetAchievement),
+          `Rank: ${rankFromAchievementValue(targetAchievement)}`,
+          comboFlag ? `Combo: ${String(comboFlag).toUpperCase()}` : 'Combo: None'
+        ].join('\n'),
+        inline: true
+      },
+      { name: 'Rating', value: `**${rating}**`, inline: true },
+      { name: impactHeading, value: impactBody, inline: false }
     );
 
   if (imageUrl) {
