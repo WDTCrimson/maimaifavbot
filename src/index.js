@@ -433,10 +433,10 @@ async function handlePlaylistCommand(interaction) {
         interaction,
         'playlist_graphic',
         (result) => ({
-          playlistName: result.playlistName,
-          songCount: result.songCount,
-          targetCount: result.targetCount,
-          missingCount: result.missingCount
+          playlistName: result?.playlistName ?? null,
+          songCount: result?.songCount ?? null,
+          targetCount: result?.targetCount ?? null,
+          missingCount: result?.missingCount ?? null
         }),
         async () => {
           songCatalog.requireAvailable();
@@ -617,13 +617,13 @@ async function handlePlaylistCommand(interaction) {
         interaction,
         'playlist_apply',
         (result) => ({
-          playlistName: result.playlistName,
-          playlistSongs: result.playlistSongs,
-          matchedRows: result.matchedRows,
-          added: result.added,
-          removed: result.removed,
-          missing: result.missing,
-          missingAfterApply: result.missingAfterApply
+          playlistName: result?.playlistName ?? null,
+          playlistSongs: result?.playlistSongs ?? null,
+          matchedRows: result?.matchedRows ?? null,
+          added: result?.added ?? null,
+          removed: result?.removed ?? null,
+          missing: result?.missing ?? null,
+          missingAfterApply: result?.missingAfterApply ?? null
         }),
         async () => {
           songCatalog.requireAvailable();
@@ -787,9 +787,9 @@ async function handleAccountCommand(interaction) {
         interaction,
         'account_link',
         (result) => ({
-          linkConfigured: result.linkConfigured,
-          callbackEnabled: result.callbackEnabled,
-          sessionCreated: result.sessionCreated
+          linkConfigured: result?.linkConfigured ?? null,
+          callbackEnabled: result?.callbackEnabled ?? null,
+          sessionCreated: result?.sessionCreated ?? null
         }),
         async () => {
           await store.cleanupExpiredAccountLinkSessions();
@@ -885,9 +885,9 @@ async function handleAccountCommand(interaction) {
         interaction,
         'account_sync',
         (result) => ({
-          provider: result.provider,
-          region: result.region,
-          hasBest50: result.hasBest50
+          provider: result?.provider ?? null,
+          region: result?.region ?? null,
+          hasBest50: result?.hasBest50 ?? false
         }),
         async () => {
           const account = store.getAccount(userId);
@@ -970,8 +970,8 @@ async function handleAccountCommand(interaction) {
         interaction,
         'account_top',
         (result) => ({
-          provider: result.provider,
-          top50Count: result.top50Count
+          provider: result?.provider ?? null,
+          top50Count: result?.top50Count ?? null
         }),
         async () => {
           const account = store.getAccount(userId);
@@ -1027,8 +1027,8 @@ async function handleAccountCommand(interaction) {
         interaction,
         'account_recent',
         (result) => ({
-          provider: result.provider,
-          trackCount: result.trackCount
+          provider: result?.provider ?? null,
+          trackCount: result?.trackCount ?? null
         }),
         async () => {
           const account = store.getAccount(userId);
