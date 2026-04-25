@@ -32,6 +32,14 @@ const VERSION_URL_MAP = {
 const DANI_COUNT = 24;
 const CATEGORY_NAMES = ['chugeki', 'niconico', 'original', 'popsanime', 'touhou', 'variety'];
 
+const SCORE_LABEL_NAMES = ['Basic', 'Advanced', 'Expert', 'Master', 'ReMASTER'];
+const SCORE_RANK_NAMES = [
+  'sssp', 'sss', 'ssp', 'ss', 'sp', 's',
+  'aaa', 'aa', 'a', 'bbb', 'bb', 'b', 'c', 'd',
+  'fc', 'fcp', 'ap', 'app', 'fs', 'fsp', 'fsd', 'fsdp',
+];
+const RATING_BASE_COUNT = 11;
+
 const PORTRAIT_SPLASH_BASE =
   `${GITHUB_RAW}/Matsuk1/JiETNG-maimai-dx-bot/main/assets/versions`;
 
@@ -58,6 +66,23 @@ const ASSETS = [
   ...CATEGORY_NAMES.map((name) => ({
     url: `${MAIMAI_BOT_BASE}/category_${name}.png`,
     output: `./data/assets/maimai-ui/category/category_${name}.png`,
+  })),
+  // portrait_splash score card assets
+  { url: `${MAIMAI_BOT_BASE}/score_bg.png`,  output: './data/assets/maimai-ui/score/score_bg.png' },
+  { url: `${MAIMAI_BOT_BASE}/default_cover.png`, output: './data/assets/maimai-ui/score/default_cover.png' },
+  { url: `${MAIMAI_BOT_BASE}/type_dx.png`,   output: './data/assets/maimai-ui/score/type_dx.png' },
+  { url: `${MAIMAI_BOT_BASE}/type_sd.png`,   output: './data/assets/maimai-ui/score/type_sd.png' },
+  ...SCORE_LABEL_NAMES.map((name) => ({
+    url: `${MAIMAI_BOT_BASE}/label_${name}.png`,
+    output: `./data/assets/maimai-ui/score/label_${name}.png`,
+  })),
+  ...SCORE_RANK_NAMES.map((name) => ({
+    url: `${MAIMAI_BOT_BASE}/music_icon_${name}.png`,
+    output: `./data/assets/maimai-ui/score/music_icon_${name}.png`,
+  })),
+  ...Array.from({ length: RATING_BASE_COUNT }, (_, i) => ({
+    url: `${MAIMAI_BOT_BASE}/rating_base_${String(i + 1).padStart(2, '0')}.png`,
+    output: `./data/assets/maimai-ui/score/rating_base_${String(i + 1).padStart(2, '0')}.png`,
   })),
 ];
 
