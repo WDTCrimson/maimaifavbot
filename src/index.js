@@ -4,6 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
 import { renderAccountRecentGraphic } from './account-recent-graphic.js';
+import { renderSongScoreGraphic } from './song-score-graphic.js';
 import {
   accountLinkCallbackServerEnabled,
   buildAccountLinkUrl,
@@ -1320,6 +1321,63 @@ async function handleSongCommand(interaction) {
         payload.files = [artwork.attachment];
       }
       await replyPublicPayload(interaction, payload);
+      return;
+    }
+
+    case 'score': {
+      await interaction.deferReply();
+      const query      = interaction.options.getString('query', true);
+      const difficulty = interaction.options.getString('difficulty');
+      const chartType  = interaction.options.getString('type');
+      const song       = songCatalog.resolveSong(query);
+
+      if (!song) {
+        await replySafely(interaction, `No song found for "${query}".`);
+        return;
+      }
+
+      const account = store.getAccount(interaction.user.id);
+      if (!account) {
+        await replySafely(interaction, 'No linked account found. Use `/account link` to link your account first.');
+        return;
+      }
+
+      // Match by title + optional difficulty/type filters
+      const matchesSong = (entry) => {
+        if (entry.favoriteId && song.favoriteIds?.includes(entry.favoriteId)) return true;
+        const titleMatch = String(entry.title || '').toLowerCase() === String(song.title || '').toLowerCase();
+        const diffMatch  = !difficulty || String(entry.difficulty || '').toLowerCase() === difficulty.toLowerCase();
+        const typeMatch  = !chartType  || String(entry.type || '').toLowerCase() === chartType.toLowerCase();
+        return titleMatch && diffMatch && typeMatch;
+      };
+
+      // Priority: allScores (complete, from sync) → B50 (has rating) → recent plays
+      const allScores   = Array.isArray(account.allScores) ? account.allScores : [];
+      const b50Entries  = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
+      const recentPlays = Array.isArray(account.recentSessions) ? account.recentSessions : [];
+
+      // From allScores, pick the best achievement if no difficulty specified
+      const allMatches = allScores.filter(matchesSong);
+      const allScoresMatch = allMatches.length
+        ? allMatches.reduce((best, e) => (e.achievement ?? 0) > (best.achievement ?? 0) ? e : best)
+        : null;
+
+      const score = allScoresMatch ?? b50Entries.find(matchesSong) ?? recentPlays.find(matchesSong) ?? null;
+
+      if (!score) {
+        const hasAnyData = allScores.length > 0 || b50Entries.length > 0;
+        const hint = hasAnyData
+          ? 'No score found for that song in your account data.'
+          : 'No score data available — run `/account sync` first.';
+        await replySafely(interaction, hint);
+        return;
+      }
+
+      const resolvedDiff = difficulty || String(score.difficulty || 'master').toLowerCase();
+
+      const graphic = await renderSongScoreGraphic({ account, song, score, difficulty: resolvedDiff });
+      const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
+      await replyPayload(interaction, { files: [attachment] });
       return;
     }
 

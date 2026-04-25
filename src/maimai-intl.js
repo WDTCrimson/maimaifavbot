@@ -1213,6 +1213,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
       gameVersion: best50?.currentVersionId ?? getCurrentIntlVersionId(),
       sourceFetchedAt: new Date().toISOString(),
       best50,
+      allScores: scoreEntries,
       recentSessions,
       extra: profile.extra
     }

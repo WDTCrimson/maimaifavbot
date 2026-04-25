@@ -356,6 +356,41 @@ export const songCommand = new SlashCommandBuilder()
             { name: 'AP+', value: 'ap+' }
           )
       )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('score')
+      .setDescription('Show your personal best score card for a song')
+      .addStringOption((option) =>
+        option
+          .setName('query')
+          .setDescription('Song title, artist, or numeric ID')
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('difficulty')
+          .setDescription('Chart difficulty (defaults to your best on that song)')
+          .setRequired(false)
+          .addChoices(
+            { name: 'BASIC',     value: 'basic' },
+            { name: 'ADVANCED',  value: 'advanced' },
+            { name: 'EXPERT',    value: 'expert' },
+            { name: 'MASTER',    value: 'master' },
+            { name: 'Re:MASTER', value: 'remaster' }
+          )
+      )
+      .addStringOption((option) =>
+        option
+          .setName('type')
+          .setDescription('Chart type when the song has both STD and DX charts')
+          .setRequired(false)
+          .addChoices(
+            { name: 'DX',  value: 'dx' },
+            { name: 'STD', value: 'std' }
+          )
+      )
   );
 
 export const accountCommand = new SlashCommandBuilder()
