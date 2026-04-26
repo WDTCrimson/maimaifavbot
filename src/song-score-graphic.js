@@ -2,31 +2,24 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 
-// ─── Layout constants ─────────────────────────────────────────────────────────
+// ─── Layout ───────────────────────────────────────────────────────────────────
 
-const W = 900;
-const HEADER_H = 62;
-const JACKET_SIZE = 256;
-const SCORE_H = 96;
-const H = HEADER_H + JACKET_SIZE + SCORE_H;  // 414px total
+const W         = 900;
+const HEADER_H  = 64;
+const LEFT_W    = 290;   // jacket column width
+const J_PAD     = 14;    // jacket margin
+const J_SZ      = LEFT_W - J_PAD * 2;   // 262 — inner jacket square
+const H         = HEADER_H + J_PAD + J_SZ + J_PAD;  // 354
 
-const SCORE_ASSET = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'score');
+const SCORE_ASSET   = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'score');
 const VERSION_ASSET = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'version');
-
-const DIFF_COLOR = {
-  basic:    '#22c55e',
-  advanced: '#f97316',
-  expert:   '#ef4444',
-  master:   '#a855f7',
-  remaster: '#c4b5fd',
-  utage:    '#f59e0b',
-};
+const DANI_ASSET    = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'dani');
 
 const FONT = 'Inter, Murecho, "Noto Sans JP", sans-serif';
 
-// ─── Image cache ──────────────────────────────────────────────────────────────
+// ─── Image / font cache ───────────────────────────────────────────────────────
 
-const IMAGE_CACHE = new Map();
+const IMAGE_CACHE     = new Map();
 const REGISTERED_FONTS = new Set();
 
 async function fileExists(path) {
@@ -60,7 +53,32 @@ async function registerFonts() {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Asset helpers ────────────────────────────────────────────────────────────
+
+function getRatingFrame(rating) {
+  const r = Number(rating) || 0;
+  if (r >= 15000) return 'rating_base_11.png';
+  if (r >= 14500) return 'rating_base_10.png';
+  if (r >= 14000) return 'rating_base_09.png';
+  if (r >= 13000) return 'rating_base_08.png';
+  if (r >= 12000) return 'rating_base_07.png';
+  if (r >= 10000) return 'rating_base_06.png';
+  if (r >= 7000)  return 'rating_base_05.png';
+  if (r >= 4000)  return 'rating_base_04.png';
+  if (r >= 2000)  return 'rating_base_03.png';
+  if (r >= 1000)  return 'rating_base_02.png';
+  return 'rating_base_01.png';
+}
+
+function getLabelFile(diff) {
+  return {
+    basic:    'label_Basic.png',
+    advanced: 'label_Advanced.png',
+    expert:   'label_Expert.png',
+    master:   'label_Master.png',
+    remaster: 'label_ReMASTER.png',
+  }[diff] ?? 'label_Master.png';
+}
 
 function getRankIconFile(achievement) {
   const a = Number(achievement) || 0;
@@ -81,44 +99,61 @@ function getRankIconFile(achievement) {
 }
 
 function getFcIconFile(fc) {
-  return { 'fc': 'music_icon_fc.png', 'fc+': 'music_icon_fcp.png', 'ap': 'music_icon_ap.png', 'ap+': 'music_icon_app.png' }[String(fc || '').toLowerCase()] ?? null;
+  return {
+    'fc':  'music_icon_fc.png',
+    'fc+': 'music_icon_fcp.png',
+    'ap':  'music_icon_ap.png',
+    'ap+': 'music_icon_app.png',
+  }[String(fc || '').toLowerCase()] ?? null;
 }
 
 function getFsIconFile(fs) {
-  return { 'sync': 'music_icon_fs.png', 'fs': 'music_icon_fs.png', 'fs+': 'music_icon_fsp.png', 'fdx': 'music_icon_fsd.png', 'fdx+': 'music_icon_fsdp.png' }[String(fs || '').toLowerCase()] ?? null;
-}
-
-function formatAchievement(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? `${(n / 10000).toFixed(4)}%` : '?.????%';
-}
-
-function formatDate(iso) {
-  if (!iso) return null;
-  try {
-    return new Date(iso).toLocaleString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' }).replace(',', '');
-  } catch { return null; }
+  return {
+    'sync': 'music_icon_fs.png',
+    'fs':   'music_icon_fs.png',
+    'fs+':  'music_icon_fsp.png',
+    'fdx':  'music_icon_fsd.png',
+    'fdx+': 'music_icon_fsdp.png',
+  }[String(fs || '').toLowerCase()] ?? null;
 }
 
 function versionNameToFile(version) {
   if (!version) return null;
   const normalized = String(version).toLowerCase()
+    .replace(/でらっくす/g, 'maimai_deluxe')
     .replace(/\s+/g, '_')
-    .replace(/でらっくす/, 'maimai_deluxe')
     .replace(/[^\w]/g, '_')
     .replace(/_+/g, '_')
     .replace(/^_|_$/g, '');
-  const map = {
-    'maimai_dx': 'maimai_deluxe',
-    'maimai_dx_plus': 'maimai_deluxe_plus',
-    'splash_plus': 'splash_plus',
-    'universe_plus': 'universe_plus',
-    'festival_plus': 'festival_plus',
-    'buddies_plus': 'buddies_plus',
-    'prism_plus': 'prism_plus',
-    'circle_plus': 'circle_plus',
+  const aliases = {
+    maimai_dx:       'maimai_deluxe',
+    maimai_dx_plus:  'maimai_deluxe_plus',
   };
-  return `${map[normalized] ?? normalized}.png`;
+  return `${aliases[normalized] ?? normalized}.png`;
+}
+
+function getDaniFile(danRank) {
+  if (danRank == null) return null;
+  const n = Number(danRank);
+  if (!Number.isFinite(n) || n < 0 || n > 23) return null;
+  return `dani_${String(n).padStart(2, '0')}.png`;
+}
+
+function formatAchievement(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '?.????%';
+  return `${(n / 10000).toFixed(4)}%`;
+}
+
+function formatDate(iso) {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleString('ja-JP', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+      timeZone: 'Asia/Tokyo',
+    }).replace(/\//g, '-');
+  } catch { return null; }
 }
 
 function trimToWidth(ctx, text, maxWidth) {
@@ -139,311 +174,361 @@ function sanitizeFileName(text) {
   return String(text || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'score-card';
 }
 
-// ─── Drawing ──────────────────────────────────────────────────────────────────
+// ─── Draw helpers ─────────────────────────────────────────────────────────────
+
+function roundedRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+}
+
+// ─── Sections ─────────────────────────────────────────────────────────────────
 
 async function drawBackground(ctx, jacketImg) {
-  // Blurred jacket fill
   if (jacketImg) {
     ctx.save();
-    ctx.filter = 'blur(40px) brightness(0.25) saturate(1.4)';
-    ctx.drawImage(jacketImg, -60, -60, W + 120, H + 120);
+    ctx.filter = 'blur(48px) brightness(0.22) saturate(1.6)';
+    ctx.drawImage(jacketImg, -80, -80, W + 160, H + 160);
     ctx.filter = 'none';
     ctx.restore();
   } else {
-    const grad = ctx.createLinearGradient(0, 0, W, H);
-    grad.addColorStop(0, '#1a0a2e');
-    grad.addColorStop(1, '#0d0520');
-    ctx.fillStyle = grad;
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#120820');
+    g.addColorStop(1, '#0a0316');
+    ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
-  // Dark overlay to ensure readability
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  // Vignette-style overlay — heavier on right so text pops
+  ctx.fillStyle = 'rgba(0,0,0,0.48)';
   ctx.fillRect(0, 0, W, H);
+  const vg = ctx.createLinearGradient(LEFT_W, 0, W, 0);
+  vg.addColorStop(0, 'rgba(0,0,0,0)');
+  vg.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(LEFT_W, 0, W - LEFT_W, H);
 }
 
 async function drawHeader(ctx, account) {
-  const name   = account?.player?.name || 'Player';
-  const title  = account?.extra?.title || '';
-  const rating = Number(account?.metrics?.rating) || 0;
+  const name    = account?.player?.name || 'Player';
+  const title   = account?.extra?.title || '';
+  const rating  = Number(account?.metrics?.rating) || 0;
+  const danRank = account?.metrics?.danRank ?? account?.extra?.danRank ?? null;
   const iconUrl = account?.extra?.iconUrl || account?.player?.iconUrl || null;
 
-  // Header background
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  // Frosted glass strip
+  ctx.fillStyle = 'rgba(0,0,0,0.52)';
   ctx.fillRect(0, 0, W, HEADER_H);
+  ctx.fillStyle = 'rgba(255,255,255,0.04)';
+  ctx.fillRect(0, HEADER_H - 1, W, 1);
 
-  // Avatar
-  const AVATAR_SIZE = 44;
-  const AVATAR_X = 10;
-  const AVATAR_Y = (HEADER_H - AVATAR_SIZE) / 2;
+  // ── Avatar ────────────────────────────────────────────────────────────────
+  const AV = 44;
+  const ax = 12, ay = (HEADER_H - AV) / 2;
   const avatar = iconUrl ? await loadCached(iconUrl) : null;
   ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(AVATAR_X, AVATAR_Y, AVATAR_SIZE, AVATAR_SIZE, 6);
+  roundedRect(ctx, ax, ay, AV, AV, 6);
   ctx.clip();
   if (avatar) {
-    ctx.drawImage(avatar, AVATAR_X, AVATAR_Y, AVATAR_SIZE, AVATAR_SIZE);
+    ctx.drawImage(avatar, ax, ay, AV, AV);
   } else {
-    ctx.fillStyle = '#444';
-    ctx.fillRect(AVATAR_X, AVATAR_Y, AVATAR_SIZE, AVATAR_SIZE);
+    ctx.fillStyle = '#333';
+    ctx.fillRect(ax, ay, AV, AV);
   }
   ctx.restore();
-
-  // Name + title
-  const textX = AVATAR_X + AVATAR_SIZE + 12;
+  // thin border
   ctx.save();
-  ctx.textBaseline = 'alphabetic';
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 1;
+  roundedRect(ctx, ax, ay, AV, AV, 6);
+  ctx.stroke();
+  ctx.restore();
+
+  // ── Name + title ──────────────────────────────────────────────────────────
+  const textX = ax + AV + 10;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur  = 6;
   if (title) {
-    ctx.font = `500 13px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    ctx.fillText(title, textX, AVATAR_Y + 14);
+    ctx.font = `400 12px ${FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(title, textX, ay + 14);
   }
   ctx.font = `700 20px ${FONT}`;
   ctx.fillStyle = '#ffffff';
-  ctx.fillText(name, textX, AVATAR_Y + AVATAR_SIZE - 4);
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(name, textX, ay + AV - 3);
   ctx.restore();
 
-  // Rating badge (right-aligned)
-  ctx.save();
-  ctx.font = `700 15px ${FONT}`;
-  ctx.textBaseline = 'middle';
-  const ratingText = String(rating);
-  const ratingW = ctx.measureText(ratingText).width + 24;
-  const ratingX = W - ratingW - 14;
-  const ratingY = HEADER_H / 2 - 13;
-  ctx.fillStyle = rating >= 15000 ? '#f0c040' : rating >= 14000 ? '#c0c0c0' : '#4ade80';
-  ctx.beginPath();
-  ctx.roundRect(ratingX, ratingY, ratingW, 26, 5);
-  ctx.fill();
-  ctx.fillStyle = '#000';
-  ctx.fillText(ratingText, ratingX + ratingW / 2 - ctx.measureText(ratingText).width / 2, ratingY + 13);
-  ctx.restore();
+  // ── Dan rank badge ────────────────────────────────────────────────────────
+  let ratingX = W - 14;   // will be updated once we place rating frame
+
+  const daniFile = getDaniFile(danRank);
+  if (daniFile) {
+    const daniImg = await loadCached(join(DANI_ASSET, daniFile));
+    if (daniImg) {
+      const dh = 34;
+      const dw = daniImg.width * (dh / daniImg.height);
+      ratingX -= dw + 8;
+      ctx.drawImage(daniImg, ratingX + 8, (HEADER_H - dh) / 2, dw, dh);
+    }
+  }
+
+  // ── Rating frame + number ─────────────────────────────────────────────────
+  const frameFile = getRatingFrame(rating);
+  const frameImg  = await loadCached(join(SCORE_ASSET, frameFile));
+  const ratingStr = String(rating);
+
+  if (frameImg) {
+    const fh = 36;
+    const fw = frameImg.width * (fh / frameImg.height);  // 176/40*36 = 158.4
+    const fx = ratingX - fw - (daniFile ? 0 : 0) - 6;
+    const fy = (HEADER_H - fh) / 2;
+    ctx.drawImage(frameImg, fx, fy, fw, fh);
+    // Rating number centered on frame
+    ctx.save();
+    ctx.font = `700 16px ${FONT}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur  = 4;
+    const rw = ctx.measureText(ratingStr).width;
+    ctx.fillText(ratingStr, fx + fw / 2 - rw / 2, fy + fh / 2);
+    ctx.restore();
+  } else {
+    // Fallback colored pill
+    ctx.save();
+    ctx.font = `700 15px ${FONT}`;
+    ctx.textBaseline = 'middle';
+    const rw = ctx.measureText(ratingStr).width + 22;
+    const fx = ratingX - rw - 6;
+    const fy = (HEADER_H - 28) / 2;
+    ctx.fillStyle = rating >= 15000 ? '#f0c040' : rating >= 14000 ? '#c0c0d8' : '#4ade80';
+    roundedRect(ctx, fx, fy, rw, 28, 5);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.fillText(ratingStr, fx + rw / 2 - ctx.measureText(ratingStr).width / 2, fy + 14);
+    ctx.restore();
+  }
 }
 
-async function drawJacketArea(ctx, jacketImg, song, score) {
-  const jx = 14;
-  const jy = HEADER_H + 14;
-  const js = JACKET_SIZE - 28;
+async function drawJacket(ctx, jacketImg, song, score, diff) {
+  const jx = J_PAD;
+  const jy = HEADER_H + J_PAD;
+  const js = J_SZ;
 
-  // Jacket with rounded corners
+  // ── Jacket art ───────────────────────────────────────────────────────────
   ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(jx, jy, js, js, 8);
+  roundedRect(ctx, jx, jy, js, js, 8);
   ctx.clip();
   if (jacketImg) {
-    const srcSize = Math.min(jacketImg.width, jacketImg.height);
-    const sx = (jacketImg.width - srcSize) / 2;
-    const sy = (jacketImg.height - srcSize) / 2;
-    ctx.drawImage(jacketImg, sx, sy, srcSize, srcSize, jx, jy, js, js);
+    const src = Math.min(jacketImg.width, jacketImg.height);
+    const sx  = (jacketImg.width - src) / 2;
+    const sy  = (jacketImg.height - src) / 2;
+    ctx.drawImage(jacketImg, sx, sy, src, src, jx, jy, js, js);
   } else {
-    ctx.fillStyle = '#333';
+    ctx.fillStyle = '#2a2a2a';
     ctx.fillRect(jx, jy, js, js);
   }
   ctx.restore();
 
-  // Jacket border
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.roundRect(jx, jy, js, js, 8);
-  ctx.stroke();
-  ctx.restore();
+  // ── Difficulty label overlay (from game assets, covers top band of jacket)
+  // label_*.png is 180×101 with the solid colored band in the top ~27px.
+  // We scale it to jacket width and draw it at the top of the jacket so the
+  // colored difficulty strip sits across the top edge.
+  const labelImg = await loadCached(join(SCORE_ASSET, getLabelFile(diff)));
+  if (labelImg) {
+    const scale  = js / labelImg.width;           // 262/180 = 1.456
+    const destH  = labelImg.height * scale;       // 101*1.456 ≈ 147
+    // Draw scaled label starting from top of jacket
+    ctx.save();
+    roundedRect(ctx, jx, jy, js, js, 8);
+    ctx.clip();
+    ctx.drawImage(labelImg, jx, jy, js, destH);
+    ctx.restore();
 
-  // Version logo (bottom-left corner of jacket)
+    // Level text on the label — right side, vertically centered on the solid band
+    const solidH = 27 * scale;  // ≈ 39px
+    const levelText = score?.internalLevelValue != null
+      ? Number(score.internalLevelValue).toFixed(1)
+      : score?.level ?? '?';
+    ctx.save();
+    ctx.font = `700 15px ${FONT}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.textBaseline = 'middle';
+    ctx.shadowColor  = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur   = 3;
+    const lw = ctx.measureText(levelText).width;
+    ctx.fillText(levelText, jx + js - lw - 8, jy + solidH / 2);
+    ctx.restore();
+  }
+
+  // ── Type badge (DX / SD) — top-right of jacket, below label band ─────────
+  const typeFile = String(score?.type || '').toLowerCase() === 'dx' ? 'type_dx.png' : 'type_sd.png';
+  const typeImg  = await loadCached(join(SCORE_ASSET, typeFile));
+  if (typeImg) {
+    const solidH = labelImg ? 27 * (js / 180) : 0;
+    const th = typeImg.height;
+    const tw = typeImg.width;
+    ctx.drawImage(typeImg, jx + js - tw - 5, jy + solidH + 4, tw, th);
+  }
+
+  // ── Version logo — bottom-left of jacket ─────────────────────────────────
   const verFile = versionNameToFile(song?.version);
   if (verFile) {
     const verImg = await loadCached(join(VERSION_ASSET, verFile));
     if (verImg) {
-      const maxVW = js * 0.55;
-      const scale = Math.min(maxVW / verImg.width, 28 / verImg.height);
-      const vw = verImg.width * scale;
-      const vh = verImg.height * scale;
+      const maxW = js * 0.52;
+      const s    = Math.min(maxW / verImg.width, 26 / verImg.height);
+      const vw   = verImg.width * s;
+      const vh   = verImg.height * s;
       ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.8)';
-      ctx.shadowBlur = 6;
+      ctx.shadowColor = 'rgba(0,0,0,0.9)';
+      ctx.shadowBlur  = 5;
       ctx.drawImage(verImg, jx + 6, jy + js - vh - 6, vw, vh);
       ctx.restore();
     }
   }
 
-  // DX/STD type badge (top-right of jacket)
-  const typeFile = String(score?.type || '').toLowerCase() === 'dx' ? 'type_dx.png' : 'type_sd.png';
-  const typeImg = await loadCached(join(SCORE_ASSET, typeFile));
-  if (typeImg) {
-    const tw = typeImg.width * 0.9;
-    const th = typeImg.height * 0.9;
-    ctx.drawImage(typeImg, jx + js - tw - 4, jy + 4, tw, th);
-  }
+  // ── Jacket border ─────────────────────────────────────────────────────────
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth   = 1.5;
+  roundedRect(ctx, jx, jy, js, js, 8);
+  ctx.stroke();
+  ctx.restore();
 }
 
-async function drawSongInfo(ctx, song, score) {
-  const textX = JACKET_SIZE;
-  const textW  = W - textX - 16;
-  const textY  = HEADER_H + 20;
+async function drawSongInfo(ctx, song, score, diff) {
+  const rx = LEFT_W + 16;
+  const rw = W - rx - 14;
+  const ry = HEADER_H + 14;
 
   ctx.save();
-  ctx.textBaseline = 'top';
-  ctx.shadowColor  = 'rgba(0,0,0,0.9)';
-  ctx.shadowBlur   = 6;
+  ctx.shadowColor = 'rgba(0,0,0,0.85)';
+  ctx.shadowBlur  = 6;
 
-  // Song title
-  ctx.font = `700 26px ${FONT}`;
-  ctx.fillStyle = '#ffffff';
-  const title = song?.title || score?.title || 'Unknown Song';
-  // Word-wrap in two lines if needed
-  const line1MaxW = textW;
-  if (ctx.measureText(title).width <= line1MaxW) {
-    ctx.fillText(title, textX, textY);
+  // ── Song title ────────────────────────────────────────────────────────────
+  const titleText = song?.title || score?.title || 'Unknown Song';
+  ctx.font = `700 24px ${FONT}`;
+  ctx.fillStyle   = '#ffffff';
+  ctx.textBaseline = 'top';
+
+  const titleW = ctx.measureText(titleText).width;
+  if (titleW <= rw) {
+    ctx.fillText(titleText, rx, ry);
   } else {
-    // Try to split at a space near midpoint
-    const words = title.split('');
-    let line1 = '';
-    let line2 = '';
-    let broke = false;
-    for (let i = 0; i < words.length; i++) {
-      const candidate = line1 + words[i];
-      if (!broke && ctx.measureText(candidate + '…').width > line1MaxW * 0.9) {
-        line1 = candidate;
-        line2 = words.slice(i + 1).join('');
-        broke = true;
+    // Find break point to split into two lines
+    let l1 = '', l2 = '';
+    for (let i = 1; i <= titleText.length; i++) {
+      if (ctx.measureText(titleText.slice(0, i) + '…').width > rw) {
+        l1 = titleText.slice(0, i - 1);
+        l2 = titleText.slice(i - 1);
         break;
       }
-      line1 = candidate;
+      l1 = titleText.slice(0, i);
     }
-    ctx.fillText(line1 + (broke ? '' : ''), textX, textY);
-    if (line2) {
-      ctx.font = `700 22px ${FONT}`;
-      ctx.fillText(trimToWidth(ctx, line2, textW), textX, textY + 32);
+    ctx.fillText(l1 + (l2 ? '' : ''), rx, ry);
+    if (l2) {
+      ctx.font = `700 20px ${FONT}`;
+      ctx.fillText(trimToWidth(ctx, l2, rw), rx, ry + 30);
     }
   }
 
-  // Artist
-  ctx.font = `400 16px ${FONT}`;
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  ctx.fillText(trimToWidth(ctx, song?.artist || '', textW), textX, textY + 72);
+  // ── Artist ────────────────────────────────────────────────────────────────
+  ctx.font = `400 15px ${FONT}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText(trimToWidth(ctx, song?.artist || '', rw), rx, ry + 62);
 
-  // Genre tag if available
+  // ── Genre pill ────────────────────────────────────────────────────────────
+  let pillBottom = ry + 62 + 20;
   if (song?.genre) {
-    const genreText = song.genre;
-    ctx.font = `500 13px ${FONT}`;
-    const gw = ctx.measureText(genreText).width + 16;
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.beginPath();
-    ctx.roundRect(textX, textY + 96, gw, 22, 4);
+    const gText = song.genre;
+    ctx.font = `500 12px ${FONT}`;
+    const gw = ctx.measureText(gText).width + 16;
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.shadowBlur = 0;
+    roundedRect(ctx, rx, ry + 87, gw, 20, 4);
     ctx.fill();
-    ctx.fillStyle = 'rgba(255,255,255,0.6)';
-    ctx.fillText(genreText, textX + 8, textY + 99);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(gText, rx + 8, ry + 87 + 10);
+    pillBottom = ry + 87 + 26;
+    ctx.textBaseline = 'top';
+    ctx.shadowBlur = 6;
   }
 
-  ctx.restore();
-}
+  // ── Divider ───────────────────────────────────────────────────────────────
+  const divY = Math.max(pillBottom + 6, ry + 118);
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.fillRect(rx, divY, rw, 1);
+  ctx.shadowBlur = 0;
 
-async function drawScoreStrip(ctx, score, diff) {
-  const sy = HEADER_H + JACKET_SIZE;
-
-  // Strip background
-  ctx.fillStyle = 'rgba(0,0,0,0.55)';
-  ctx.fillRect(0, sy, W, SCORE_H);
-  // Thin top accent line in difficulty color
-  ctx.fillStyle = DIFF_COLOR[diff] || '#888';
-  ctx.fillRect(0, sy, W, 2);
-
-  const midY = sy + SCORE_H / 2;
-
-  // ── Left cluster: difficulty badge + level ────────────────────────────────
-  let curX = 14;
-
-  // Difficulty badge
-  const diffLabel = diff === 'remaster' ? 'Re:MASTER' : diff === 'utage' ? 'U・TA・GE' : (diff || 'MASTER').toUpperCase();
-  ctx.save();
-  ctx.font = `700 14px ${FONT}`;
-  ctx.textBaseline = 'middle';
-  const dlW = ctx.measureText(diffLabel).width + 18;
-  ctx.fillStyle = DIFF_COLOR[diff] || '#888';
-  ctx.beginPath();
-  ctx.roundRect(curX, midY - 14, dlW, 28, 5);
-  ctx.fill();
-  ctx.fillStyle = '#fff';
-  ctx.fillText(diffLabel, curX + 9, midY);
-  ctx.restore();
-  curX += dlW + 10;
-
-  // Internal level
-  const levelText = score?.internalLevelValue != null
-    ? Number(score.internalLevelValue).toFixed(1)
-    : score?.level ?? '?';
-  ctx.save();
-  ctx.font = `600 18px ${FONT}`;
-  ctx.fillStyle = 'rgba(255,255,255,0.85)';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(levelText, curX, midY);
-  curX += ctx.measureText(levelText).width + 12;
-  ctx.restore();
-
-  // Rank icon
+  // ── Rank icon ─────────────────────────────────────────────────────────────
   const rankImg = await loadCached(join(SCORE_ASSET, getRankIconFile(score?.achievement)));
+  let rankRight = rx;
   if (rankImg) {
-    const rh = 36;
-    const rw = rankImg.width * (rh / rankImg.height);
-    ctx.drawImage(rankImg, curX, midY - rh / 2, rw, rh);
-    curX += rw + 8;
+    const rh = 44;
+    const rw2 = rankImg.width * (rh / rankImg.height);   // 120/48*44 = 110
+    ctx.drawImage(rankImg, rx, divY + 10, rw2, rh);
+    rankRight = rx + rw2 + 8;
   }
 
-  // FC icon
-  const fcFile = getFcIconFile(score?.fc);
-  if (fcFile) {
-    const fcImg = await loadCached(join(SCORE_ASSET, fcFile));
-    if (fcImg) {
-      const ih = 30;
-      const iw = fcImg.width * (ih / fcImg.height);
-      ctx.drawImage(fcImg, curX, midY - ih / 2, iw, ih);
-      curX += iw + 6;
+  // ── FC / FS icons ─────────────────────────────────────────────────────────
+  let comboX = rankRight;
+  for (const getter of [getFcIconFile(score?.fc), getFsIconFile(score?.fs)]) {
+    if (!getter) continue;
+    const img = await loadCached(join(SCORE_ASSET, getter));
+    if (img) {
+      const ih = 36;
+      const iw = img.width * (ih / img.height);
+      ctx.drawImage(img, comboX, divY + 14, iw, ih);
+      comboX += iw + 6;
     }
   }
 
-  // FS icon
-  const fsFile = getFsIconFile(score?.fs);
-  if (fsFile) {
-    const fsImg = await loadCached(join(SCORE_ASSET, fsFile));
-    if (fsImg) {
-      const ih = 30;
-      const iw = fsImg.width * (ih / fsImg.height);
-      ctx.drawImage(fsImg, curX, midY - ih / 2, iw, ih);
-    }
-  }
-
-  // ── Right cluster: achievement + dx score + date + play count ─────────────
-  ctx.save();
-  ctx.textBaseline = 'middle';
-
-  // Achievement (large, far right)
+  // ── Achievement % (right-aligned, large) ─────────────────────────────────
   const achText = formatAchievement(score?.achievement);
-  ctx.font = `700 28px ${FONT}`;
-  ctx.fillStyle = '#ffffff';
-  ctx.shadowColor = 'rgba(0,0,0,0.8)';
-  ctx.shadowBlur = 4;
+  ctx.save();
+  ctx.font = `700 30px ${FONT}`;
+  ctx.fillStyle    = '#ffffff';
+  ctx.textBaseline = 'top';
+  ctx.shadowColor  = 'rgba(0,0,0,0.9)';
+  ctx.shadowBlur   = 5;
   const achW = ctx.measureText(achText).width;
-  ctx.fillText(achText, W - achW - 14, midY - 12);
+  ctx.fillText(achText, W - achW - 14, divY + 8);
+  ctx.restore();
 
-  // DX Score below achievement
-  if (score?.dxScore != null && score?.maxDxScore != null) {
-    const pct = score.maxDxScore > 0 ? ((score.dxScore / score.maxDxScore) * 100).toFixed(1) : '?';
-    const dxText = `DX  ${score.dxScore.toLocaleString()} / ${score.maxDxScore.toLocaleString()}  (${pct}%)`;
+  // ── DX score ──────────────────────────────────────────────────────────────
+  if (score?.dxScore != null) {
+    const maxTxt = score.maxDxScore != null ? ` / ${score.maxDxScore.toLocaleString()}` : '';
+    const pctTxt = (score.maxDxScore > 0) ? `  (${((score.dxScore / score.maxDxScore) * 100).toFixed(1)}%)` : '';
+    const dxLine = `DX  ${score.dxScore.toLocaleString()}${maxTxt}${pctTxt}`;
+    ctx.save();
     ctx.font = `400 13px ${FONT}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.65)';
-    const dxW = ctx.measureText(dxText).width;
-    ctx.fillText(dxText, W - dxW - 14, midY + 16);
+    ctx.fillStyle    = 'rgba(255,255,255,0.6)';
+    ctx.textBaseline = 'top';
+    ctx.shadowColor  = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur   = 3;
+    const dxW = ctx.measureText(dxLine).width;
+    ctx.fillText(dxLine, W - dxW - 14, divY + 46);
+    ctx.restore();
   }
 
-  // Date + play count (left of achievement block, right of icons)
-  const dateText = formatDate(score?.playedAtIso || score?.playedAt);
-  const playText = score?.playCount != null ? `Play ${score.playCount}` : null;
-
+  // ── Date + play count ─────────────────────────────────────────────────────
+  const dateText  = formatDate(score?.playedAtIso ?? score?.playedAt ?? null);
+  const countText = score?.playCount != null ? `${score.playCount} plays` : null;
+  const metaY     = divY + 68;
+  ctx.save();
   ctx.font = `400 12px ${FONT}`;
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  const metaX = W - achW - 14 - 160;
-  if (dateText) ctx.fillText(dateText, metaX, midY - 10);
-  if (playText) ctx.fillText(playText, metaX, midY + 8);
+  ctx.fillStyle    = 'rgba(255,255,255,0.42)';
+  ctx.textBaseline = 'top';
+  ctx.shadowBlur   = 0;
+  if (dateText)  ctx.fillText(dateText, rx, metaY);
+  if (countText) {
+    const cw = ctx.measureText(countText).width;
+    ctx.fillText(countText, W - cw - 14, metaY);
+  }
+  ctx.restore();
 
   ctx.restore();
 }
@@ -462,21 +547,10 @@ export async function renderSongScoreGraphic({ account, song, score, difficulty 
 
   await drawBackground(ctx, jacketImg);
   await drawHeader(ctx, account);
-  await drawJacketArea(ctx, jacketImg, song, score);
-  await drawSongInfo(ctx, song, score);
-  await drawScoreStrip(ctx, score, diff);
+  await drawJacket(ctx, jacketImg, song, score, diff);
+  await drawSongInfo(ctx, song, score, diff);
 
-  // Separator between jacket and song info areas
-  ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(JACKET_SIZE, HEADER_H);
-  ctx.lineTo(JACKET_SIZE, HEADER_H + JACKET_SIZE);
-  ctx.stroke();
-  ctx.restore();
-
-  const buffer = await canvas.toBuffer('png');
+  const buffer   = await canvas.toBuffer('png');
   const songSlug = sanitizeFileName(song?.title || score?.title || 'song');
   return { buffer, fileName: `${songSlug}-${diff}-score.png` };
 }
