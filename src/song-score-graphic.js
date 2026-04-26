@@ -2,31 +2,38 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 
-// ─── Layout ───────────────────────────────────────────────────────────────────
+// ─── Dimensions ───────────────────────────────────────────────────────────────
 //
-// Total: 900 × 440
+// Portrait card: 820px wide, height grows with number of difficulty rows.
 //
-//  ┌─────────────────────────────────────────────────────────────────── 900px ─┐
-//  │  HEADER (64px)  avatar | name/title ..................... dani | rating   │
-//  ├──────────────────┬──────────────────────────────────────────────────────┤
-//  │  JACKET  (300px) │  SCORE PANEL (600px)                                  │
-//  │  ┌─────────────┐ │  title (26px bold, up to 2 lines)                    │
-//  │  │ label img   │ │  artist (15px, muted)                                │
-//  │  │ (top 45px   │ │  genre pill                                          │
-//  │  │  solid band)│ │  ── divider ──────────────────────────────────────── │
-//  │  │             │ │  [rank icon 60h]  [FC] [FS]    achievement% (34px)  │
-//  │  │  jacket art │ │                                DX score              │
-//  │  │  fills rest │ │  ── divider ──────────────────────────────────────── │
-//  │  │             │ │  date                           play count           │
-//  │  │ [ver logo]  │ │                                                      │
-//  │  └─────────────┘ │                                                      │
-//  └──────────────────┴──────────────────────────────────────────────────────┘
+//  ┌──────────────────────────────────── 820px ────────────────────────────────┐
+//  │  PLAYER HEADER (156px)                                                    │
+//  │  [avatar]  [title banner]  [name]          [dani]  [rating frame + #]    │
+//  ├───────────────────────────────────────────────────────────────────────────┤
+//  │  SONG INFO (290px)                                                        │
+//  │  [jacket 252px]  │  [type badge]  [title]                                │
+//  │                  │  [artist]  [BPM]  [category]                          │
+//  │                  │                           [version logo]               │
+//  ├───────────────────────────────────────────────────────────────────────────┤
+//  │  DIFFICULTY ROW × N (175px each)                                          │
+//  │  ╔═══ colored header band ══════════════════════════════════════════════╗ │
+//  │  ║  EXPERT                               Last Played: 2025/11/07 22:05 ║ │
+//  │  ║                                       Play Count:  10               ║ │
+//  │  ╠═══ dark body ════════════════════════════════════════════════════════╣ │
+//  │  ║  [12.5] [SSS+] [FC+] [FDX]    100.7757%  >>281                     ║ │
+//  │  ║                                DX 1,982/2,130  >>93.1%  ♦♦♦        ║ │
+//  │  ╚══════════════════════════════════════════════════════════════════════╝ │
+//  └───────────────────────────────────────────────────────────────────────────┘
 
-const W        = 900;
-const HEADER_H = 64;
-const LEFT_W   = 300;
-const BODY_H   = 376;
-const H        = HEADER_H + BODY_H;  // 440
+const W       = 820;
+const MARGIN  = 16;
+const IW      = W - MARGIN * 2;   // 788 inner width
+
+const PLAYER_H   = 156;
+const SONG_H     = 290;
+const ROW_H      = 175;
+const ROW_HDR_H  = 54;   // colored top band of each row
+const GAP        = 14;   // between sections
 
 const SCORE_ASSET   = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'score');
 const VERSION_ASSET = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'version');
@@ -34,9 +41,36 @@ const DANI_ASSET    = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'dani')
 
 const FONT = 'Inter, Murecho, "Noto Sans JP", sans-serif';
 
-// ─── Caching ──────────────────────────────────────────────────────────────────
+const DIFF_COLOR = {
+  basic:    '#22c55e',
+  advanced: '#f97316',
+  expert:   '#ef4444',
+  master:   '#a855f7',
+  remaster: '#e879f9',
+  utage:    '#f59e0b',
+};
 
-const IMG_CACHE       = new Map();
+const DIFF_DARK = {
+  basic:    '#15803d',
+  advanced: '#c2410c',
+  expert:   '#b91c1c',
+  master:   '#7e22ce',
+  remaster: '#a21caf',
+  utage:    '#b45309',
+};
+
+const DIFF_NAME = {
+  basic:    'BASIC',
+  advanced: 'ADVANCED',
+  expert:   'EXPERT',
+  master:   'MASTER',
+  remaster: 'Re:MASTER',
+  utage:    'U·TA·GE',
+};
+
+// ─── Cache ────────────────────────────────────────────────────────────────────
+
+const IMG_CACHE        = new Map();
 const REGISTERED_FONTS = new Set();
 
 async function fileExists(p) {
@@ -87,16 +121,6 @@ function getRatingFrame(rating) {
   return 'rating_base_01.png';
 }
 
-function getLabelFile(diff) {
-  return {
-    basic:    'label_Basic.png',
-    advanced: 'label_Advanced.png',
-    expert:   'label_Expert.png',
-    master:   'label_Master.png',
-    remaster: 'label_ReMASTER.png',
-  }[diff] ?? 'label_Master.png';
-}
-
 function getRankIconFile(achievement) {
   const a = Number(achievement) || 0;
   if (a >= 1005000) return 'music_icon_sssp.png';
@@ -134,6 +158,12 @@ function getFsIconFile(fs) {
   }[String(fs || '').toLowerCase()] ?? null;
 }
 
+function getDaniFile(danRank) {
+  const n = Number(danRank);
+  if (!Number.isFinite(n) || n < 0 || n > 23) return null;
+  return `dani_${String(n).padStart(2, '0')}.png`;
+}
+
 function versionNameToFile(version) {
   if (!version) return null;
   const n = String(version).toLowerCase()
@@ -144,16 +174,20 @@ function versionNameToFile(version) {
   return `${alias[n] ?? n}.png`;
 }
 
-function getDaniFile(danRank) {
-  const n = Number(danRank);
-  if (!Number.isFinite(n) || n < 0 || n > 23) return null;
-  return `dani_${String(n).padStart(2, '0')}.png`;
+function calculateDXStars(dxScore, maxDxScore) {
+  if (!maxDxScore || !dxScore) return 0;
+  const pct = (dxScore / maxDxScore) * 100;
+  if (pct >= 97) return 5;
+  if (pct >= 95) return 4;
+  if (pct >= 93) return 3;
+  if (pct >= 90) return 2;
+  if (pct >= 75) return 1;
+  return 0;
 }
 
 function formatAchievement(value) {
   const n = Number(value);
   if (!Number.isFinite(n)) return '?.????%';
-  // Always show 4 decimal places: e.g. 946555 → 94.6555%
   return `${(n / 10000).toFixed(4)}%`;
 }
 
@@ -162,7 +196,7 @@ function formatDate(iso) {
   try {
     const d = new Date(iso);
     const pad = (x) => String(x).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}  ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    return `${d.getFullYear()}/${pad(d.getMonth() + 1)}/${pad(d.getDate())}  ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   } catch { return null; }
 }
 
@@ -184,330 +218,431 @@ function sanitizeFileName(text) {
   return String(text || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'score-card';
 }
 
-// ─── Draw functions ───────────────────────────────────────────────────────────
-
-// Fills the entire canvas with a blurred, darkened jacket image as background.
-async function drawBackground(ctx, jacketImg) {
-  if (jacketImg) {
-    ctx.save();
-    ctx.filter = 'blur(50px) brightness(0.20) saturate(1.8)';
-    ctx.drawImage(jacketImg, -100, -100, W + 200, H + 200);
-    ctx.filter = 'none';
-    ctx.restore();
-  } else {
-    ctx.fillStyle = '#0d0118';
-    ctx.fillRect(0, 0, W, H);
-  }
-  // Gradient vignette — darker on the right for readability
-  const vg = ctx.createLinearGradient(0, 0, W, 0);
-  vg.addColorStop(0,   'rgba(0,0,0,0.30)');
-  vg.addColorStop(0.35,'rgba(0,0,0,0.45)');
-  vg.addColorStop(1,   'rgba(0,0,0,0.70)');
-  ctx.fillStyle = vg;
-  ctx.fillRect(0, 0, W, H);
+function rr(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
 }
 
-async function drawHeader(ctx, account) {
+// ─── Player header (full width, PLAYER_H px) ─────────────────────────────────
+
+async function drawPlayerHeader(ctx, account, jacketImg) {
+  // Background: blurred jacket or gradient
+  ctx.save();
+  if (jacketImg) {
+    ctx.filter = 'blur(60px) brightness(0.28) saturate(1.6)';
+    ctx.drawImage(jacketImg, -100, -100, W + 200, PLAYER_H + 200);
+    ctx.filter = 'none';
+  } else {
+    ctx.fillStyle = '#180826'; ctx.fillRect(0, 0, W, PLAYER_H);
+  }
+  // Dark overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.50)'; ctx.fillRect(0, 0, W, PLAYER_H);
+  // Bottom edge separator
+  ctx.fillStyle = 'rgba(255,255,255,0.07)'; ctx.fillRect(0, PLAYER_H - 1, W, 1);
+  ctx.restore();
+
   const name    = account?.player?.name || 'Player';
   const title   = account?.extra?.title || '';
   const rating  = Number(account?.metrics?.rating) || 0;
   const danRank = account?.metrics?.danRank ?? account?.extra?.danRank ?? null;
   const iconUrl = account?.extra?.iconUrl || account?.player?.iconUrl || null;
 
-  // Frosted header strip
-  ctx.fillStyle = 'rgba(0,0,0,0.58)';
-  ctx.fillRect(0, 0, W, HEADER_H);
-  // Bottom edge highlight
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  ctx.fillRect(0, HEADER_H - 1, W, 1);
-
-  // Avatar
-  const AV = 46, ax = 12, ay = (HEADER_H - AV) / 2;
+  // ── Avatar ────────────────────────────────────────────────────────────────
+  const AV = 80, ax = 18, ay = (PLAYER_H - AV) / 2;
   const avatar = iconUrl ? await loadCached(iconUrl) : null;
   ctx.save();
-  ctx.beginPath(); ctx.roundRect(ax, ay, AV, AV, 6); ctx.clip();
-  ctx.fillStyle = '#222';
-  ctx.fillRect(ax, ay, AV, AV);
+  rr(ctx, ax, ay, AV, AV, 8); ctx.clip();
+  ctx.fillStyle = '#2a2a2a'; ctx.fillRect(ax, ay, AV, AV);
   if (avatar) ctx.drawImage(avatar, ax, ay, AV, AV);
   ctx.restore();
   ctx.save();
-  ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.roundRect(ax, ay, AV, AV, 6); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 2;
+  rr(ctx, ax, ay, AV, AV, 8); ctx.stroke();
   ctx.restore();
 
-  // Name + title (left of header, after avatar)
-  const tx = ax + AV + 10;
+  // ── Title banner + player name ────────────────────────────────────────────
+  const textX = ax + AV + 14;
+  const nameY  = PLAYER_H / 2;
+
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
+
+  // Title (above name in a rounded pill)
   if (title) {
-    ctx.font = `400 12px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
-    ctx.textBaseline = 'alphabetic';
-    ctx.fillText(title, tx, ay + 15);
+    ctx.font = `500 13px ${FONT}`; ctx.textBaseline = 'alphabetic';
+    const tw = ctx.measureText(title).width;
+    const pillW = tw + 20, pillH = 22, pillY = nameY - 42;
+    // Draw title background (subtle gold tint)
+    ctx.fillStyle = 'rgba(255,220,80,0.18)';
+    ctx.shadowBlur = 0;
+    rr(ctx, textX, pillY, pillW, pillH, 3); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,80,0.35)'; ctx.lineWidth = 1;
+    rr(ctx, textX, pillY, pillW, pillH, 3); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,230,100,0.88)'; ctx.shadowBlur = 5;
+    ctx.fillText(title, textX + 10, pillY + pillH - 5);
   }
-  ctx.font = `700 21px ${FONT}`; ctx.fillStyle = '#fff';
+
+  // Player name
+  ctx.font = `700 28px ${FONT}`; ctx.fillStyle = '#ffffff';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(name, tx, ay + AV - 3);
+  ctx.fillText(name, textX, nameY + 10);
   ctx.restore();
 
-  // Right side: rating frame + dani badge
-  let rx = W - 12;
+  // ── Right: dani badge + rating frame ─────────────────────────────────────
+  let rx = W - 14;
 
-  // Dan rank badge (rightmost)
   const daniFile = getDaniFile(danRank);
   if (daniFile) {
     const di = await loadCached(join(DANI_ASSET, daniFile));
     if (di) {
-      const dh = 36, dw = di.width * (dh / di.height);
+      const dh = 42, dw = di.width * (dh / di.height);
       rx -= dw;
-      ctx.drawImage(di, rx, (HEADER_H - dh) / 2, dw, dh);
-      rx -= 8;
+      ctx.drawImage(di, rx, (PLAYER_H - dh) / 2, dw, dh);
+      rx -= 10;
     }
   }
 
-  // Rating frame (176×40 → scaled to height 34)
   const frameImg = await loadCached(join(SCORE_ASSET, getRatingFrame(rating)));
   if (frameImg) {
-    const fh = 34, fw = frameImg.width * (fh / frameImg.height);
+    // Scale frame to height 42
+    const fh = 42, fw = frameImg.width * (fh / frameImg.height);
     rx -= fw;
-    const fy = (HEADER_H - fh) / 2;
+    const fy = (PLAYER_H - fh) / 2;
     ctx.drawImage(frameImg, rx, fy, fw, fh);
-    // Rating number centered on frame
+    // Rating number on frame
     ctx.save();
-    ctx.font = `800 16px ${FONT}`; ctx.fillStyle = '#fff';
-    ctx.textBaseline = 'middle'; ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4;
+    ctx.font = `800 20px ${FONT}`; ctx.fillStyle = '#fff';
+    ctx.textBaseline = 'middle'; ctx.shadowColor = 'rgba(0,0,0,0.95)'; ctx.shadowBlur = 5;
     const rstr = String(rating), rw = ctx.measureText(rstr).width;
     ctx.fillText(rstr, rx + fw / 2 - rw / 2, fy + fh / 2);
     ctx.restore();
-    rx -= 8;
   } else {
-    // Fallback pill if frame image missing
+    // Fallback
     ctx.save();
     const rstr = String(rating);
-    ctx.font = `700 15px ${FONT}`; ctx.textBaseline = 'middle';
-    const pillW = ctx.measureText(rstr).width + 22;
+    ctx.font = `700 18px ${FONT}`; ctx.textBaseline = 'middle';
+    const pillW = ctx.measureText(rstr).width + 24;
     rx -= pillW;
     ctx.fillStyle = rating >= 15000 ? '#f0c040' : rating >= 14000 ? '#c0c0d8' : '#4ade80';
-    ctx.beginPath(); ctx.roundRect(rx, (HEADER_H - 28) / 2, pillW, 28, 6); ctx.fill();
+    rr(ctx, rx, (PLAYER_H - 30) / 2, pillW, 30, 6); ctx.fill();
     ctx.fillStyle = '#000';
-    ctx.fillText(rstr, rx + pillW / 2 - ctx.measureText(rstr).width / 2, HEADER_H / 2);
+    ctx.fillText(rstr, rx + pillW / 2 - ctx.measureText(rstr).width / 2, PLAYER_H / 2);
     ctx.restore();
-    rx -= 8;
   }
 }
 
-// Draws the jacket column (left side of body): jacket art with label overlay, type badge, version logo.
-async function drawJacketColumn(ctx, jacketImg, song, score, diff) {
-  const jx = 0, jy = HEADER_H, jw = LEFT_W, jh = BODY_H;
+// ─── Song info section ────────────────────────────────────────────────────────
 
-  // ── Jacket art (cover-fill the full column) ───────────────────────────────
+async function drawSongInfo(ctx, song, scores, y) {
+  const JACKET_SZ = 252;
+  const jx = MARGIN, jy = y;
+
+  // ── Jacket ────────────────────────────────────────────────────────────────
+  const jacketImg = await loadCached(resolveJacketPath(song));
   const src = jacketImg || await loadCached(join(SCORE_ASSET, 'default_cover.png'));
   if (src) {
     ctx.save();
-    ctx.beginPath(); ctx.rect(jx, jy, jw, jh); ctx.clip();
-    const scale = Math.max(jw / src.width, jh / src.height);
-    const srcW  = jw / scale, srcH = jh / scale;
-    const srcX  = (src.width  - srcW) / 2;
-    const srcY  = (src.height - srcH) / 2;
-    ctx.drawImage(src, srcX, srcY, srcW, srcH, jx, jy, jw, jh);
-    // Darken jacket so label and overlays pop
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    ctx.fillRect(jx, jy, jw, jh);
+    rr(ctx, jx, jy, JACKET_SZ, JACKET_SZ, 10); ctx.clip();
+    const s = Math.min(src.width, src.height);
+    const sx = (src.width - s) / 2, sy = (src.height - s) / 2;
+    ctx.drawImage(src, sx, sy, s, s, jx, jy, JACKET_SZ, JACKET_SZ);
     ctx.restore();
   }
+  // Jacket border
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)'; ctx.lineWidth = 2;
+  rr(ctx, jx, jy, JACKET_SZ, JACKET_SZ, 10); ctx.stroke();
+  ctx.restore();
 
-  // ── label_*.png overlay (anchored at top of jacket column) ───────────────
-  // The label image (180×101 RGBA) has its colored difficulty band in the top ~27px
-  // and is transparent below, letting the jacket show through exactly as the game does.
-  const labelImg = await loadCached(join(SCORE_ASSET, getLabelFile(diff)));
-  if (labelImg) {
-    // Scale label to fill the full column width
-    const lScale = jw / labelImg.width;          // 300/180 = 1.667
-    const lDestH = labelImg.height * lScale;     // 101*1.667 ≈ 168px
-    ctx.drawImage(labelImg, jx, jy, jw, lDestH);
-
-    // Solid band height at this scale (~27px * 1.667 = 45px)
-    const bandH = 27 * lScale;
-
-    // Level in the band (right side, vertically centered in band)
-    const levelTxt = score?.internalLevelValue != null
-      ? Number(score.internalLevelValue).toFixed(1)
-      : score?.level ?? '?';
-    ctx.save();
-    ctx.font = `700 18px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.textBaseline = 'middle';
-    ctx.shadowColor  = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 3;
-    const lvW = ctx.measureText(levelTxt).width;
-    ctx.fillText(levelTxt, jx + jw - lvW - 10, jy + bandH / 2);
-    ctx.restore();
-
-    // DX/STD type badge — just below the solid band, right-aligned
-    const typeFile = String(score?.type || '').toLowerCase() === 'dx' ? 'type_dx.png' : 'type_sd.png';
-    const typeImg  = await loadCached(join(SCORE_ASSET, typeFile));
-    if (typeImg) {
-      const tScale = 1.3;
-      const tw = typeImg.width * tScale, th = typeImg.height * tScale;
-      ctx.drawImage(typeImg, jx + jw - tw - 6, jy + bandH + 6, tw, th);
-    }
-  }
-
-  // ── Version logo — bottom-left of jacket column ───────────────────────────
-  const verFile = versionNameToFile(song?.version);
+  // ── Version logo on jacket (bottom-left) ─────────────────────────────────
+  const version = song?.difficultyLevels?.[0]?.version ?? song?.version ?? scores?.[0]?.version ?? null;
+  const verFile = versionNameToFile(version);
   if (verFile) {
     const verImg = await loadCached(join(VERSION_ASSET, verFile));
     if (verImg) {
-      const maxW = jw * 0.58;
-      const s    = Math.min(maxW / verImg.width, 30 / verImg.height);
-      const vw   = verImg.width * s, vh = verImg.height * s;
-      ctx.save();
-      ctx.shadowColor = 'rgba(0,0,0,0.95)'; ctx.shadowBlur = 8;
-      ctx.drawImage(verImg, jx + 8, jy + jh - vh - 8, vw, vh);
+      const maxW = JACKET_SZ * 0.6;
+      const s2 = Math.min(maxW / verImg.width, 32 / verImg.height);
+      const vw = verImg.width * s2, vh = verImg.height * s2;
+      ctx.save(); ctx.shadowColor = 'rgba(0,0,0,0.95)'; ctx.shadowBlur = 8;
+      ctx.drawImage(verImg, jx + 8, jy + JACKET_SZ - vh - 8, vw, vh);
       ctx.restore();
     }
   }
 
-  // ── Right edge fade (blends jacket into score panel) ─────────────────────
-  const fade = ctx.createLinearGradient(jx + jw - 40, 0, jx + jw, 0);
-  fade.addColorStop(0, 'rgba(0,0,0,0)');
-  fade.addColorStop(1, 'rgba(0,0,0,0.55)');
-  ctx.fillStyle = fade;
-  ctx.fillRect(jx + jw - 40, jy, 40, jh);
-
-  // Thin right border
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.fillRect(jx + jw - 1, jy, 1, jh);
-}
-
-// Draws all score info in the right panel.
-async function drawScorePanel(ctx, song, score, diff) {
-  const px = LEFT_W + 20;         // panel text start x
-  const pw = W - px - 16;         // panel usable width
-  const py = HEADER_H + 18;       // panel text start y (top of body)
+  // ── Song metadata (right of jacket) ──────────────────────────────────────
+  const infoX = jx + JACKET_SZ + 20;
+  const infoW  = W - infoX - MARGIN;
+  let curY = jy + 6;
 
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 5;
 
-  // ── Song title ────────────────────────────────────────────────────────────
-  const titleStr = song?.title || score?.title || 'Unknown Song';
-  ctx.font = `700 26px ${FONT}`; ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'top';
-
-  if (ctx.measureText(titleStr).width <= pw) {
-    ctx.fillText(titleStr, px, py);
+  // DX/STD type badge (from first score entry)
+  const scoreType = String(scores?.[0]?.type || '').toLowerCase();
+  const typeFile  = scoreType === 'dx' ? 'type_dx.png' : 'type_sd.png';
+  const typeImg   = await loadCached(join(SCORE_ASSET, typeFile));
+  if (typeImg) {
+    const ts = 1.4;
+    ctx.drawImage(typeImg, infoX, curY, typeImg.width * ts, typeImg.height * ts);
+    curY += typeImg.height * ts + 10;
   } else {
-    // Split into two lines at a character boundary
+    curY += 10;
+  }
+
+  // Song title
+  ctx.font = `700 28px ${FONT}`; ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'top';
+  const titleStr = song?.title || 'Unknown Song';
+  if (ctx.measureText(titleStr).width <= infoW) {
+    ctx.fillText(titleStr, infoX, curY);
+    curY += 36;
+  } else {
+    // Two-line split
     let l1 = '';
     for (let i = 1; i <= titleStr.length; i++) {
-      if (ctx.measureText(titleStr.slice(0, i) + '…').width > pw) break;
+      if (ctx.measureText(titleStr.slice(0, i) + '…').width > infoW) break;
       l1 = titleStr.slice(0, i);
     }
     const l2 = titleStr.slice(l1.length);
-    ctx.fillText(l1, px, py);
-    ctx.font = `700 21px ${FONT}`;
-    ctx.fillText(trimToWidth(ctx, l2, pw), px, py + 33);
+    ctx.fillText(l1, infoX, curY); curY += 33;
+    ctx.font = `700 22px ${FONT}`;
+    ctx.fillText(trimToWidth(ctx, l2, infoW), infoX, curY); curY += 30;
   }
 
-  // ── Artist ────────────────────────────────────────────────────────────────
-  ctx.font = `400 15px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.62)';
-  ctx.fillText(trimToWidth(ctx, song?.artist || '', pw), px, py + 70);
+  // Artist
+  ctx.font = `400 16px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.fillText(trimToWidth(ctx, song?.artist || '', infoW), infoX, curY);
+  curY += 26;
 
-  // ── Genre pill ────────────────────────────────────────────────────────────
-  let afterGenre = py + 70 + 22;
-  if (song?.genre) {
-    ctx.font = `500 12px ${FONT}`;
-    const gw = ctx.measureText(song.genre).width + 18;
+  // BPM (if available)
+  if (song?.bpm) {
+    ctx.font = `500 14px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText(`BPM  ${song.bpm}`, infoX, curY); curY += 22;
+  }
+
+  // Category / genre pill
+  const genre = song?.category || song?.genre;
+  if (genre) {
+    ctx.font = `500 13px ${FONT}`;
+    const gw = ctx.measureText(genre).width + 18;
     ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.shadowBlur = 0;
-    ctx.beginPath(); ctx.roundRect(px, py + 96, gw, 21, 4); ctx.fill();
+    rr(ctx, infoX, curY, gw, 22, 4); ctx.fill();
     ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.textBaseline = 'middle';
-    ctx.fillText(song.genre, px + 9, py + 96 + 10.5);
+    ctx.fillText(genre, infoX + 9, curY + 11);
     ctx.textBaseline = 'top'; ctx.shadowBlur = 5;
-    afterGenre = py + 96 + 27;
   }
 
-  // ── Divider ───────────────────────────────────────────────────────────────
-  const div1Y = Math.max(afterGenre + 6, py + 128);
-  ctx.fillStyle = 'rgba(255,255,255,0.13)'; ctx.shadowBlur = 0;
-  ctx.fillRect(px, div1Y, pw, 1);
+  ctx.restore();
+}
 
-  // ── Rank icon ─────────────────────────────────────────────────────────────
+// ─── Difficulty row ───────────────────────────────────────────────────────────
+
+async function drawDiffRow(ctx, score, y) {
+  const rx = MARGIN, rw = IW;
+  const diff = String(score.difficulty || 'master').toLowerCase();
+  const color  = DIFF_COLOR[diff]  || '#888';
+  const dark   = DIFF_DARK[diff]   || '#444';
+  const name   = DIFF_NAME[diff]   || diff.toUpperCase();
+
+  // ── Row container (rounded rect, dark background) ─────────────────────────
+  ctx.save();
+  ctx.fillStyle = '#1e1a2e';
+  rr(ctx, rx, y, rw, ROW_H, 10); ctx.fill();
+  ctx.restore();
+
+  // ── Colored header band ───────────────────────────────────────────────────
+  ctx.save();
+  rr(ctx, rx, y, rw, ROW_H, 10); ctx.clip();
+  const hg = ctx.createLinearGradient(rx, y, rx, y + ROW_HDR_H);
+  hg.addColorStop(0, color);
+  hg.addColorStop(1, dark);
+  ctx.fillStyle = hg; ctx.fillRect(rx, y, rw, ROW_HDR_H);
+  // Subtle inner shadow at bottom of header band
+  const shg = ctx.createLinearGradient(rx, y + ROW_HDR_H - 6, rx, y + ROW_HDR_H);
+  shg.addColorStop(0, 'rgba(0,0,0,0)'); shg.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = shg; ctx.fillRect(rx, y, rw, ROW_HDR_H);
+  ctx.restore();
+
+  // Thin separator between header and body
+  ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(rx, y + ROW_HDR_H, rw, 1);
+
+  // ── Difficulty name (header, left) ────────────────────────────────────────
+  ctx.save();
+  ctx.font = `800 22px ${FONT}`; ctx.fillStyle = '#ffffff';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = 4;
+  ctx.fillText(name, rx + 16, y + ROW_HDR_H / 2);
+  ctx.restore();
+
+  // ── Date + play count (header, right) ─────────────────────────────────────
+  const dateStr  = formatDate(score?.playedAtIso ?? score?.playedAt ?? null);
+  const countStr = score?.playCount != null ? String(score.playCount) : null;
+  ctx.save();
+  ctx.textBaseline = 'middle'; ctx.shadowColor = 'rgba(0,0,0,0.7)'; ctx.shadowBlur = 3;
+  if (dateStr) {
+    ctx.font = `400 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const dw = ctx.measureText(dateStr).width;
+    ctx.fillText('Last Played', rx + rw - dw - 14, y + ROW_HDR_H / 2 - 9);
+    ctx.font = `600 13px ${FONT}`;
+    ctx.fillText(dateStr, rx + rw - dw - 14, y + ROW_HDR_H / 2 + 9);
+  }
+  if (countStr && !dateStr) {
+    // Only play count (no date)
+    ctx.font = `600 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    const cw = ctx.measureText(countStr).width;
+    ctx.fillText(`Play Count:  ${countStr}`, rx + rw - cw - 80, y + ROW_HDR_H / 2);
+  } else if (countStr && dateStr) {
+    ctx.font = `400 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    const cw = ctx.measureText(countStr).width;
+    const label = 'Play Count';
+    ctx.fillText(label, rx + rw - cw - 14, y + ROW_HDR_H / 2 - 9);
+    ctx.font = `600 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.fillText(countStr, rx + rw - cw - 14, y + ROW_HDR_H / 2 + 9);
+  }
+  ctx.restore();
+
+  // ─ Body ──────────────────────────────────────────────────────────────────
+  const by = y + ROW_HDR_H + 1;  // body top
+  const bh = ROW_H - ROW_HDR_H - 1;
+  const midY = by + bh / 2;
+
+  // Level box (dark rounded, left)
+  const levelStr = score?.internalLevelValue != null
+    ? Number(score.internalLevelValue).toFixed(1)
+    : score?.level ?? '?';
+  ctx.save();
+  ctx.font = `700 22px ${FONT}`; ctx.textBaseline = 'middle';
+  const lvW = ctx.measureText(levelStr).width;
+  const boxW = lvW + 22, boxH = 44;
+  const boxX = rx + 14, boxY = midY - boxH / 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)'; rr(ctx, boxX, boxY, boxW, boxH, 6); ctx.fill();
+  ctx.strokeStyle = color; ctx.lineWidth = 2; rr(ctx, boxX, boxY, boxW, boxH, 6); ctx.stroke();
+  ctx.fillStyle = '#ffffff'; ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 4;
+  ctx.fillText(levelStr, boxX + 11, midY);
+  ctx.restore();
+
+  // Rank icon (after level box)
+  let iconX = rx + 14 + boxW + 12;
   const rankImg = await loadCached(join(SCORE_ASSET, getRankIconFile(score?.achievement)));
-  let afterRankX = px;
   if (rankImg) {
-    const rh = 54, rw = rankImg.width * (rh / rankImg.height);   // 120/48 * 54 = 135
-    ctx.drawImage(rankImg, px, div1Y + 12, rw, rh);
-    afterRankX = px + rw + 10;
+    const rh = 54, rw2 = rankImg.width * (rh / rankImg.height);
+    ctx.drawImage(rankImg, iconX, midY - rh / 2, rw2, rh);
+    iconX += rw2 + 8;
   }
 
-  // ── FC / FS combo icons ───────────────────────────────────────────────────
-  let comboX = afterRankX;
-  for (const file of [getFcIconFile(score?.fc), getFsIconFile(score?.fs)]) {
-    if (!file) continue;
-    const img = await loadCached(join(SCORE_ASSET, file));
+  // FC icon
+  const fcFile = getFcIconFile(score?.fc);
+  if (fcFile) {
+    const img = await loadCached(join(SCORE_ASSET, fcFile));
     if (img) {
-      const ih = 42, iw = img.width * (ih / img.height);
-      ctx.drawImage(img, comboX, div1Y + 20, iw, ih);
-      comboX += iw + 8;
+      const ih = 44, iw = img.width * (ih / img.height);
+      ctx.drawImage(img, iconX, midY - ih / 2, iw, ih);
+      iconX += iw + 6;
     }
   }
 
-  // ── Achievement % (large, right-aligned) ─────────────────────────────────
+  // FS icon
+  const fsFile = getFsIconFile(score?.fs);
+  if (fsFile) {
+    const img = await loadCached(join(SCORE_ASSET, fsFile));
+    if (img) {
+      const ih = 44, iw = img.width * (ih / img.height);
+      ctx.drawImage(img, iconX, midY - ih / 2, iw, ih);
+    }
+  }
+
+  // ── Right cluster: achievement, rating, DX score, stars ───────────────────
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
+
+  // Achievement % (large, top-right)
   const achStr = formatAchievement(score?.achievement);
-  ctx.save();
-  ctx.font = `800 34px ${FONT}`; ctx.fillStyle = '#ffffff';
-  ctx.textBaseline = 'top'; ctx.shadowColor = 'rgba(0,0,0,0.95)'; ctx.shadowBlur = 6;
+  ctx.font = `800 30px ${FONT}`; ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'alphabetic';
   const achW = ctx.measureText(achStr).width;
-  ctx.fillText(achStr, W - achW - 16, div1Y + 10);
-  ctx.restore();
+  ctx.fillText(achStr, rx + rw - achW - 16, by + 40);
 
-  // ── DX score (below achievement, right-aligned) ───────────────────────────
-  if (score?.dxScore != null) {
-    const maxPart = score.maxDxScore != null ? ` / ${score.maxDxScore.toLocaleString()}` : '';
-    const pctPart = (score.maxDxScore > 0) ? `  (${((score.dxScore / score.maxDxScore) * 100).toFixed(1)}%)` : '';
-    const dxStr   = `DX  ${score.dxScore.toLocaleString()}${maxPart}${pctPart}`;
-    ctx.save();
-    ctx.font = `400 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.58)';
-    ctx.textBaseline = 'top'; ctx.shadowBlur = 3;
-    const dxW = ctx.measureText(dxStr).width;
-    ctx.fillText(dxStr, W - dxW - 16, div1Y + 52);
-    ctx.restore();
+  // >> Rating (after achievement, same line)
+  if (score?.rating != null) {
+    const rateStr = `>> ${score.rating}`;
+    ctx.font = `600 17px ${FONT}`; ctx.fillStyle = color;
+    const rtW = ctx.measureText(rateStr).width;
+    ctx.fillText(rateStr, rx + rw - rtW - 16, by + bh - 14);
   }
 
-  // ── Divider 2 ─────────────────────────────────────────────────────────────
-  const div2Y = div1Y + 82;
-  ctx.fillStyle = 'rgba(255,255,255,0.10)'; ctx.shadowBlur = 0;
-  ctx.fillRect(px, div2Y, pw, 1);
+  // DX score line
+  if (score?.dxScore != null && score?.maxDxScore != null) {
+    const pct = score.maxDxScore > 0 ? ((score.dxScore / score.maxDxScore) * 100).toFixed(1) : '?';
+    const dxStr = `DX  ${score.dxScore.toLocaleString()} / ${score.maxDxScore.toLocaleString()}`;
+    const pctStr = ` >> ${pct}%`;
+    ctx.font = `500 14px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.textBaseline = 'alphabetic';
+    const dxW = ctx.measureText(dxStr + pctStr).width;
+    ctx.fillText(dxStr, rx + rw - dxW - 16, by + 62);
+    ctx.fillStyle = color;
+    ctx.fillText(pctStr, rx + rw - ctx.measureText(pctStr).width - 16, by + 62);
 
-  // ── Date + play count ─────────────────────────────────────────────────────
-  const dateStr  = formatDate(score?.playedAtIso ?? score?.playedAt ?? null);
-  const countStr = score?.playCount != null ? `${score.playCount} plays` : null;
+    // DX stars (♦ symbols)
+    const stars = calculateDXStars(score.dxScore, score.maxDxScore);
+    if (stars > 0) {
+      const starColor = stars >= 5 ? '#ffd700' : stars >= 3 ? '#f97316' : '#86efac';
+      ctx.font = `600 16px ${FONT}`; ctx.fillStyle = starColor;
+      const starStr = '♦'.repeat(stars);
+      const sw = ctx.measureText(starStr).width;
+      ctx.fillText(starStr, rx + rw - sw - 16, by + 82);
+    }
+  }
+
+  ctx.restore();
+
+  // Row border
   ctx.save();
-  ctx.font = `400 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.40)';
-  ctx.textBaseline = 'top'; ctx.shadowBlur = 0;
-  if (dateStr)  ctx.fillText(dateStr,  px, div2Y + 10);
-  if (countStr) {
-    const cw = ctx.measureText(countStr).width;
-    ctx.fillText(countStr, W - cw - 16, div2Y + 10);
-  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)'; ctx.lineWidth = 1;
+  rr(ctx, rx, y, rw, ROW_H, 10); ctx.stroke();
   ctx.restore();
+}
 
-  ctx.restore(); // outer save
+// ─── Canvas background ────────────────────────────────────────────────────────
+
+async function drawBackground(ctx, jacketImg, totalH) {
+  if (jacketImg) {
+    ctx.save();
+    ctx.filter = 'blur(60px) brightness(0.18) saturate(1.8)';
+    ctx.drawImage(jacketImg, -120, -120, W + 240, totalH + 240);
+    ctx.filter = 'none';
+    ctx.restore();
+  } else {
+    ctx.fillStyle = '#100118'; ctx.fillRect(0, 0, W, totalH);
+  }
+  // Uniform dark overlay
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(0, 0, W, totalH);
 }
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-export async function renderSongScoreGraphic({ account, song, score, difficulty }) {
+export async function renderSongScoreGraphic({ account, song, scores }) {
   await registerFonts();
 
-  const diff      = String(difficulty || score?.difficulty || 'master').toLowerCase();
-  const jacketImg = await loadCached(resolveJacketPath(song));
+  if (!Array.isArray(scores) || scores.length === 0) {
+    throw new Error('No score data to render.');
+  }
 
-  const canvas = new Canvas(W, H);
+  const n     = scores.length;
+  const totalH = PLAYER_H + GAP + SONG_H + GAP + n * ROW_H + (n - 1) * GAP + GAP;
+
+  const jacketImg = await loadCached(resolveJacketPath(song));
+  const canvas = new Canvas(W, totalH);
   const ctx    = canvas.getContext('2d');
 
-  await drawBackground(ctx, jacketImg);
-  await drawHeader(ctx, account);
-  await drawJacketColumn(ctx, jacketImg, song, score, diff);
-  await drawScorePanel(ctx, song, score, diff);
+  await drawBackground(ctx, jacketImg, totalH);
+  await drawPlayerHeader(ctx, account, jacketImg);
 
-  const buffer   = await canvas.toBuffer('png');
-  const slug     = sanitizeFileName(song?.title || score?.title || 'song');
-  return { buffer, fileName: `${slug}-${diff}-score.png` };
+  const songY = PLAYER_H + GAP;
+  await drawSongInfo(ctx, song, scores, songY);
+
+  let rowY = songY + SONG_H + GAP;
+  for (const score of scores) {
+    await drawDiffRow(ctx, score, rowY);
+    rowY += ROW_H + GAP;
+  }
+
+  const buffer = await canvas.toBuffer('png');
+  const slug   = sanitizeFileName(song?.title || scores[0]?.title || 'song');
+  return { buffer, fileName: `${slug}-score.png` };
 }

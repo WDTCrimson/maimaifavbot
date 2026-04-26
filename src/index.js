@@ -1326,7 +1326,7 @@ async function handleSongCommand(interaction) {
 
     case 'score': {
       await interaction.deferReply();
-      const query      = interaction.options.getString('query', true);
+      const query     = interaction.options.getString('query', true);
       const difficulty = interaction.options.getString('difficulty');
       const chartType  = interaction.options.getString('type');
       const song       = songCatalog.resolveSong(query);
@@ -1342,30 +1342,33 @@ async function handleSongCommand(interaction) {
         return;
       }
 
-      // Match by title + optional difficulty/type filters
+      const songTitleLc = String(song.title || '').toLowerCase();
       const matchesSong = (entry) => {
         if (entry.favoriteId && song.favoriteIds?.includes(entry.favoriteId)) return true;
-        const titleMatch = String(entry.title || '').toLowerCase() === String(song.title || '').toLowerCase();
-        const diffMatch  = !difficulty || String(entry.difficulty || '').toLowerCase() === difficulty.toLowerCase();
-        const typeMatch  = !chartType  || String(entry.type || '').toLowerCase() === chartType.toLowerCase();
-        return titleMatch && diffMatch && typeMatch;
+        return String(entry.title || '').toLowerCase() === songTitleLc;
       };
 
-      // Priority: allScores (complete, from sync) → B50 (has rating) → recent plays
-      const allScores   = Array.isArray(account.allScores) ? account.allScores : [];
-      const b50Entries  = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
-      const recentPlays = Array.isArray(account.recentSessions) ? account.recentSessions : [];
+      // Collect all difficulty scores for this song from allScores, then fall back to B50
+      const rawAllScores = Array.isArray(account.allScores) ? account.allScores : [];
+      const b50Entries   = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
 
-      // From allScores, pick the best achievement if no difficulty specified
-      const allMatches = allScores.filter(matchesSong);
-      const allScoresMatch = allMatches.length
-        ? allMatches.reduce((best, e) => (e.achievement ?? 0) > (best.achievement ?? 0) ? e : best)
-        : null;
+      let songScores = rawAllScores.filter(e =>
+        matchesSong(e) &&
+        (!chartType  || String(e.type       || '').toLowerCase() === chartType.toLowerCase()) &&
+        (!difficulty || String(e.difficulty || '').toLowerCase() === difficulty.toLowerCase())
+      );
 
-      const score = allScoresMatch ?? b50Entries.find(matchesSong) ?? recentPlays.find(matchesSong) ?? null;
+      // If allScores is empty, fall back to B50 entries for this song
+      if (songScores.length === 0) {
+        songScores = b50Entries.filter(e =>
+          matchesSong(e) &&
+          (!chartType  || String(e.type       || '').toLowerCase() === chartType.toLowerCase()) &&
+          (!difficulty || String(e.difficulty || '').toLowerCase() === difficulty.toLowerCase())
+        );
+      }
 
-      if (!score) {
-        const hasAnyData = allScores.length > 0 || b50Entries.length > 0;
+      if (songScores.length === 0) {
+        const hasAnyData = rawAllScores.length > 0 || b50Entries.length > 0;
         const hint = hasAnyData
           ? 'No score found for that song in your account data.'
           : 'No score data available — run `/account sync` first.';
@@ -1373,9 +1376,28 @@ async function handleSongCommand(interaction) {
         return;
       }
 
-      const resolvedDiff = difficulty || String(score.difficulty || 'master').toLowerCase();
+      // Enrich each score entry with internalLevelValue + rating from song catalog
+      const gameVersion = getCurrentIntlVersionId() ?? 0;
+      const enriched = songScores.map(entry => {
+        const chart = song.difficultyLevels?.find(c =>
+          String(c.difficulty || '').toLowerCase() === String(entry.difficulty || '').toLowerCase() &&
+          String(c.type || '').toLowerCase() === String(entry.type || '').toLowerCase()
+        );
+        const internalLevelValue = chart?.internalLevelValue ?? entry.internalLevelValue ?? null;
+        const rating = internalLevelValue != null
+          ? calculateChartRating({ achievement: entry.achievement, fc: entry.fc, internalLevelValue, gameVersion })
+          : entry.rating ?? null;
+        return { ...entry, internalLevelValue, rating, version: chart?.version ?? entry.version };
+      });
 
-      const graphic = await renderSongScoreGraphic({ account, song, score, difficulty: resolvedDiff });
+      // Sort by canonical difficulty order
+      const DIFF_ORDER = ['basic', 'advanced', 'expert', 'master', 'remaster', 'utage'];
+      enriched.sort((a, b) =>
+        DIFF_ORDER.indexOf(String(a.difficulty || '').toLowerCase()) -
+        DIFF_ORDER.indexOf(String(b.difficulty || '').toLowerCase())
+      );
+
+      const graphic = await renderSongScoreGraphic({ account, song, scores: enriched });
       const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
       await replyPayload(interaction, { files: [attachment] });
       return;
