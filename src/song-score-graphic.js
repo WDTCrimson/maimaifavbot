@@ -6,6 +6,7 @@ import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 
 const TOMOMAI     = join(process.cwd(), 'data', 'assets', 'tomomai', 'res');
 const SCORE_ASSET = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'score');
+const RANK_ASSET  = join(process.cwd(), 'data', 'assets', 'dxrating', 'rank');
 const VER_ASSET   = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'version');
 const DANI_ASSET  = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'dani');
 
@@ -102,20 +103,26 @@ function starImageFile(n) { return n >= 5 ? 'star_3.png' : n >= 3 ? 'star_2.png'
 
 function getRankIconFile(achievement) {
   const a = Number(achievement) || 0;
-  if (a >= 1005000) return 'music_icon_sssp.png';
-  if (a >= 1000000) return 'music_icon_sss.png';
-  if (a >= 995000)  return 'music_icon_ssp.png';
-  if (a >= 990000)  return 'music_icon_ss.png';
-  if (a >= 970000)  return 'music_icon_sp.png';
-  if (a >= 940000)  return 'music_icon_s.png';
-  if (a >= 900000)  return 'music_icon_aaa.png';
-  if (a >= 800000)  return 'music_icon_aa.png';
-  if (a >= 750000)  return 'music_icon_a.png';
-  if (a >= 700000)  return 'music_icon_bbb.png';
-  if (a >= 600000)  return 'music_icon_bb.png';
-  if (a >= 500000)  return 'music_icon_b.png';
-  if (a >= 400000)  return 'music_icon_c.png';
-  return 'music_icon_d.png';
+  if (a >= 1005000) return 'sssp.png';
+  if (a >= 1000000) return 'sss.png';
+  if (a >= 995000)  return 'ssp.png';
+  if (a >= 990000)  return 'ss.png';
+  if (a >= 970000)  return 'sp.png';
+  if (a >= 940000)  return 's.png';
+  if (a >= 900000)  return 'aaa.png';
+  if (a >= 800000)  return 'aa.png';
+  if (a >= 750000)  return 'a.png';
+  if (a >= 700000)  return 'bbb.png';
+  if (a >= 600000)  return 'bb.png';
+  if (a >= 500000)  return 'b.png';
+  if (a >= 400000)  return 'c.png';
+  return 'd.png';
+}
+
+function rankIconPath(achievement, gameVersion) {
+  const v = Math.floor(Number(gameVersion) || 13);
+  const folder = v >= 13 ? 'buddies-plus' : v >= 12 ? 'buddies' : v >= 11 ? 'festival-plus' : 'circle-plus';
+  return join(RANK_ASSET, folder, getRankIconFile(achievement));
 }
 
 // Badge file for FC (from badge/13/ directory)
@@ -458,9 +465,9 @@ async function drawDiffRow(ctx, score, y, badgeVersion) {
   ctx.fillStyle='#ffffff'; ctx.shadowColor='rgba(0,0,0,0.8)'; ctx.shadowBlur=4;
   ctx.fillText(levelStr, boxX+11, midY); ctx.restore();
 
-  // Rank icon (music_icon_*.png, 120×48)
+  // Rank icon (dxrating/rank/*.png, 120×48)
   let iconX = boxX + boxW + 12;
-  const rankImg = await loadCached(join(SCORE_ASSET, getRankIconFile(score?.achievement)));
+  const rankImg = await loadCached(rankIconPath(score?.achievement, badgeVersion));
   if (rankImg) {
     const rh = 54, rw2 = rankImg.width * (rh / rankImg.height);
     ctx.drawImage(rankImg, iconX, midY - rh/2, rw2, rh);
