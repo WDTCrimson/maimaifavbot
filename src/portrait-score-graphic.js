@@ -98,15 +98,15 @@ function getRankIconFile(achievement) {
   if (a >= 1000000) return 'music_icon_sss.png';
   if (a >= 995000)  return 'music_icon_ssp.png';
   if (a >= 990000)  return 'music_icon_ss.png';
-  if (a >= 970000)  return 'music_icon_sp.png';
-  if (a >= 940000)  return 'music_icon_s.png';
-  if (a >= 900000)  return 'music_icon_aaa.png';
-  if (a >= 800000)  return 'music_icon_aa.png';
-  if (a >= 750000)  return 'music_icon_a.png';
-  if (a >= 700000)  return 'music_icon_bbb.png';
-  if (a >= 600000)  return 'music_icon_bb.png';
-  if (a >= 500000)  return 'music_icon_b.png';
-  if (a >= 400000)  return 'music_icon_c.png';
+  if (a >= 980000)  return 'music_icon_sp.png';
+  if (a >= 970000)  return 'music_icon_s.png';
+  if (a >= 940000)  return 'music_icon_aaa.png';
+  if (a >= 900000)  return 'music_icon_aa.png';
+  if (a >= 800000)  return 'music_icon_a.png';
+  if (a >= 750000)  return 'music_icon_bbb.png';
+  if (a >= 700000)  return 'music_icon_bb.png';
+  if (a >= 600000)  return 'music_icon_b.png';
+  if (a >= 500000)  return 'music_icon_c.png';
   return 'music_icon_d.png';
 }
 

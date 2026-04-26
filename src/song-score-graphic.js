@@ -107,15 +107,15 @@ function getRankIconFile(achievement) {
   if (a >= 1000000) return 'sss.png';
   if (a >= 995000)  return 'ssp.png';
   if (a >= 990000)  return 'ss.png';
-  if (a >= 970000)  return 'sp.png';
-  if (a >= 940000)  return 's.png';
-  if (a >= 900000)  return 'aaa.png';
-  if (a >= 800000)  return 'aa.png';
-  if (a >= 750000)  return 'a.png';
-  if (a >= 700000)  return 'bbb.png';
-  if (a >= 600000)  return 'bb.png';
-  if (a >= 500000)  return 'b.png';
-  if (a >= 400000)  return 'c.png';
+  if (a >= 980000)  return 'sp.png';
+  if (a >= 970000)  return 's.png';
+  if (a >= 940000)  return 'aaa.png';
+  if (a >= 900000)  return 'aa.png';
+  if (a >= 800000)  return 'a.png';
+  if (a >= 750000)  return 'bbb.png';
+  if (a >= 700000)  return 'bb.png';
+  if (a >= 600000)  return 'b.png';
+  if (a >= 500000)  return 'c.png';
   return 'd.png';
 }
 
