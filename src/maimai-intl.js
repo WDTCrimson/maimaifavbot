@@ -58,7 +58,7 @@ function normalizeTitleLoose(value) {
 }
 
 function parseIntegerText(value) {
-  const digits = String(value || '').replace(/[^\d]/g, '');
+  const digits = String(value || '').normalize('NFKC').replace(/[^\d]/g, '');
   if (!digits) {
     return null;
   }
@@ -67,7 +67,7 @@ function parseIntegerText(value) {
 }
 
 function parseDxScoreText(value) {
-  const text = String(value || '').trim();
+  const text = String(value || '').normalize('NFKC').trim();
   const match = text.match(/([\d,]+)\s*\/\s*([\d,]+)/);
   if (!match) {
     return null;
