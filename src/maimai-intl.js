@@ -57,6 +57,39 @@ function normalizeTitleLoose(value) {
     .trim();
 }
 
+function parseIntegerText(value) {
+  const digits = String(value || '').replace(/[^\d]/g, '');
+  if (!digits) {
+    return null;
+  }
+  const parsed = Number.parseInt(digits, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseDxScoreText(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/([\d,]+)\s*\/\s*([\d,]+)/);
+  if (!match) {
+    return null;
+  }
+
+  const dxScore = parseIntegerText(match[1]);
+  const maxDxScore = parseIntegerText(match[2]);
+  if (dxScore == null || maxDxScore == null) {
+    return null;
+  }
+
+  return { dxScore, maxDxScore };
+}
+
+function maxDxScoreFromChart(chart) {
+  const total = Number(chart?.noteCounts?.total);
+  if (!Number.isFinite(total) || total <= 0) {
+    return null;
+  }
+  return total * 3;
+}
+
 function normalizeIntlClalToken(value) {
   const text = String(value || '').trim();
   if (!text) {
@@ -810,8 +843,8 @@ async function fetchRecentPlays(cookies) {
       }
 
       const dxScoreText = record.find('.playlog_score_block > .f_15').text().trim();
-      const dxScoreMatch = dxScoreText.match(/(\d+)\s*\/\s*(\d+)/);
-      if (!dxScoreMatch) {
+      const dxScoreParsed = parseDxScoreText(dxScoreText);
+      if (!dxScoreParsed) {
         return;
       }
 
@@ -843,8 +876,8 @@ async function fetchRecentPlays(cookies) {
         type: musicType,
         typeIconUrl: toAbsoluteIntlUrl(musicKindIcon),
         achievement: Math.round(Number.parseFloat(achievementMatch[1]) * 10000),
-        dxScore: Number.parseInt(dxScoreMatch[1], 10),
-        maxDxScore: Number.parseInt(dxScoreMatch[2], 10),
+        dxScore: dxScoreParsed.dxScore,
+        maxDxScore: dxScoreParsed.maxDxScore,
         fc,
         fs,
         track,
@@ -1034,8 +1067,8 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
       }
 
       const dxScoreText = scoreBlocks.eq(1).text().trim();
-      const dxScoreMatch = dxScoreText.match(/(\d+)\s*\/\s*(\d+)/);
-      if (!dxScoreMatch) {
+      const dxScoreParsed = parseDxScoreText(dxScoreText);
+      if (!dxScoreParsed) {
         return;
       }
 
@@ -1051,8 +1084,8 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
         level,
         type: musicType,
         achievement: Math.round(Number.parseFloat(achievementMatch[1]) * 10000),
-        dxScore: Number.parseInt(dxScoreMatch[1], 10),
-        maxDxScore: Number.parseInt(dxScoreMatch[2], 10),
+        dxScore: dxScoreParsed.dxScore,
+        maxDxScore: dxScoreParsed.maxDxScore,
         fc,
         fs
       });
@@ -1101,6 +1134,7 @@ function buildBest50(scores, songCatalog) {
     });
 
     const addedVersion = resolveChartVersionId(matched.chart.version);
+    const maxDxScore = maxDxScoreFromChart(matched.chart) ?? score.maxDxScore;
     rated.push({
       favoriteId: matched.song.favoriteId,
       title: matched.song.title,
@@ -1110,7 +1144,7 @@ function buildBest50(scores, songCatalog) {
       level: score.level,
       achievement: score.achievement,
       dxScore: score.dxScore,
-      maxDxScore: score.maxDxScore,
+      maxDxScore,
       fc: score.fc,
       fs: score.fs,
       internalLevelValue,

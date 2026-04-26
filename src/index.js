@@ -1384,10 +1384,20 @@ async function handleSongCommand(interaction) {
           String(c.type || '').toLowerCase() === String(entry.type || '').toLowerCase()
         );
         const internalLevelValue = chart?.internalLevelValue ?? entry.internalLevelValue ?? null;
+        const chartMaxDxScore = Number.isFinite(Number(chart?.noteCounts?.total))
+          ? Number(chart.noteCounts.total) * 3
+          : null;
         const rating = internalLevelValue != null
           ? calculateChartRating({ achievement: entry.achievement, fc: entry.fc, internalLevelValue, gameVersion })
           : entry.rating ?? null;
-        return { ...entry, internalLevelValue, rating, version: chart?.version ?? entry.version };
+        return {
+          ...entry,
+          internalLevelValue,
+          rating,
+          version: chart?.version ?? entry.version,
+          noteCounts: chart?.noteCounts ?? entry.noteCounts ?? null,
+          maxDxScore: chartMaxDxScore ?? entry.maxDxScore
+        };
       });
 
       // Sort by canonical difficulty order
