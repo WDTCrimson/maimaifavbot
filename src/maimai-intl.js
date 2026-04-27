@@ -7,6 +7,7 @@ const INTL_RECORD_URL = 'https://maimaidx-eng.com/maimai-mobile/record/';
 const INTL_PLAYLOG_DETAIL_URL = 'https://maimaidx-eng.com/maimai-mobile/record/playlogDetail/';
 const INTL_SCORE_SEARCH_URL =
   'https://maimaidx-eng.com/maimai-mobile/record/musicGenre/search/?genre=99&diff=';
+const INTL_MUSIC_DETAIL_URL = 'https://maimaidx-eng.com/maimai-mobile/record/musicDetail/';
 const INTL_FAVORITE_EDIT_URL = 'https://maimaidx-eng.com/maimai-mobile/home/userOption/favorite/updateMusic/';
 
 const CONFUSABLE_CHAR_MAP = new Map([
@@ -139,6 +140,79 @@ function getScoreRowContainer(block) {
   }
   const parent = block.parent();
   return parent.length ? parent : block;
+}
+
+function isMusicDetailUrl(value) {
+  const url = String(value || '').trim();
+  return url.includes('/record/musicDetail');
+}
+
+function extractMusicDetailParams($, block, parent = null) {
+  const roots = [
+    block,
+    parent,
+    block.closest('.basic_block'),
+    block.closest('.p_5'),
+    block.closest('.m_15')
+  ].filter((root, index, list) => root?.length && list.findIndex((item) => item?.[0] === root[0]) === index);
+
+  for (const root of roots) {
+    const forms = root
+      .find('form')
+      .add(root.is('form') ? root : root.closest('form'))
+      .filter((_, form) => isMusicDetailUrl($(form).attr('action')));
+
+    for (const formElement of forms.toArray()) {
+      const form = $(formElement);
+      const action = form.attr('action') || INTL_MUSIC_DETAIL_URL;
+      const url = new URL(action, INTL_MUSIC_DETAIL_URL);
+      const params = new URLSearchParams(url.search);
+
+      form.find('input, select, textarea').each((_, fieldElement) => {
+        const field = $(fieldElement);
+        const name = String(field.attr('name') || '').trim();
+        if (!name) {
+          return;
+        }
+
+        const tagName = String(fieldElement.tagName || '').toLowerCase();
+        const type = String(field.attr('type') || '').toLowerCase();
+        if (tagName === 'input' && ['button', 'image', 'submit', 'file'].includes(type)) {
+          return;
+        }
+
+        const value = field.val();
+        if (Array.isArray(value)) {
+          for (const item of value) {
+            params.append(name, String(item ?? ''));
+          }
+          return;
+        }
+        params.set(name, String(value ?? ''));
+      });
+
+      const serialized = params.toString();
+      if (serialized) {
+        return serialized;
+      }
+    }
+
+    const links = root
+      .find('a[href]')
+      .add(root.is('a') ? root : root.closest('a[href]'))
+      .filter((_, link) => isMusicDetailUrl($(link).attr('href')));
+
+    for (const linkElement of links.toArray()) {
+      const href = $(linkElement).attr('href') || '';
+      const url = new URL(href, INTL_MUSIC_DETAIL_URL);
+      const serialized = url.searchParams.toString();
+      if (serialized) {
+        return serialized;
+      }
+    }
+  }
+
+  return null;
 }
 
 function normalizeIntlClalToken(value) {
@@ -1165,6 +1239,25 @@ async function fetchAllScores(cookies) {
   return pages.flat();
 }
 
+async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber) {
+  if (!detailParams || difficultyNumber == null || difficultyNumber < 0 || difficultyNumber >= difficultySelectors.length) {
+    return null;
+  }
+
+  const html = await fetchText(`${INTL_MUSIC_DETAIL_URL}?${detailParams}`, {
+    cookies,
+    referer: `${INTL_SCORE_SEARCH_URL}${difficultyNumber}`
+  });
+  const load = await loadCheerio();
+  const $ = load(html);
+  const block = $(difficultySelectors[difficultyNumber]).first();
+  if (!block.length) {
+    return null;
+  }
+
+  return parseScoreRowMetadata(block);
+}
+
 function buildBest50(scores, songCatalog) {
   if (!songCatalog?.available) {
     return null;
@@ -1296,6 +1389,7 @@ export async function fetchSongPlayCounts(rawToken, queries) {
   }
 
   const results = new Map();
+  const detailLookups = new Map();
   await Promise.all([...byDiffNum.entries()].map(async ([diffNum, qs]) => {
     try {
       const html = await fetchText(`${INTL_SCORE_SEARCH_URL}${diffNum}`, {
@@ -1321,16 +1415,37 @@ export async function fetchSongPlayCounts(rawToken, queries) {
         );
         if (!q) return;
 
+        const key = `${String(q.difficulty || '').toLowerCase()}:${String(q.type || 'std').toLowerCase()}`;
         const metadata = mergeScoreRowMetadata(
           parseScoreRowMetadata(block),
           parseScoreRowMetadata(parent)
         );
-        const key = `${String(q.difficulty || '').toLowerCase()}:${String(q.type || 'std').toLowerCase()}`;
         if (metadata.playCount != null) {
           results.set(key, metadata.playCount);
+          return;
+        }
+
+        const detailParams = extractMusicDetailParams($, block, parent);
+        if (detailParams && !detailLookups.has(key)) {
+          detailLookups.set(key, { detailParams, difficultyNumber: diffNum });
         }
       });
     } catch { /* ignore per-difficulty fetch failures */ }
+  }));
+
+  await Promise.all([...detailLookups.entries()].map(async ([key, lookup]) => {
+    if (results.has(key)) {
+      return;
+    }
+
+    try {
+      const metadata = await fetchMusicDetailMetadata(cookies, lookup.detailParams, lookup.difficultyNumber);
+      if (metadata?.playCount != null) {
+        results.set(key, metadata.playCount);
+      }
+    } catch {
+      // ignore per-song detail failures
+    }
   }));
 
   return results;
