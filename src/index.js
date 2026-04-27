@@ -1415,14 +1415,19 @@ async function handleSongCommand(interaction) {
       const linkedToken = linkedAuthForScore?.region === 'intl' ? linkedAuthForScore.token : null;
       if (linkedToken) {
         try {
-          const queries = enriched.map(e => ({
+          const queries = enriched
+            .filter(e => e.playCount == null)
+            .map(e => ({
             difficulty: String(e.difficulty || '').toLowerCase(),
             type:       String(e.type       || 'std').toLowerCase(),
             title:      e.title || song.title
           }));
-          const playCounts = await fetchSongPlayCounts(linkedToken, queries);
+          const playCounts = queries.length ? await fetchSongPlayCounts(linkedToken, queries) : new Map();
           if (playCounts.size > 0) {
             finalScores = enriched.map(e => {
+              if (e.playCount != null) {
+                return e;
+              }
               const key = `${String(e.difficulty || '').toLowerCase()}:${String(e.type || 'std').toLowerCase()}`;
               const pc = playCounts.get(key);
               return pc != null ? { ...e, playCount: pc } : e;

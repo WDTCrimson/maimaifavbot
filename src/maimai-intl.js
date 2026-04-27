@@ -1284,8 +1284,8 @@ function parseMusicDetailPlayCount($) {
 
   const bodyText = $('body').text().normalize('NFKC').replace(/\s+/g, ' ').trim();
   for (const pattern of [
-    /(?:play count|plays|played|プレイ回数|楽曲プレイ回数)[^\d]{0,20}([\d,]+)/i,
-    /([\d,]+)\s*(?:plays?|回)/i
+    /(?:play count|プレイ回数|楽曲プレイ回数)[^\d]{0,20}([\d,]+)/i,
+    /([\d,]+)\s*回/i
   ]) {
     const match = bodyText.match(pattern);
     if (!match) {
