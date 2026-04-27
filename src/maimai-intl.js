@@ -91,12 +91,22 @@ function maxDxScoreFromChart(chart) {
   return total * 3;
 }
 
+function parsePlayCountFromScoreRowText(value) {
+  const text = String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+  const match = text.match(/PLAY COUNT\s*[:：]\s*((?:\d[\d,\s]*){1,8})/i);
+  if (!match) {
+    return null;
+  }
+  return parseIntegerText(match[1]);
+}
+
 function parseScoreRowMetadata(block) {
-  const text = block.text().normalize('NFKC').replace(/\s+/g, ' ').trim();
-  const playCountMatch = text.match(/PLAY COUNT\s*[:：]\s*([\d,]+)/i);
+  const metadataBlock = block.clone();
+  metadataBlock.find('.music_score_block, .music_name_block, .music_lv_block').remove();
+  const text = metadataBlock.text().normalize('NFKC').replace(/\s+/g, ' ').trim();
   const lastPlayedMatch = text.match(/Last played date\s*[:：]\s*(\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})/i);
   return {
-    playCount: playCountMatch ? parseIntegerText(playCountMatch[1]) : null,
+    playCount: parsePlayCountFromScoreRowText(text),
     playedAt: lastPlayedMatch ? lastPlayedMatch[1].trim() : null
   };
 }
