@@ -8,8 +8,8 @@ const TOMOMAI     = join(process.cwd(), 'data', 'assets', 'tomomai', 'res');
 const SCORE_ASSET = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'score');
 const RANK_ASSET  = join(process.cwd(), 'data', 'assets', 'dxrating', 'rank');
 const VER_ASSET   = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'version');
-const DANI_ASSET  = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'dani');
 const CAT_ASSET   = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'category');
+const DANI_ASSET  = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'dani');
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
@@ -168,12 +168,6 @@ function fsBadgeFile(fs) {
     [String(fs || '').toLowerCase()] ?? 'none.png';
 }
 
-function getDaniFile(danRank) {
-  const n = Number(danRank);
-  if (!Number.isFinite(n) || n < 0 || n > 23) return null;
-  return `dani_${String(n).padStart(2, '0')}.png`;
-}
-
 function versionNameToFile(version) {
   if (!version) return null;
   const raw = String(version).normalize('NFKC').toLowerCase().trim();
@@ -269,7 +263,8 @@ async function drawPlayerHeader(ctx, account) {
   const title     = account?.extra?.title || '';
   const rating    = Number(account?.metrics?.rating) || 0;
   const gameVer   = Number(account?.gameVersion) || 13;
-  const danRank   = account?.metrics?.danRank ?? account?.extra?.danRank ?? null;
+  const courseRankIndex = account?.extra?.courseRankIndex ?? null;
+  const courseRankUrl   = account?.extra?.courseRankUrl ?? null;
   const iconUrl   = account?.extra?.iconUrl || account?.player?.iconUrl || null;
 
   // Semi-transparent header strip
@@ -322,9 +317,11 @@ async function drawPlayerHeader(ctx, account) {
   let rx = W - 14;
 
   // Dan badge
-  const daniFile = getDaniFile(danRank);
-  if (daniFile) {
-    const di = await loadCached(join(DANI_ASSET, daniFile));
+  const daniSrc = courseRankIndex != null
+    ? join(DANI_ASSET, `dani_${String(courseRankIndex).padStart(2, '0')}.png`)
+    : courseRankUrl;
+  if (daniSrc) {
+    const di = await loadCached(daniSrc);
     if (di) {
       const dh = 42, dw = di.width * (dh / di.height);
       rx -= dw;

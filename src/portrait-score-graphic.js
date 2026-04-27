@@ -290,7 +290,8 @@ async function drawSectionLabel(ctx, text, x, y) {
 async function drawHeader(ctx, account) {
   const rating   = Number(account?.metrics?.rating) || 0;
   const name     = account?.player?.name || 'Player';
-  const daniId   = account?.extra?.courseRank ?? account?.courseRankIndex ?? null;
+  const courseRankIndex = account?.extra?.courseRankIndex ?? null;
+  const courseRankUrl   = account?.extra?.courseRankUrl ?? null;
 
   // rating frame
   const frameIdx  = getRatingFrameIndex(rating);
@@ -310,9 +311,11 @@ async function drawHeader(ctx, account) {
   }
 
   // dan rank icon
-  if (daniId != null) {
-    const daniFile = `dani_${String(Number(daniId)).padStart(2, '0')}.png`;
-    const daniImg  = await loadCachedImage(join(DANI_ASSET, daniFile));
+  const daniSrc = courseRankIndex != null
+    ? join(DANI_ASSET, `dani_${String(courseRankIndex).padStart(2, '0')}.png`)
+    : courseRankUrl;
+  if (daniSrc) {
+    const daniImg = await loadCachedImage(daniSrc);
     if (daniImg) {
       ctx.drawImage(daniImg,
         HEADER.dani.x, HEADER.dani.y,

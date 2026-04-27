@@ -888,6 +888,8 @@ async function extractPlayerSnapshot(html) {
       ? classRankSrc
       : `https://maimaidx-eng.com${classRankSrc}`
     : null;
+  const courseRankIndexMatch = courseRankSrc.match(/course_rank_(\d+)/);
+  const courseRankIndex = courseRankIndexMatch ? Number.parseInt(courseRankIndexMatch[1], 10) : null;
 
   return {
     player: {
@@ -908,7 +910,8 @@ async function extractPlayerSnapshot(html) {
       stars,
       iconUrl,
       courseRankUrl,
-      classRankUrl
+      classRankUrl,
+      courseRankIndex
     }
   };
 }
