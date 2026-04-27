@@ -9,6 +9,7 @@ const SCORE_ASSET = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'score');
 const RANK_ASSET  = join(process.cwd(), 'data', 'assets', 'dxrating', 'rank');
 const VER_ASSET   = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'version');
 const DANI_ASSET  = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'dani');
+const CAT_ASSET   = join(process.cwd(), 'data', 'assets', 'maimai-ui', 'category');
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +34,7 @@ const DIFF_NAME  = { basic:'BASIC',   advanced:'ADVANCED', expert:'EXPERT', mast
 // ─── Cache / fonts ────────────────────────────────────────────────────────────
 
 const IMG_CACHE        = new Map();
+const IMG_BOUNDS_CACHE = new WeakMap();
 const REGISTERED_FONTS = new Set();
 
 async function fileExists(p) { try { await stat(p); return true; } catch { return false; } }
@@ -49,6 +51,37 @@ async function loadCached(path) {
   })();
   IMG_CACHE.set(path, p);
   return p;
+}
+
+function getVisibleImageBounds(image) {
+  if (!image) return null;
+  if (IMG_BOUNDS_CACHE.has(image)) return IMG_BOUNDS_CACHE.get(image);
+
+  const canvas = new Canvas(image.width, image.height);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(image, 0, 0);
+  const pixels = ctx.getImageData(0, 0, image.width, image.height).data;
+  let minX = image.width;
+  let minY = image.height;
+  let maxX = -1;
+  let maxY = -1;
+
+  for (let y = 0; y < image.height; y++) {
+    for (let x = 0; x < image.width; x++) {
+      const alpha = pixels[(y * image.width + x) * 4 + 3];
+      if (alpha <= 8) continue;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
+    }
+  }
+
+  const bounds = maxX >= minX && maxY >= minY
+    ? { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 }
+    : { x: 0, y: 0, width: image.width, height: image.height };
+  IMG_BOUNDS_CACHE.set(image, bounds);
+  return bounds;
 }
 
 async function registerFonts() {
@@ -151,6 +184,20 @@ function versionNameToFile(version) {
     .replace(/_+/g, '_').replace(/^_|_$/g, '');
   const alias = { maimai_dx: 'maimai_deluxe', maimai_dx_plus: 'maimai_deluxe_plus' };
   return `${alias[n] ?? n}.png`;
+}
+
+function categoryAssetFile(category) {
+  const text = String(category || '').normalize('NFKC').toLowerCase().trim();
+  if (!text) return null;
+
+  if (text === 'maimai' || text.includes('original')) return 'category_original.png';
+  if (text.includes('pops') || text.includes('anime') || text.includes('アニメ')) return 'category_popsanime.png';
+  if (text.includes('niconico') || text.includes('vocaloid') || text.includes('ボーカロイド')) return 'category_niconico.png';
+  if (text.includes('touhou') || text.includes('東方')) return 'category_touhou.png';
+  if (text.includes('chunithm') || text.includes('ongeki') || text.includes('オンゲキ')) return 'category_chugeki.png';
+  if (text.includes('variety') || text.includes('バラエティ') || text.includes('ゲーム')) return 'category_variety.png';
+
+  return null;
 }
 
 function formatAchievement(value) {
@@ -385,15 +432,33 @@ async function drawSongInfo(ctx, song, scores, y) {
     ctx.fillText(`BPM  ${song.bpm}`, infoX, cy); cy += 22;
   }
 
-  // Category pill
-  const genre = song?.category || song?.genre;
-  if (genre) {
+  // Category badge
+  const category = song?.category || song?.genre;
+  const categoryFile = categoryAssetFile(category);
+  const categoryImg = categoryFile ? await loadCached(join(CAT_ASSET, categoryFile)) : null;
+  if (categoryImg) {
+    const bounds = getVisibleImageBounds(categoryImg);
+    const badgeW = Math.min(142, infoW);
+    const badgeH = bounds.height * (badgeW / bounds.width);
+    ctx.shadowBlur = 6;
+    ctx.drawImage(
+      categoryImg,
+      bounds.x,
+      bounds.y,
+      bounds.width,
+      bounds.height,
+      infoX,
+      cy - 2,
+      badgeW,
+      badgeH
+    );
+  } else if (category) {
     ctx.font=`500 13px ${FONT}`;
-    const gw = ctx.measureText(genre).width + 18;
+    const gw = ctx.measureText(category).width + 18;
     ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.shadowBlur=0;
     rr(ctx, infoX, cy, gw, 22, 4); ctx.fill();
     ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.textBaseline='middle';
-    ctx.fillText(genre, infoX+9, cy+11);
+    ctx.fillText(category, infoX+9, cy+11);
   }
 
   ctx.restore();
