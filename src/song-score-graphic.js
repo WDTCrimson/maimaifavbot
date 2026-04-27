@@ -178,8 +178,18 @@ function getDaniFile(danRank) {
 
 function versionNameToFile(version) {
   if (!version) return null;
-  const n = String(version).toLowerCase()
-    .replace(/でらっくす/g, 'maimai_deluxe')
+  const raw = String(version).normalize('NFKC').toLowerCase().trim();
+  const exactAlias = {
+    'maimaiでらっくす': 'maimai_deluxe',
+    'maimaiでらっくす plus': 'maimai_deluxe_plus',
+    'maimai dx': 'maimai_deluxe',
+    'maimai dx plus': 'maimai_deluxe_plus'
+  };
+  if (exactAlias[raw]) return `${exactAlias[raw]}.png`;
+
+  const n = raw
+    .replace(/maimaiでらっくす/g, 'maimai_deluxe')
+    .replace(/でらっくす/g, 'deluxe')
     .replace(/\s+/g, '_').replace(/[^\w]/g, '_')
     .replace(/_+/g, '_').replace(/^_|_$/g, '');
   const alias = { maimai_dx: 'maimai_deluxe', maimai_dx_plus: 'maimai_deluxe_plus' };
@@ -438,7 +448,7 @@ async function drawSongInfo(ctx, song, scores, y) {
   const categoryImg = categoryFile ? await loadCached(join(CAT_ASSET, categoryFile)) : null;
   if (categoryImg) {
     const bounds = getVisibleImageBounds(categoryImg);
-    const badgeW = Math.min(142, infoW);
+    const badgeW = Math.min(85, infoW);
     const badgeH = bounds.height * (badgeW / bounds.width);
     ctx.shadowBlur = 6;
     ctx.drawImage(
