@@ -16,7 +16,7 @@ import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './acc
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
-import { applyIntlFavoritesFromClal, calculateChartRating, fetchIntlAccountSnapshotFromClal, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, calculateChartRating, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -1407,7 +1407,31 @@ async function handleSongCommand(interaction) {
         DIFF_ORDER.indexOf(String(b.difficulty || '').toLowerCase())
       );
 
-      const graphic = await renderSongScoreGraphic({ account, song, scores: enriched });
+      // Fetch per-difficulty play counts on-demand using the stored token
+      let finalScores = enriched;
+      const linkedAuthForScore = account.linkedAuth
+        ? restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret)
+        : null;
+      const linkedToken = linkedAuthForScore?.region === 'intl' ? linkedAuthForScore.token : null;
+      if (linkedToken) {
+        try {
+          const queries = enriched.map(e => ({
+            difficulty: String(e.difficulty || '').toLowerCase(),
+            type:       String(e.type       || 'std').toLowerCase(),
+            title:      e.title || song.title
+          }));
+          const playCounts = await fetchSongPlayCounts(linkedToken, queries);
+          if (playCounts.size > 0) {
+            finalScores = enriched.map(e => {
+              const key = `${String(e.difficulty || '').toLowerCase()}:${String(e.type || 'std').toLowerCase()}`;
+              const pc = playCounts.get(key);
+              return pc != null ? { ...e, playCount: pc } : e;
+            });
+          }
+        } catch { /* play count is non-fatal — render without it */ }
+      }
+
+      const graphic = await renderSongScoreGraphic({ account, song, scores: finalScores });
       const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
       await replyPayload(interaction, { files: [attachment] });
       return;

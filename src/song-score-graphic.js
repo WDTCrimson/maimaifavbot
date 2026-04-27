@@ -255,6 +255,12 @@ async function drawPlayerHeader(ctx, account) {
 
   ctx.font = `700 28px ${FONT}`; ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'alphabetic';
   ctx.fillText(name, tx, PLAYER_H / 2 + 12);
+
+  const totalPlays = account?.metrics?.playCount;
+  if (totalPlays != null) {
+    ctx.font = `500 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText(`${Number(totalPlays).toLocaleString()} plays`, tx, PLAYER_H / 2 + 32);
+  }
   ctx.restore();
 
   // ── Right side: dani badge + tomomai rating frame ─────────────────────────
@@ -423,26 +429,30 @@ async function drawDiffRow(ctx, score, y, badgeVersion) {
   ctx.shadowColor='rgba(0,0,0,0.6)'; ctx.shadowBlur=4;
   ctx.fillText(name, rx+16, y+ROW_HDR_H/2); ctx.restore();
 
-  // Date + play count (header right)
+  // Play count + date (header right, play count rightmost)
   const dateStr  = formatDate(score?.playedAtIso ?? score?.playedAt ?? null);
-  const countStr = score?.playCount != null ? String(score.playCount) : null;
+  const countStr = score?.playCount != null ? `${Number(score.playCount).toLocaleString()} plays` : null;
   if (dateStr || countStr) {
     ctx.save(); ctx.textBaseline='middle'; ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=3;
-    const rightX = rx + rw - 14;
-    if (dateStr) {
-      ctx.font=`400 12px ${FONT}`; ctx.fillStyle='rgba(255,255,255,0.75)';
-      const dw = ctx.measureText(dateStr).width;
-      ctx.fillText('Last Played', rightX - dw, y + ROW_HDR_H/2 - 9);
-      ctx.font=`600 13px ${FONT}`;
-      ctx.fillText(dateStr, rightX - dw, y + ROW_HDR_H/2 + 9);
-    }
+    let curX = rx + rw - 14;
+
     if (countStr) {
-      const label = 'Play Count';
-      ctx.font=`400 12px ${FONT}`; ctx.fillStyle='rgba(255,255,255,0.75)';
+      ctx.font=`600 14px ${FONT}`; ctx.fillStyle='#ffffff';
       const cw = ctx.measureText(countStr).width;
-      ctx.fillText(label, rightX - cw, y + ROW_HDR_H/2 - 9);
-      ctx.font=`600 13px ${FONT}`;
-      ctx.fillText(countStr, rightX - cw, y + ROW_HDR_H/2 + 9);
+      curX -= cw;
+      ctx.fillText(countStr, curX, y + ROW_HDR_H/2 + 5);
+      ctx.font=`400 11px ${FONT}`; ctx.fillStyle='rgba(255,255,255,0.6)';
+      ctx.fillText('Plays', curX, y + ROW_HDR_H/2 - 7);
+      curX -= 20;
+    }
+
+    if (dateStr) {
+      ctx.font=`600 13px ${FONT}`; ctx.fillStyle='rgba(255,255,255,0.85)';
+      const dw = ctx.measureText(dateStr).width;
+      curX -= dw;
+      ctx.fillText(dateStr, curX, y + ROW_HDR_H/2 + 5);
+      ctx.font=`400 11px ${FONT}`; ctx.fillStyle='rgba(255,255,255,0.6)';
+      ctx.fillText('Last Played', curX, y + ROW_HDR_H/2 - 7);
     }
     ctx.restore();
   }
