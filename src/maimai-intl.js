@@ -112,13 +112,23 @@ function parseScoreRowMetadata(block) {
 
 function mergeScoreRowMetadata(...items) {
   for (const item of items) {
-    if (item?.playCount != null || item?.playedAt) {
+    if (item?.playCount != null) {
       return {
-        playCount: item.playCount ?? null,
+        playCount: item.playCount,
         playedAt: item.playedAt ?? null
       };
     }
   }
+
+  for (const item of items) {
+    if (item?.playedAt) {
+      return {
+        playCount: null,
+        playedAt: item.playedAt
+      };
+    }
+  }
+
   return { playCount: null, playedAt: null };
 }
 
@@ -1090,7 +1100,11 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
       }
 
       const parent = getScoreRowContainer(block);
-      const musicType = mapMusicTypeFromIcon(parent.find('img.music_kind_icon').attr('src') || '');
+      const musicType = mapMusicTypeFromIcon(
+        block.find('img.music_kind_icon').attr('src') ||
+        parent.find('img.music_kind_icon').attr('src') ||
+        ''
+      );
       if (!musicType) {
         return;
       }
@@ -1119,8 +1133,8 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
         .get();
       const { fc, fs } = parseFcFsFromIcons(h30Sources);
       const metadata = mergeScoreRowMetadata(
-        parseScoreRowMetadata(parent),
-        parseScoreRowMetadata(block)
+        parseScoreRowMetadata(block),
+        parseScoreRowMetadata(parent)
       );
 
       scores.push({
@@ -1295,10 +1309,10 @@ export async function fetchSongPlayCounts(rawToken, queries) {
         const block = $(element);
         if (block.find('.music_score_block').length === 0) return;
 
-        const parent = getScoreRowContainer(block);
         const blockNameRaw = block.find('.music_name_block').text().trim();
         const blockNorm   = normalizeTitle(blockNameRaw);
-        const iconSrc     = parent.find('img.music_kind_icon').attr('src') || '';
+        const parent = getScoreRowContainer(block);
+        const iconSrc     = block.find('img.music_kind_icon').attr('src') || parent.find('img.music_kind_icon').attr('src') || '';
         const blockType   = mapMusicTypeFromIcon(iconSrc) || 'std';
 
         const q = qs.find(q =>
@@ -1308,8 +1322,8 @@ export async function fetchSongPlayCounts(rawToken, queries) {
         if (!q) return;
 
         const metadata = mergeScoreRowMetadata(
-          parseScoreRowMetadata(parent),
-          parseScoreRowMetadata(block)
+          parseScoreRowMetadata(block),
+          parseScoreRowMetadata(parent)
         );
         const key = `${String(q.difficulty || '').toLowerCase()}:${String(q.type || 'std').toLowerCase()}`;
         if (metadata.playCount != null) {
