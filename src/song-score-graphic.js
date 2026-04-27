@@ -152,10 +152,8 @@ function getRankIconFile(achievement) {
   return 'd.png';
 }
 
-function rankIconPath(achievement, gameVersion) {
-  const v = Math.floor(Number(gameVersion) || 13);
-  const folder = v >= 13 ? 'buddies-plus' : v >= 12 ? 'buddies' : v >= 11 ? 'festival-plus' : 'circle-plus';
-  return join(RANK_ASSET, folder, getRankIconFile(achievement));
+function rankIconPath(achievement) {
+  return join(RANK_ASSET, 'prism-plus', getRankIconFile(achievement));
 }
 
 // Badge file for FC (from badge/13/ directory)
@@ -552,7 +550,7 @@ async function drawDiffRow(ctx, score, y, badgeVersion) {
 
   // Rank icon (dxrating/rank/*.png, 120×48)
   let iconX = boxX + boxW + 12;
-  const rankImg = await loadCached(rankIconPath(score?.achievement, badgeVersion));
+  const rankImg = await loadCached(rankIconPath(score?.achievement));
   if (rankImg) {
     const rh = 54, rw2 = rankImg.width * (rh / rankImg.height);
     ctx.drawImage(rankImg, iconX, midY - rh/2, rw2, rh);
