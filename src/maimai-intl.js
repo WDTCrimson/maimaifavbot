@@ -91,6 +91,16 @@ function maxDxScoreFromChart(chart) {
   return total * 3;
 }
 
+function parseScoreRowMetadata(block) {
+  const text = block.text().normalize('NFKC').replace(/\s+/g, ' ').trim();
+  const playCountMatch = text.match(/PLAY COUNT\s*[:：]\s*([\d,]+)/i);
+  const lastPlayedMatch = text.match(/Last played date\s*[:：]\s*(\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})/i);
+  return {
+    playCount: playCountMatch ? parseIntegerText(playCountMatch[1]) : null,
+    playedAt: lastPlayedMatch ? lastPlayedMatch[1].trim() : null
+  };
+}
+
 function normalizeIntlClalToken(value) {
   const text = String(value || '').trim();
   if (!text) {
@@ -1078,6 +1088,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
         .map((_, img) => $(img).attr('src') || '')
         .get();
       const { fc, fs } = parseFcFsFromIcons(h30Sources);
+      const metadata = parseScoreRowMetadata(block);
 
       scores.push({
         title: songName,
@@ -1088,7 +1099,9 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
         dxScore: dxScoreParsed.dxScore,
         maxDxScore: dxScoreParsed.maxDxScore,
         fc,
-        fs
+        fs,
+        playCount: metadata.playCount,
+        playedAt: metadata.playedAt
       });
     } catch {
       // ignore individual parse failures
@@ -1346,9 +1359,16 @@ export async function fetchSongPlayCounts(rawToken, queries) {
         );
         if (!q) return;
 
+        const metadata = parseScoreRowMetadata(block);
+        const key = `${String(q.difficulty || '').toLowerCase()}:${String(q.type || 'std').toLowerCase()}`;
+        if (metadata.playCount != null) {
+          detailParamMap.set(key, { playCount: metadata.playCount });
+          return;
+        }
+
         const detailParams = extractMusicDetailParams($, block);
         if (detailParams) {
-          detailParamMap.set(`${String(q.difficulty || '').toLowerCase()}:${String(q.type || 'std').toLowerCase()}`, detailParams);
+          detailParamMap.set(key, { detailParams });
         }
       });
     } catch { /* ignore per-difficulty fetch failures */ }
@@ -1356,8 +1376,12 @@ export async function fetchSongPlayCounts(rawToken, queries) {
 
   // Fetch detail pages concurrently and parse play counts
   const results = new Map();
-  await Promise.all([...detailParamMap.entries()].map(async ([key, detailParams]) => {
-    const count = await fetchMusicDetailPlayCount(cookies, detailParams);
+  await Promise.all([...detailParamMap.entries()].map(async ([key, value]) => {
+    if (value?.playCount != null) {
+      results.set(key, value.playCount);
+      return;
+    }
+    const count = await fetchMusicDetailPlayCount(cookies, value?.detailParams);
     if (count != null) results.set(key, count);
   }));
 
