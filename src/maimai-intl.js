@@ -1217,43 +1217,86 @@ function enrichRecentPlays(recentPlays, songCatalog) {
   });
 }
 
-// Extract the musicDetail ?idx= from a score block or its ancestors/children
-function extractMusicDetailHref($, block) {
-  const fromAncestor = block.parents('a[href*="musicDetail"]').first();
-  if (fromAncestor.length) return fromAncestor.attr('href') || null;
-  const fromChild = block.find('a[href*="musicDetail"]').first();
-  if (fromChild.length) return fromChild.attr('href') || null;
-  const fromParent = block.parent().find('a[href*="musicDetail"]').first();
-  if (fromParent.length) return fromParent.attr('href') || null;
+function extractMusicDetailParams($, block) {
+  const candidates = [
+    block.closest('form[action*="musicDetail"]'),
+    block.find('form[action*="musicDetail"]').first(),
+    block.parent().find('form[action*="musicDetail"]').first(),
+    block.parents('a[href*="musicDetail"]').first(),
+    block.find('a[href*="musicDetail"]').first(),
+    block.parent().find('a[href*="musicDetail"]').first()
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate?.length) {
+      continue;
+    }
+
+    const params = new URLSearchParams();
+    const action = candidate.attr('action') || candidate.attr('href') || '';
+    const queryIndex = action.indexOf('?');
+    if (queryIndex >= 0) {
+      const actionParams = new URLSearchParams(action.slice(queryIndex + 1));
+      for (const [key, value] of actionParams.entries()) {
+        params.set(key, value);
+      }
+    }
+
+    candidate.find('input[name]').each((_, input) => {
+      const name = String($(input).attr('name') || '').trim();
+      const value = String($(input).attr('value') || '').trim();
+      if (name && value) {
+        params.set(name, value);
+      }
+    });
+
+    if ([...params.keys()].length) {
+      return params.toString();
+    }
+  }
+
   return null;
 }
 
-async function fetchMusicDetailPlayCount(cookies, idx) {
-  if (!idx) return null;
+function parseMusicDetailPlayCount($) {
+  for (const sel of ['.music_score_cnt', '.playlog_cnt', '.play_cnt', '.f_11.t_r', '.f_12.t_r']) {
+    const el = $(sel).first();
+    if (el.length) {
+      const n = parseIntegerText(el.text());
+      if (n != null && n > 0) {
+        return n;
+      }
+    }
+  }
+
+  const bodyText = $('body').text().normalize('NFKC').replace(/\s+/g, ' ').trim();
+  for (const pattern of [
+    /(?:play count|plays|played|プレイ回数|楽曲プレイ回数)[^\d]{0,20}([\d,]+)/i,
+    /([\d,]+)\s*(?:plays?|回)/i
+  ]) {
+    const match = bodyText.match(pattern);
+    if (!match) {
+      continue;
+    }
+    const n = parseIntegerText(match[1]);
+    if (n != null && n > 0) {
+      return n;
+    }
+  }
+
+  return null;
+}
+
+async function fetchMusicDetailPlayCount(cookies, detailParams) {
+  if (!detailParams) return null;
   try {
-    const html = await fetchText(`${INTL_MUSIC_DETAIL_URL}?idx=${idx}`, {
+    const html = await fetchText(`${INTL_MUSIC_DETAIL_URL}?${detailParams}`, {
       cookies,
       referer: 'https://maimaidx-eng.com/maimai-mobile/record/'
     });
     const load = await loadCheerio();
     const $ = load(html);
-
-    // Try common CSS classes for play count display
-    for (const sel of ['.music_score_cnt', '.playlog_cnt', '.play_cnt', '.f_11.t_r', '.f_12.t_r']) {
-      const el = $(sel).first();
-      if (el.length) {
-        const n = parseInt(el.text().replace(/[^\d]/g, ''), 10);
-        if (Number.isFinite(n) && n > 0) return n;
-      }
-    }
-    // Fallback: scan body text for "N play(s)" or "N回"
-    const bodyText = $('body').text().replace(/\s+/g, ' ');
-    const m = bodyText.match(/(\d[\d,]*)\s*(?:play(?:s)?|回)/i);
-    if (m) {
-      const n = parseInt(m[1].replace(/,/g, ''), 10);
-      if (Number.isFinite(n) && n > 0) return n;
-    }
-    return null;
+    return parseMusicDetailPlayCount($);
   } catch {
     return null;
   }
@@ -1277,8 +1320,8 @@ export async function fetchSongPlayCounts(rawToken, queries) {
     byDiffNum.get(diffNum).push(q);
   }
 
-  // Fetch listing pages concurrently and extract idx values
-  const idxMap = new Map(); // `${difficulty}:${type}` → raw idx param
+  // Fetch listing pages concurrently and extract detail page params.
+  const detailParamMap = new Map(); // `${difficulty}:${type}` → query string
   await Promise.all([...byDiffNum.entries()].map(async ([diffNum, qs]) => {
     try {
       const html = await fetchText(`${INTL_SCORE_SEARCH_URL}${diffNum}`, {
@@ -1303,17 +1346,18 @@ export async function fetchSongPlayCounts(rawToken, queries) {
         );
         if (!q) return;
 
-        const href = extractMusicDetailHref($, block);
-        const m = href?.match(/[?&]idx=([^&\s]+)/);
-        if (m) idxMap.set(`${q.difficulty}:${q.type}`, m[1]);
+        const detailParams = extractMusicDetailParams($, block);
+        if (detailParams) {
+          detailParamMap.set(`${String(q.difficulty || '').toLowerCase()}:${String(q.type || 'std').toLowerCase()}`, detailParams);
+        }
       });
     } catch { /* ignore per-difficulty fetch failures */ }
   }));
 
   // Fetch detail pages concurrently and parse play counts
   const results = new Map();
-  await Promise.all([...idxMap.entries()].map(async ([key, idx]) => {
-    const count = await fetchMusicDetailPlayCount(cookies, idx);
+  await Promise.all([...detailParamMap.entries()].map(async ([key, detailParams]) => {
+    const count = await fetchMusicDetailPlayCount(cookies, detailParams);
     if (count != null) results.set(key, count);
   }));
 
