@@ -110,6 +110,18 @@ function parseScoreRowMetadata(block) {
   };
 }
 
+function mergeScoreRowMetadata(...items) {
+  for (const item of items) {
+    if (item?.playCount != null || item?.playedAt) {
+      return {
+        playCount: item.playCount ?? null,
+        playedAt: item.playedAt ?? null
+      };
+    }
+  }
+  return { playCount: null, playedAt: null };
+}
+
 function getScoreRowContainer(block) {
   const form = block.closest('form');
   if (form.length) {
@@ -1106,7 +1118,10 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
         .map((_, img) => $(img).attr('src') || '')
         .get();
       const { fc, fs } = parseFcFsFromIcons(h30Sources);
-      const metadata = parseScoreRowMetadata(parent);
+      const metadata = mergeScoreRowMetadata(
+        parseScoreRowMetadata(parent),
+        parseScoreRowMetadata(block)
+      );
 
       scores.push({
         title: songName,
@@ -1292,7 +1307,10 @@ export async function fetchSongPlayCounts(rawToken, queries) {
         );
         if (!q) return;
 
-        const metadata = parseScoreRowMetadata(parent);
+        const metadata = mergeScoreRowMetadata(
+          parseScoreRowMetadata(parent),
+          parseScoreRowMetadata(block)
+        );
         const key = `${String(q.difficulty || '').toLowerCase()}:${String(q.type || 'std').toLowerCase()}`;
         if (metadata.playCount != null) {
           results.set(key, metadata.playCount);
