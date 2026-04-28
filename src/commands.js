@@ -449,6 +449,11 @@ export const accountCommand = new SlashCommandBuilder()
     subcommand
       .setName('unlink')
       .setDescription('Remove your linked account snapshot')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('gap')
+      .setDescription('Show songs within 0.5% of the next rank threshold, sorted by rating gain')
   );
 
 export const commands = [playlistCommand.toJSON(), songCommand.toJSON(), accountCommand.toJSON()];

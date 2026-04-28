@@ -1373,6 +1373,62 @@ function enrichRecentPlays(recentPlays, songCatalog) {
   });
 }
 
+const RANK_THRESHOLDS = [
+  { name: 'S',    value: 970000 },
+  { name: 'S+',   value: 980000 },
+  { name: 'SS',   value: 990000 },
+  { name: 'SS+',  value: 995000 },
+  { name: 'SSS',  value: 1000000 },
+  { name: 'SSS+', value: 1005000 },
+];
+
+export function computeGapSuggestions(scores, songCatalog) {
+  const gameVersion = getCurrentIntlVersionId() ?? 0;
+  const matcher = buildChartMatcher(songCatalog);
+  const suggestions = [];
+
+  for (const score of scores) {
+    const a = score.achievement;
+    const threshold = RANK_THRESHOLDS.find(t => t.value > a);
+    if (!threshold) continue;
+
+    const gap = threshold.value - a;
+    if (gap > 5000) continue;
+
+    let internalLevelValue = Number.isFinite(Number(score.internalLevelValue))
+      ? Number(score.internalLevelValue)
+      : null;
+
+    if (internalLevelValue == null) {
+      const matched = matcher.resolve(score.title, score.type, score.difficulty, score.level);
+      if (!matched) continue;
+      internalLevelValue = Number.parseFloat(String(matched.chart.internalLevelValue));
+      if (!Number.isFinite(internalLevelValue)) continue;
+    }
+
+    const currentRating  = calculateChartRating({ achievement: a,               fc: score.fc, internalLevelValue, gameVersion });
+    const thresholdRating = calculateChartRating({ achievement: threshold.value, fc: score.fc, internalLevelValue, gameVersion });
+    const delta = thresholdRating - currentRating;
+    if (delta <= 0) continue;
+
+    suggestions.push({
+      title: score.title,
+      difficulty: score.difficulty,
+      type: score.type,
+      internalLevelValue,
+      achievement: a,
+      fc: score.fc,
+      currentRating,
+      nextThreshold: threshold.name,
+      gap,
+      delta,
+    });
+  }
+
+  suggestions.sort((a, b) => b.delta - a.delta || a.gap - b.gap);
+  return suggestions;
+}
+
 // Fetch per-song play counts for the given list of score queries.
 // queries: array of { difficulty, type, title }
 // Returns a Map keyed by `${difficulty}:${type}` → playCount

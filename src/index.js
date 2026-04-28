@@ -16,7 +16,7 @@ import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './acc
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
-import { applyIntlFavoritesFromClal, calculateChartRating, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, calculateChartRating, computeGapSuggestions, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -1110,6 +1110,34 @@ async function handleAccountCommand(interaction) {
         interaction,
         `Removed linked **${formatAccountProvider(account.provider)}** account snapshot.`
       );
+      return;
+    }
+
+    case 'gap': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+
+      const allScores = Array.isArray(account.allScores) ? account.allScores : [];
+      const b50Entries = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
+      const scores = allScores.length > 0 ? allScores : b50Entries;
+
+      if (scores.length === 0) {
+        await replySafely(interaction, 'No score data available. Run `/account sync` first.');
+        return;
+      }
+
+      const suggestions = computeGapSuggestions(scores, songCatalog);
+
+      if (suggestions.length === 0) {
+        await replySafely(interaction, 'No scores found within 0.5% of the next rank threshold.');
+        return;
+      }
+
+      const embed = buildAccountGapEmbed(account, suggestions);
+      await replyPayload(interaction, { embeds: [embed] });
       return;
     }
 
@@ -3618,6 +3646,31 @@ function buildAccountRecentLines(recentSessions) {
   }
 
   return truncateText(lines.join('\n'), 1024);
+}
+
+function buildAccountGapEmbed(account, suggestions) {
+  const playerName = account?.player?.name || 'your account';
+  const shown = suggestions.slice(0, 20);
+
+  const lines = shown.map((s, i) => {
+    const diff   = formatDifficultyShort(s.difficulty);
+    const level  = formatInternalLevel(s.internalLevelValue);
+    const pct    = (s.achievement / 10000).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+    const gapPct = (s.gap / 10000).toFixed(2);
+    const title  = truncateText(s.title, 24);
+    return `\`#${String(i + 1).padStart(2, '0')}\` **+${s.delta}** | ${title} (${diff} ${level}) — ${pct}% → **${s.nextThreshold}** | ${gapPct}% away`;
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0xf59e0b)
+    .setTitle(`Achievement Gap — ${playerName}`)
+    .setDescription(lines.join('\n'));
+
+  const summary = [`Found: ${suggestions.length} chart${suggestions.length === 1 ? '' : 's'}`];
+  if (suggestions.length > 20) summary.push('Showing top 20 by rating gain');
+  embed.addFields({ name: 'Summary', value: summary.join('\n') });
+
+  return embed;
 }
 
 function sumRatings(entries) {
