@@ -10,7 +10,7 @@ const REGISTERED_FONTS = new Set();
 const TOMOMAI_FONTS = join(process.cwd(), 'data', 'assets', 'tomomai', 'res', 'fonts');
 
 const WIDTH = 1500;
-const HEADER_HEIGHT = 100;
+const HEADER_HEIGHT = 156;
 const CELL_HEIGHT = 116;
 const CELL_PADDING = 4;
 const COLUMNS = 5;
@@ -568,9 +568,8 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   ctx.fillRect(0, 0, WIDTH, height);
 
   const logo = await getImage(assets.logo);
-  const watermark = await getImage(assets.watermark);
-  const songsWithTargets = preparedEntries.filter((entry) => entry.target?.achievementRate != null).length;
-  const totalTargetRating = preparedEntries.reduce((sum, entry) => sum + (entry.targetRating || 0), 0);
+  const songCount = preparedEntries.length;
+  const mid = HEADER_HEIGHT / 2;
 
   // Header panel
   ctx.fillStyle = theme.headerFill;
@@ -578,29 +577,27 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   ctx.fillStyle = 'rgba(255,255,255,0.08)';
   ctx.fillRect(0, HEADER_HEIGHT - 1, WIDTH, 1);
 
+  // Right: logo
+  let rx = WIDTH - 22;
   if (logo) {
-    const logoHeight = 70;
-    const logoWidth = logo.width * (logoHeight / logo.height);
-    ctx.drawImage(logo, WIDTH - logoWidth - 20, (HEADER_HEIGHT - logoHeight) / 2, logoWidth, logoHeight);
+    const lh = HEADER_HEIGHT * 0.45;
+    const lw = logo.width * (lh / logo.height);
+    rx -= lw;
+    ctx.drawImage(logo, rx, mid - lh / 2, lw, lh);
+    rx -= 16;
   }
 
-  if (watermark) {
-    const wmHeight = 70;
-    const wmWidth = watermark.width * (wmHeight / watermark.height);
-    ctx.globalAlpha = 0.22;
-    ctx.drawImage(watermark, WIDTH - wmWidth - 220, (HEADER_HEIGHT - wmHeight) / 2, wmWidth, wmHeight);
-    ctx.globalAlpha = 1;
-  }
-
-  ctx.fillStyle = theme.titleColor;
-  ctx.font = `700 28px ${theme.fontFamily}`;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(trimText(playlistName, 42), 22, HEADER_HEIGHT / 2);
-
-  drawFact(ctx, { x: WIDTH - 210, y: HEADER_HEIGHT / 2 - 2, value: totalTargetRating || '—', label: 'Target Rating' });
-  drawFact(ctx, { x: WIDTH - 360, y: HEADER_HEIGHT / 2 - 2, value: songsWithTargets, label: 'Targeted Songs' });
-  drawFact(ctx, { x: WIDTH - 510, y: HEADER_HEIGHT / 2 - 2, value: preparedEntries.length, label: 'Songs' });
+  // Left: playlist name + song count
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.font = `700 32px ${theme.fontFamily}`;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(trimText(playlistName, 48), 22, mid + 10);
+  ctx.font = `500 13px ${theme.fontFamily}`;
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.fillText(`${songCount} song${songCount !== 1 ? 's' : ''}`, 22, mid + 32);
+  ctx.restore();
 
   const cellWidth = WIDTH / COLUMNS;
   preparedEntries.forEach((entry, index) => {
