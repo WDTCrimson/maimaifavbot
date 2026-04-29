@@ -264,13 +264,21 @@ function drawSectionHeader(ctx, y, count) {
 
 // ─── Single play-count row ────────────────────────────────────────────────────
 //
-// Right side is drawn right-to-left from the canvas edge:
-//   [MARGIN] [play count 90px] [gap 8px] [achievement] [gap 6px] [FC badge] [gap 6px] [rank icon] …
-// Middle zone width is capped so it never reaches the score section.
+// Fixed column layout (all x values are constants so every row aligns):
+//
+//  [MARGIN=16][stripe=6][rank#→46][jacket 60→156][gap][MIDDLE→504]
+//  [RANK_COL 514→596][FC_COL 596→628][ACH_COL 634→714][PC_COL 722→804][MARGIN=16]
 
-const JACKET_X = MARGIN + 44;          // 60
-const MID_X    = JACKET_X + JACKET_SZ + 12;  // 168
-const MID_MAX_RIGHT = W - MARGIN - 290;       // 514 — hard right boundary for middle text
+const JACKET_X    = MARGIN + 44;              // 60
+const MID_X       = JACKET_X + JACKET_SZ + 12; // 168
+const MID_RIGHT   = 504;                      // hard right edge of middle text
+
+const RANK_COL_X  = 514;   // rank icon column left edge  (width 82)
+const FC_COL_X    = 596;   // FC badge column left edge   (width 32)
+const ACH_COL_X   = 634;   // achievement text left edge  (width 80, right-aligned at 714)
+const ACH_COL_R   = 714;   // achievement right edge
+const PC_COL_X    = 722;   // play count column left edge (width 82, right-aligned at 804)
+const PC_COL_R    = W - MARGIN; // 804
 
 async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   const { score, song } = entry;
@@ -296,12 +304,12 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   ctx.fillRect(MARGIN, y, 6, ROW_H);
   ctx.restore();
 
-  // ── Rank number
+  // ── Rank number (#1, #2, …)
   ctx.save();
   ctx.font = `800 18px ${FONT_MONO}`;
   ctx.fillStyle = rank === 1 ? '#ffd700' : rank <= 3 ? '#c0c0c0' : 'rgba(255,255,255,0.4)';
   ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
-  ctx.fillText(`#${rank}`, MARGIN + 14 + 10, midCY);
+  ctx.fillText(`#${rank}`, MARGIN + 6 + 19, midCY);
   ctx.restore();
 
   // ── Jacket
@@ -321,8 +329,8 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   rr(ctx, JACKET_X, jacketY, JACKET_SZ, JACKET_SZ, 6); ctx.stroke();
   ctx.restore();
 
-  // ── Middle: title, artist, diff badge (capped to not enter score area)
-  const midW = MID_MAX_RIGHT - MID_X;
+  // ── Middle: title, artist, diff badge
+  const midW = MID_RIGHT - MID_X;
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 4;
 
@@ -348,58 +356,54 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
 
   ctx.restore();
 
-  // ── Right side: draw right-to-left
-  // Play count anchored at far right, then achievement, FC badge, rank icon to its left.
-  const pcRight = W - MARGIN - 6;   // right edge for play count text
-  const PC_W    = 84;               // reserved width for play count number + label
-  let rx = pcRight - PC_W - 8;      // right edge where score elements end
+  // ── Rank icon — centered within RANK_COL (514→596)
+  const rankImg = await loadCached(join(RANK_ASSET, 'prism-plus', getRankIconFile(score.achievement)));
+  if (rankImg) {
+    const rh = 40, rw2 = Math.min(rankImg.width * (rh / rankImg.height), 82);
+    const rx2 = RANK_COL_X + (82 - rw2) / 2;
+    ctx.drawImage(rankImg, rx2, midCY - rh / 2, rw2, rh);
+  }
 
-  // Play count
+  // ── FC badge — centered within FC_COL (596→628)
+  const fcBadge = await loadCached(join(TOMOMAI, 'badge', bv, fcBadgeFile(score.fc)));
+  if (fcBadge) {
+    const bh2 = 36, bw2 = fcBadge.width * (bh2 / fcBadge.height);
+    const fx = FC_COL_X + (32 - bw2) / 2;
+    ctx.drawImage(fcBadge, fx, midCY - bh2 / 2, bw2, bh2);
+  }
+
+  // ── Achievement — right-aligned within ACH_COL (634→714)
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4;
+  ctx.font = `600 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+  ctx.fillText(formatAchievement(score.achievement), ACH_COL_R, midCY);
+  ctx.restore();
+
+  // ── Play count — centered vertically, right-aligned within PC_COL (722→804)
   if (score.playCount != null) {
     const pcStr = Number(score.playCount).toLocaleString();
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
     ctx.textAlign = 'right';
 
+    // Number: baseline slightly below center
     let fontSize = 26;
     ctx.font = `800 ${fontSize}px ${FONT_MONO}`;
-    while (ctx.measureText(pcStr).width > PC_W && fontSize > 14) {
+    while (ctx.measureText(pcStr).width > PC_COL_R - PC_COL_X - 4 && fontSize > 14) {
       fontSize -= 1;
       ctx.font = `800 ${fontSize}px ${FONT_MONO}`;
     }
-    ctx.fillStyle = color; ctx.textBaseline = 'alphabetic';
-    ctx.fillText(pcStr, pcRight, midCY + 8);
+    ctx.fillStyle = color;
+    ctx.textBaseline = 'top';
+    ctx.fillText(pcStr, PC_COL_R - 4, midCY + 2);
 
-    ctx.font = `400 10px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.fillText('PLAYS', pcRight, midCY - 10);
+    // "PLAYS" label above the number
+    ctx.font = `500 10px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('PLAYS', PC_COL_R - 4, midCY + 2);
+
     ctx.restore();
-  }
-
-  // Achievement (right-aligned, ending at rx)
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4;
-  const achStr = formatAchievement(score.achievement);
-  ctx.font = `600 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.8)';
-  ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right';
-  ctx.fillText(achStr, rx, midCY + 5);
-  rx -= ctx.measureText(achStr).width + 6;
-  ctx.restore();
-
-  // FC badge
-  const fcBadge = await loadCached(join(TOMOMAI, 'badge', bv, fcBadgeFile(score.fc)));
-  if (fcBadge) {
-    const bh2 = 36, bw2 = fcBadge.width * (bh2 / fcBadge.height);
-    rx -= bw2;
-    ctx.drawImage(fcBadge, rx, midCY - bh2 / 2, bw2, bh2);
-    rx -= 6;
-  }
-
-  // Rank icon
-  const rankImg = await loadCached(join(RANK_ASSET, 'prism-plus', getRankIconFile(score.achievement)));
-  if (rankImg) {
-    const rh = 40, rw2 = rankImg.width * (rh / rankImg.height);
-    rx -= rw2;
-    ctx.drawImage(rankImg, rx, midCY - rh / 2, rw2, rh);
   }
 
   // ── Row border
