@@ -307,7 +307,7 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   // ── Rank number (#1, #2, …)
   ctx.save();
   ctx.font = `800 18px ${FONT_MONO}`;
-  ctx.fillStyle = rank === 1 ? '#ffd700' : rank <= 3 ? '#c0c0c0' : 'rgba(255,255,255,0.4)';
+  ctx.fillStyle = rank === 1 ? '#ffd700' : rank === 2 ? '#c0c0c0' : rank === 3 ? '#cd7f32' : 'rgba(255,255,255,0.4)';
   ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
   ctx.fillText(`#${rank}`, MARGIN + 6 + 19, midCY);
   ctx.restore();
