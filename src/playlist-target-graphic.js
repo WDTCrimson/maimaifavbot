@@ -446,7 +446,7 @@ async function drawCell(ctx, entry, index, theme, x, y, width, height) {
 
   // Level chip — B50 style, top-right corner
   const levelStr = formatInternal(entry.chart?.internalLevelValue);
-  const chipW = 48, chipH = 28;
+  const chipW = 48, chipH = 28; // chipW also used for combo flag positioning
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(x + width - chipW, y, chipW, chipH, [0, 10, 0, 10]);
@@ -459,66 +459,60 @@ async function drawCell(ctx, entry, index, theme, x, y, width, height) {
   ctx.fillText(levelStr, x + width - chipW / 2, y + chipH / 2);
   ctx.restore();
 
-  drawBadge(ctx, {
-    x: leftX,
-    y: y + 68,
-    text: entry.targetRating != null ? String(entry.targetRating) : '—',
-    fill: 'rgba(0,0,0,0.5)',
-    color: '#fff',
-    font: `700 12px ${theme.fontFamily}`,
-    paddingX: 8,
-    paddingY: 3,
-    radius: 10
-  });
-
-  ctx.font = hasTarget ? `700 15px ${theme.fontFamily}` : `700 13px ${theme.fontFamily}`;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText(
-    hasTarget ? formatAchievementTarget(entry.target?.achievementRate) : 'NO TARGET',
-    leftX + 54,
-    y + 71
-  );
-
   const rank = rankFromAchievement(entry.target?.achievementRate);
+  const scoreText = hasTarget ? formatAchievementTarget(entry.target?.achievementRate) : 'NO TARGET';
+  const rightEdge = leftX + contentWidth;
+  const scoreBaseY = y + 82;
 
+  // Score — left
+  ctx.font = `700 13px ${theme.fontFamily}`;
+  ctx.fillStyle = hasTarget ? '#ffffff' : 'rgba(255,255,255,0.45)';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(scoreText, leftX, scoreBaseY);
+
+  // Rank — centered below score
   if (hasTarget) {
-    ctx.font = `500 11px ${theme.fontFamily}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.78)';
-    const note = entry.target.difficulty ? '' : 'AUTO';
-    const noteY = y + 92;
-    const noteText = trimTextToWidth(ctx, note, contentWidth - 88);
-    ctx.fillText(noteText, leftX, noteY);
-    const noteWidth = ctx.measureText(noteText).width;
-
+    const scoreW = ctx.measureText(scoreText).width;
+    const rankCenterX = leftX + scoreW / 2;
     if (entry.rankImage) {
-      const rankHeight = 22;
-      const rankWidth = entry.rankImage.width * (rankHeight / entry.rankImage.height);
-      ctx.drawImage(entry.rankImage, leftX + noteWidth + 8, noteY - 6, rankWidth, rankHeight);
+      const rh = 18, rw = entry.rankImage.width * (rh / entry.rankImage.height);
+      ctx.drawImage(entry.rankImage, rankCenterX - rw / 2, scoreBaseY + 4, rw, rh);
     } else if (rank) {
-      ctx.font = `600 12px ${theme.fontFamily}`;
-      ctx.fillStyle = 'rgba(255,255,255,0.9)';
-      ctx.fillText(rank, leftX + noteWidth + 8, noteY + 1);
+      ctx.font = `600 11px ${theme.fontFamily}`;
+      ctx.fillStyle = 'rgba(255,255,255,0.80)';
+      ctx.textAlign = 'center';
+      ctx.fillText(rank, rankCenterX, scoreBaseY + 16);
     }
+  }
 
-    const comboFlag = formatComboFlag(entry.target?.comboFlag);
-    if (comboFlag) {
-      drawBadge(ctx, {
-        x: x + width - 62,
-        y: y + 8,
-        text: comboFlag,
-        fill: 'rgba(0,0,0,0.55)',
-        color: '#fff',
-        stroke: 'rgba(255,255,255,0.16)',
-        font: `700 10px ${theme.fontFamily}`,
-        paddingX: 8,
-        paddingY: 2,
-        radius: 10
-      });
-    }
-  } else {
-    ctx.font = `500 11px ${theme.fontFamily}`;
-    ctx.fillStyle = 'rgba(255,255,255,0.78)';
-    ctx.fillText('Target not set', leftX, y + 92);
+  // Rating — right of score
+  if (entry.targetRating != null) {
+    ctx.font = `700 18px ${theme.fontFamily}`;
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(String(entry.targetRating), rightEdge, scoreBaseY);
+    ctx.font = `500 10px ${theme.fontFamily}`;
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText('rating', rightEdge, scoreBaseY + 13);
+  }
+
+  // Combo flag badge — top right (beside level chip)
+  const comboFlag = formatComboFlag(entry.target?.comboFlag);
+  if (comboFlag) {
+    drawBadge(ctx, {
+      x: x + width - chipW - 52,
+      y: y + 4,
+      text: comboFlag,
+      fill: 'rgba(0,0,0,0.55)',
+      color: '#fff',
+      stroke: 'rgba(255,255,255,0.16)',
+      font: `700 10px ${theme.fontFamily}`,
+      paddingX: 8,
+      paddingY: 2,
+      radius: 10
+    });
   }
 
   ctx.restore();
@@ -623,16 +617,19 @@ async function drawPlayerHeader(ctx, account, fontFamily) {
   }
 
   const frameImg = await getImage(join(TOMOMAI, 'rating', `${ratingVariant(rating, gameVer)}.png`));
+  const FRAME_SCALE = 0.80;
   if (frameImg) {
-    const fw = frameImg.width * 0.80, fh = frameImg.height * 0.80;
+    const fw = frameImg.width * FRAME_SCALE, fh = frameImg.height * FRAME_SCALE;
     rx -= fw;
     const fy = (PLAYER_H - fh) / 2;
     ctx.drawImage(frameImg, rx, fy, fw, fh);
     ctx.save();
     ctx.font = `600 ${Math.round(fh * 0.53)}px "Geist Mono", monospace`;
     ctx.fillStyle = '#f9f0f4'; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 3;
     let dx = rx + fw * 0.43;
-    for (const char of String(rating || 0)) { ctx.fillText(char, dx, fy + fh * 0.72); dx += 23; }
+    const dy = fy + fh * 0.19 + fh * 0.53;
+    for (const char of String(rating || 0)) { ctx.fillText(char, dx, dy); dx += 23 * FRAME_SCALE / 0.75; }
     ctx.restore();
   }
 }
