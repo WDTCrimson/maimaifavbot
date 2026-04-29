@@ -454,6 +454,19 @@ export const accountCommand = new SlashCommandBuilder()
     subcommand
       .setName('gap')
       .setDescription('Show songs within 0.5% of the next rank threshold, sorted by rating gain')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('plays')
+      .setDescription('Generate a graphic showing your top songs by play count')
+      .addIntegerOption((option) =>
+        option
+          .setName('count')
+          .setDescription('How many songs to show (default 10, max 20)')
+          .setRequired(false)
+          .setMinValue(3)
+          .setMaxValue(20)
+      )
   );
 
 export const commands = [playlistCommand.toJSON(), songCommand.toJSON(), accountCommand.toJSON()];

@@ -5,6 +5,7 @@ import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, Mes
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
 import { renderAccountRecentGraphic } from './account-recent-graphic.js';
 import { renderSongScoreGraphic } from './song-score-graphic.js';
+import { renderPlayCountGraphic } from './playcount-graphic.js';
 import {
   accountLinkCallbackServerEnabled,
   buildAccountLinkUrl,
@@ -1138,6 +1139,47 @@ async function handleAccountCommand(interaction) {
 
       const embed = buildAccountGapEmbed(account, suggestions);
       await replyPayload(interaction, { embeds: [embed] });
+      return;
+    }
+
+    case 'plays': {
+      await interaction.deferReply();
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+
+      const allScores = Array.isArray(account.allScores) ? account.allScores : [];
+      if (allScores.length === 0) {
+        await replySafely(interaction, 'No full score data available. Play count data requires `/account sync` with an International account.');
+        return;
+      }
+
+      const withCounts = allScores.filter(s => s.playCount != null && Number(s.playCount) > 0);
+      if (withCounts.length === 0) {
+        await replySafely(interaction, 'No play count data found in your score snapshot. Try re-syncing with `/account sync`.');
+        return;
+      }
+
+      const count = interaction.options.getInteger('count') ?? 10;
+      withCounts.sort((a, b) => Number(b.playCount) - Number(a.playCount));
+      const top = withCounts.slice(0, count);
+
+      const entries = top.map(score => {
+        const song = songCatalog.available
+          ? songCatalog.getUniqueByNormalizedTitle(score.title) ?? null
+          : null;
+        return { score, song };
+      });
+
+      const graphic = await renderPlayCountGraphic({ account, entries });
+      const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
+
+      await replyPayload(interaction, {
+        content: `Top ${top.length} songs by play count for **${account.player?.name || 'linked account'}**.`,
+        files: [attachment]
+      });
       return;
     }
 
