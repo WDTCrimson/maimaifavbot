@@ -17,7 +17,7 @@ import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './acc
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
-import { applyIntlFavoritesFromClal, calculateChartRating, computeGapSuggestions, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, calculateChartRating, computeGapSuggestions, fetchBulkPlayCounts, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -1156,15 +1156,55 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const withCounts = allScores.filter(s => s.playCount != null && Number(s.playCount) > 0);
-      if (withCounts.length === 0) {
-        await replySafely(interaction, 'No play count data found in your score snapshot. Try re-syncing with `/account sync`.');
+      // Play counts are not stored during sync — fetch them live from the session token.
+      const linkedAuthForPlays = account.linkedAuth
+        ? restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret)
+        : null;
+      const linkedToken = linkedAuthForPlays?.region === 'intl' ? linkedAuthForPlays.token : null;
+
+      if (!linkedToken) {
+        await replySafely(interaction, 'Play count data requires an active International account link. Use `/account link` to reconnect.');
+        return;
+      }
+
+      // Build queries for every score entry, then batch-fetch play counts.
+      // fetchSongPlayCounts fetches 5 difficulty pages first (fast), then falls
+      // back to individual music detail pages for entries not found there.
+      const queries = allScores.map(s => ({
+        title:      s.title,
+        difficulty: String(s.difficulty || '').toLowerCase(),
+        type:       String(s.type || 'std').toLowerCase()
+      }));
+
+      let playCounts = new Map();
+      try {
+        playCounts = await fetchBulkPlayCounts(linkedToken, queries);
+      } catch {
+        await replySafely(interaction, 'Failed to fetch play count data — your session may have expired. Try `/account link` to reconnect.');
+        return;
+      }
+
+      if (playCounts.size === 0) {
+        await replySafely(interaction, 'No play count data found. This feature requires an active maimai International session.');
+        return;
+      }
+
+      // Merge fetched play counts back onto each score entry.
+      const enriched = allScores.map(s => {
+        const diff = String(s.difficulty || '').toLowerCase();
+        const type = String(s.type || 'std').toLowerCase();
+        const pc = playCounts.get(`${s.title}::${diff}::${type}`);
+        return pc != null ? { ...s, playCount: pc } : s;
+      }).filter(s => s.playCount != null && Number(s.playCount) > 0);
+
+      if (enriched.length === 0) {
+        await replySafely(interaction, 'No play count data found after fetching. Try re-linking your account.');
         return;
       }
 
       const count = interaction.options.getInteger('count') ?? 10;
-      withCounts.sort((a, b) => Number(b.playCount) - Number(a.playCount));
-      const top = withCounts.slice(0, count);
+      enriched.sort((a, b) => Number(b.playCount) - Number(a.playCount));
+      const top = enriched.slice(0, count);
 
       const entries = top.map(score => {
         const song = songCatalog.available

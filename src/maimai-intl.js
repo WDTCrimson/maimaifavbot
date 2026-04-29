@@ -1510,6 +1510,83 @@ export async function fetchSongPlayCounts(rawToken, queries) {
   return results;
 }
 
+// Bulk-fetch play counts for many songs at once.
+// queries: array of { title, difficulty, type }
+// Returns a Map keyed by `${title}::${difficulty}::${type}` → playCount
+// (title-aware keying avoids collisions when songs share difficulty+type)
+export async function fetchBulkPlayCounts(rawToken, queries) {
+  if (!queries?.length) return new Map();
+  const clalToken = normalizeIntlClalToken(rawToken);
+  const validation = await validateInternationalCookie(clalToken);
+  const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
+
+  const byDiffNum = new Map();
+  for (const q of queries) {
+    const diffNum = difficultyNames.indexOf(String(q.difficulty || '').toLowerCase());
+    if (diffNum === -1) continue;
+    if (!byDiffNum.has(diffNum)) byDiffNum.set(diffNum, []);
+    byDiffNum.get(diffNum).push(q);
+  }
+
+  const results = new Map();
+  const detailLookups = new Map();
+
+  await Promise.all([...byDiffNum.entries()].map(async ([diffNum, qs]) => {
+    try {
+      const html = await fetchText(`${INTL_SCORE_SEARCH_URL}${diffNum}`, {
+        cookies, referer: 'https://maimaidx-eng.com/maimai-mobile/'
+      });
+      const load = await loadCheerio();
+      const $ = load(html);
+      const selector = difficultySelectors[diffNum];
+
+      $(selector).each((_, element) => {
+        const block = $(element);
+        if (block.find('.music_score_block').length === 0) return;
+
+        const blockNameRaw = block.find('.music_name_block').text().trim();
+        const blockNorm   = normalizeTitle(blockNameRaw);
+        const parent = getScoreRowContainer(block);
+        const iconSrc     = block.find('img.music_kind_icon').attr('src') || parent.find('img.music_kind_icon').attr('src') || '';
+        const blockType   = mapMusicTypeFromIcon(iconSrc) || 'std';
+
+        const q = qs.find(q =>
+          normalizeTitle(q.title) === blockNorm &&
+          String(q.type || 'std').toLowerCase() === blockType
+        );
+        if (!q) return;
+
+        const mapKey = `${q.title}::${String(q.difficulty || '').toLowerCase()}::${String(q.type || 'std').toLowerCase()}`;
+        const metadata = mergeScoreRowMetadata(
+          parseScoreRowMetadata(block),
+          parseScoreRowMetadata(parent)
+        );
+        if (metadata.playCount != null) {
+          results.set(mapKey, metadata.playCount);
+          return;
+        }
+
+        const detailParams = extractMusicDetailParams($, block, parent);
+        if (detailParams && !detailLookups.has(mapKey)) {
+          detailLookups.set(mapKey, { detailParams, difficultyNumber: diffNum });
+        }
+      });
+    } catch { /* ignore per-difficulty fetch failures */ }
+  }));
+
+  await Promise.all([...detailLookups.entries()].map(async ([mapKey, lookup]) => {
+    if (results.has(mapKey)) return;
+    try {
+      const metadata = await fetchMusicDetailMetadata(cookies, lookup.detailParams, lookup.difficultyNumber);
+      if (metadata?.playCount != null) {
+        results.set(mapKey, metadata.playCount);
+      }
+    } catch { /* ignore per-song detail failures */ }
+  }));
+
+  return results;
+}
+
 export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null) {
   const clalToken = normalizeIntlClalToken(rawToken);
   const validation = await validateInternationalCookie(clalToken);
