@@ -380,28 +380,30 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   ctx.fillText(formatAchievement(score.achievement), ACH_COL_R, midCY);
   ctx.restore();
 
-  // ── Play count — centered vertically, right-aligned within PC_COL (722→804)
+  // ── Play count — left-aligned at PC_COL_X, group centered vertically
+  // Group layout (top→bottom): PLAYS(10px) + 3px gap + number(26px) = 39px total
+  // Center of group at midCY → group top = midCY - 19.5 ≈ midCY - 20
   if (score.playCount != null) {
     const pcStr = Number(score.playCount).toLocaleString();
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
 
-    // Number: baseline slightly below center
+    const labelY  = midCY - 20;
+    const numberY = labelY + 10 + 3;   // PLAYS height + gap
+
+    ctx.font = `500 10px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.fillText('PLAYS', PC_COL_X, labelY);
+
     let fontSize = 26;
     ctx.font = `800 ${fontSize}px ${FONT_MONO}`;
-    while (ctx.measureText(pcStr).width > PC_COL_R - PC_COL_X - 4 && fontSize > 14) {
+    while (ctx.measureText(pcStr).width > PC_COL_R - PC_COL_X && fontSize > 14) {
       fontSize -= 1;
       ctx.font = `800 ${fontSize}px ${FONT_MONO}`;
     }
     ctx.fillStyle = color;
-    ctx.textBaseline = 'top';
-    ctx.fillText(pcStr, PC_COL_R - 4, midCY + 2);
-
-    // "PLAYS" label above the number
-    ctx.font = `500 10px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.45)';
-    ctx.textBaseline = 'bottom';
-    ctx.fillText('PLAYS', PC_COL_R - 4, midCY + 2);
+    ctx.fillText(pcStr, PC_COL_X, numberY);
 
     ctx.restore();
   }
