@@ -1167,6 +1167,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   const $ = load(html);
   const blocks = $(selector);
   const scores = [];
+  const detailLookups = []; // {index, detailParams} — for entries needing a detail-page play count fetch
 
   blocks.each((_, element) => {
     try {
@@ -1214,6 +1215,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
         parseScoreRowMetadata(parent)
       );
 
+      const scoreIndex = scores.length;
       scores.push({
         title: songName,
         difficulty: difficultyName,
@@ -1227,19 +1229,51 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
         playCount: metadata.playCount,
         playedAt: metadata.playedAt
       });
+
+      if (metadata.playCount == null) {
+        const detailParams = extractMusicDetailParams($, block, parent);
+        if (detailParams) {
+          detailLookups.push({ index: scoreIndex, detailParams });
+        }
+      }
     } catch {
       // ignore individual parse failures
     }
   });
 
-  return scores;
+  return { scores, detailLookups, difficultyNumber };
 }
 
 async function fetchAllScores(cookies) {
-  const pages = await Promise.all(
+  const results = await Promise.all(
     difficultyNames.map((_, difficultyNumber) => fetchScoresForDifficulty(cookies, difficultyNumber))
   );
-  return pages.flat();
+
+  // Flatten all scores, adjusting indices to be absolute positions in the combined array
+  const allScores = [];
+  const pendingDetailFetches = [];
+
+  for (const { scores, detailLookups, difficultyNumber } of results) {
+    const offset = allScores.length;
+    allScores.push(...scores);
+    for (const { index, detailParams } of detailLookups) {
+      pendingDetailFetches.push({ absoluteIndex: offset + index, detailParams, difficultyNumber });
+    }
+  }
+
+  // Batch-fetch all detail pages in parallel to fill in missing play counts
+  await Promise.all(pendingDetailFetches.map(async ({ absoluteIndex, detailParams, difficultyNumber }) => {
+    try {
+      const metadata = await fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber);
+      if (metadata?.playCount != null) {
+        allScores[absoluteIndex] = { ...allScores[absoluteIndex], playCount: metadata.playCount };
+      }
+    } catch {
+      // ignore individual failures — play count is best-effort
+    }
+  }));
+
+  return allScores;
 }
 
 async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber) {
