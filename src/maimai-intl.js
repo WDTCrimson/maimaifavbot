@@ -111,14 +111,43 @@ function parsePlayCountFromScoreRowText(value) {
   return parseIntegerText(match[1]);
 }
 
+function parseMetadataTable($, root) {
+  let playCount = null;
+  let playedAt = null;
+
+  root.find('tr').each((_, rowElement) => {
+    const cells = $(rowElement).find('td');
+    if (cells.length < 2) {
+      return;
+    }
+
+    const label = cells.eq(0).text().normalize('NFKC').replace(/\s+/g, ' ').trim();
+    const value = cells.eq(1).text().normalize('NFKC').replace(/\s+/g, ' ').trim();
+    if (/^PLAY COUNT\s*[:：]?$/i.test(label)) {
+      playCount = parseIntegerText(value);
+      return;
+    }
+    if (/^Last played date\s*[:：]?$/i.test(label)) {
+      playedAt = value || null;
+    }
+  });
+
+  return { playCount, playedAt };
+}
+
+function parsePlayedAtFromText(value) {
+  const text = String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+  const lastPlayedMatch = text.match(/Last played date\s*[:：]\s*(\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})/i);
+  return lastPlayedMatch ? lastPlayedMatch[1].trim() : null;
+}
+
 function parseScoreRowMetadata(block) {
   const metadataBlock = block.clone();
   metadataBlock.find('.music_score_block, .music_name_block, .music_lv_block').remove();
   const text = metadataBlock.text().normalize('NFKC').replace(/\s+/g, ' ').trim();
-  const lastPlayedMatch = text.match(/Last played date\s*[:：]\s*(\d{4}\/\d{1,2}\/\d{1,2}\s+\d{1,2}:\d{2})/i);
   return {
     playCount: parsePlayCountFromScoreRowText(text),
-    playedAt: lastPlayedMatch ? lastPlayedMatch[1].trim() : null
+    playedAt: parsePlayedAtFromText(text)
   };
 }
 
@@ -1435,7 +1464,17 @@ async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber)
   }
 
   const parent = getScoreRowContainer(block);
-  return mergeScoreRowMetadata(parseScoreRowMetadata(block), parseScoreRowMetadata(parent));
+  const bodyText = $('body').text();
+  return mergeScoreRowMetadata(
+    parseMetadataTable($, block),
+    parseScoreRowMetadata(block),
+    parseMetadataTable($, parent),
+    parseScoreRowMetadata(parent),
+    {
+      playCount: parsePlayCountFromScoreRowText(bodyText),
+      playedAt: parsePlayedAtFromText(bodyText)
+    }
+  );
 }
 
 function buildBest50(scores, songCatalog) {
