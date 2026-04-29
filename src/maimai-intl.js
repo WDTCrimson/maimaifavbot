@@ -1244,7 +1244,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   return { scores, detailLookups, difficultyNumber };
 }
 
-async function fetchAllScores(cookies) {
+async function fetchAllScores(cookies, { fetchDetailPlayCounts = true } = {}) {
   const results = await Promise.all(
     difficultyNames.map((_, difficultyNumber) => fetchScoresForDifficulty(cookies, difficultyNumber))
   );
@@ -1259,6 +1259,10 @@ async function fetchAllScores(cookies) {
     for (const { index, detailParams } of detailLookups) {
       pendingDetailFetches.push({ absoluteIndex: offset + index, detailParams, difficultyNumber });
     }
+  }
+
+  if (!fetchDetailPlayCounts) {
+    return allScores;
   }
 
   // Batch-fetch all detail pages in parallel to fill in missing play counts
@@ -1545,15 +1549,16 @@ export async function fetchSongPlayCounts(rawToken, queries) {
   return results;
 }
 
+function bulkPlayCountKey(query) {
+  return `${query.title}::${String(query.difficulty || '').toLowerCase()}::${String(query.type || 'std').toLowerCase()}`;
+}
+
 // Bulk-fetch play counts for many songs at once.
 // queries: array of { title, difficulty, type }
 // Returns a Map keyed by `${title}::${difficulty}::${type}` → playCount
 // (title-aware keying avoids collisions when songs share difficulty+type)
-export async function fetchBulkPlayCounts(rawToken, queries) {
+async function fetchBulkPlayCountsWithCookies(cookies, queries) {
   if (!queries?.length) return new Map();
-  const clalToken = normalizeIntlClalToken(rawToken);
-  const validation = await validateInternationalCookie(clalToken);
-  const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
 
   const byDiffNum = new Map();
   for (const q of queries) {
@@ -1591,7 +1596,7 @@ export async function fetchBulkPlayCounts(rawToken, queries) {
         );
         if (!q) return;
 
-        const mapKey = `${q.title}::${String(q.difficulty || '').toLowerCase()}::${String(q.type || 'std').toLowerCase()}`;
+        const mapKey = bulkPlayCountKey(q);
         const metadata = mergeScoreRowMetadata(
           parseScoreRowMetadata(block),
           parseScoreRowMetadata(parent)
@@ -1622,18 +1627,45 @@ export async function fetchBulkPlayCounts(rawToken, queries) {
   return results;
 }
 
+export async function fetchBulkPlayCounts(rawToken, queries) {
+  if (!queries?.length) return new Map();
+  const clalToken = normalizeIntlClalToken(rawToken);
+  const validation = await validateInternationalCookie(clalToken);
+  const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
+  return fetchBulkPlayCountsWithCookies(cookies, queries);
+}
+
 export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null) {
   const clalToken = normalizeIntlClalToken(rawToken);
   const validation = await validateInternationalCookie(clalToken);
   const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
 
   const recentPlaysPromise = fetchRecentPlays(cookies);
-  const [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
+  let [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
     fetchPlayerDataHtml(cookies, validation.redirectUrl),
-    fetchAllScores(cookies),
+    fetchAllScores(cookies, { fetchDetailPlayCounts: false }),
     recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
   const recentPlays = await recentPlaysPromise;
+
+  try {
+    const playCountQueries = scoreEntries
+      .filter((score) => score?.title && score?.difficulty)
+      .map((score) => ({
+        title: score.title,
+        difficulty: String(score.difficulty || '').toLowerCase(),
+        type: String(score.type || 'std').toLowerCase()
+      }));
+    const playCounts = await fetchBulkPlayCountsWithCookies(cookies, playCountQueries);
+    if (playCounts.size > 0) {
+      scoreEntries = scoreEntries.map((score) => {
+        const playCount = playCounts.get(bulkPlayCountKey(score));
+        return playCount != null ? { ...score, playCount } : score;
+      });
+    }
+  } catch {
+    // Keep the rest of the account sync usable if play-count enrichment fails.
+  }
 
   const profile = await extractPlayerSnapshot(playerDataHtml);
   const best50 = buildBest50(scoreEntries, songCatalog);
