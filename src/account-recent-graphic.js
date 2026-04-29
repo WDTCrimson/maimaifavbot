@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 
 const CANVAS_WIDTH = 1200;
-const TARGET_HEIGHT = 204;
+const TARGET_HEIGHT = 156;
 const PADDING = 36;
 const FONT_FAMILY_DEFAULT = 'Inter, Murecho, "Noto Sans JP", sans-serif';
 const FONT_FAMILY_MONO_DEFAULT = 'Geist Mono, monospace';
@@ -186,12 +186,12 @@ function pickGameVersion(gameVersion) {
 }
 
 function createOverlayRect(canvasHeight) {
-  const overlayTop = TARGET_HEIGHT + PADDING * 2;
+  const overlayTop = TARGET_HEIGHT;
   return {
     left: PADDING,
     top: overlayTop,
     width: CANVAS_WIDTH - PADDING * 2,
-    height: canvasHeight - TARGET_HEIGHT - PADDING * 3
+    height: canvasHeight - TARGET_HEIGHT - PADDING
   };
 }
 
@@ -476,12 +476,12 @@ async function renderBackground(ctx, gameVersion, long) {
 
 async function renderHeader(ctx, snapshot) {
   const ICON_SZ = 100;
-  const headerMid = PADDING + TARGET_HEIGHT / 2;
-  const iconX = PADDING, iconY = headerMid - ICON_SZ / 2;
+  const headerMid = TARGET_HEIGHT / 2;
+  const iconX = 22, iconY = headerMid - ICON_SZ / 2;
 
   // dark header panel
   ctx.fillStyle = 'rgba(0,0,0,0.40)';
-  ctx.fillRect(0, 0, CANVAS_WIDTH, TARGET_HEIGHT + PADDING * 2);
+  ctx.fillRect(0, 0, CANVAS_WIDTH, TARGET_HEIGHT);
 
   // --- left: profile icon ---
   const profile = snapshot.iconUrl ? await loadCachedImage(snapshot.iconUrl) : null;
@@ -501,7 +501,7 @@ async function renderHeader(ctx, snapshot) {
   }
 
   // --- left text stack ---
-  const tx = PADDING + ICON_SZ + 18;
+  const tx = iconX + ICON_SZ + 14;
   ctx.textAlign = 'left';
 
   const titleStr = snapshot.title || '';
@@ -511,7 +511,7 @@ async function renderHeader(ctx, snapshot) {
     ctx.font = font(500, 13);
     ctx.textBaseline = 'alphabetic';
     const tw = ctx.measureText(titleStr).width;
-    const pH = 22, pY = PADDING + TARGET_HEIGHT / 2 - 46;
+    const pH = 22, pY = TARGET_HEIGHT / 2 - 46;
     ctx.fillStyle = 'rgba(255,220,80,0.18)'; ctx.shadowBlur = 0;
     roundRect(ctx, tx, pY, tw + 20, pH, 3); ctx.fill();
     ctx.strokeStyle = 'rgba(255,220,80,0.38)'; ctx.lineWidth = 1;
@@ -521,7 +521,7 @@ async function renderHeader(ctx, snapshot) {
   }
   ctx.restore();
 
-  const midY = PADDING + TARGET_HEIGHT / 2;
+  const midY = TARGET_HEIGHT / 2;
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
   ctx.font = font(700, 26); ctx.fillStyle = '#ffffff';
@@ -535,7 +535,7 @@ async function renderHeader(ctx, snapshot) {
   ctx.restore();
 
   // --- right cluster (right-to-left): version logo → class rank → rating frame ---
-  let rx = CANVAS_WIDTH - PADDING;
+  let rx = CANVAS_WIDTH - 22;
 
   const logoImg = await loadCachedImage(join(ASSET_ROOT, 'logo', `${snapshot.gameVersion}.png`));
   if (logoImg) {
