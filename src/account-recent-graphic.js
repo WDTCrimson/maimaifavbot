@@ -475,8 +475,9 @@ async function renderBackground(ctx, gameVersion, long) {
 }
 
 async function renderHeader(ctx, snapshot) {
-  const ICON_SZ = TARGET_HEIGHT;
+  const ICON_SZ = 100;
   const headerMid = PADDING + TARGET_HEIGHT / 2;
+  const iconX = PADDING, iconY = headerMid - ICON_SZ / 2;
 
   // dark header panel
   ctx.fillStyle = 'rgba(0,0,0,0.40)';
@@ -487,15 +488,15 @@ async function renderHeader(ctx, snapshot) {
   if (profile) {
     ctx.save();
     ctx.beginPath();
-    roundRect(ctx, PADDING, PADDING, ICON_SZ, ICON_SZ, 10);
+    roundRect(ctx, iconX, iconY, ICON_SZ, ICON_SZ, 10);
     ctx.clip();
     const ratio = Math.max(ICON_SZ / profile.width, ICON_SZ / profile.height);
     const pw = profile.width * ratio, ph = profile.height * ratio;
-    ctx.drawImage(profile, PADDING + (ICON_SZ - pw) / 2, PADDING + (ICON_SZ - ph) / 2, pw, ph);
+    ctx.drawImage(profile, iconX + (ICON_SZ - pw) / 2, iconY + (ICON_SZ - ph) / 2, pw, ph);
     ctx.restore();
   } else {
     ctx.fillStyle = 'rgba(255,255,255,0.15)';
-    roundRect(ctx, PADDING, PADDING, ICON_SZ, ICON_SZ, 10);
+    roundRect(ctx, iconX, iconY, ICON_SZ, ICON_SZ, 10);
     ctx.fill();
   }
 
