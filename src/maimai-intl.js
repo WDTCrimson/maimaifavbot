@@ -104,7 +104,7 @@ function maxDxScoreFromChart(chart) {
 
 function parsePlayCountFromScoreRowText(value) {
   const text = String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
-  const match = text.match(/PLAY COUNT\s*[:：]\s*([0-9][0-9,]*)\b/i);
+  const match = text.match(/PLAY COUNT\s*[:：]\s*([0-9][0-9,\s]*)/i);
   if (!match) {
     return null;
   }
