@@ -35,6 +35,17 @@ async function loadCheerio() {
   return mod.load;
 }
 
+async function mapWithConcurrency(items, limit, worker) {
+  const queue = [...items];
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, queue.length)) }, async () => {
+    while (queue.length > 0) {
+      const item = queue.shift();
+      await worker(item);
+    }
+  });
+  await Promise.all(workers);
+}
+
 function foldConfusableChars(value) {
   return Array.from(String(value || ''), (char) => CONFUSABLE_CHAR_MAP.get(char) || char).join('');
 }
@@ -1275,7 +1286,7 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true } = {}) {
   }
 
   // Batch-fetch all detail pages in parallel to fill in missing play counts
-  await Promise.all(pendingDetailFetches.map(async ({ absoluteIndex, detailParams, difficultyNumber }) => {
+  await mapWithConcurrency(pendingDetailFetches, 12, async ({ absoluteIndex, detailParams, difficultyNumber }) => {
     try {
       const metadata = await fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber);
       if (metadata?.playCount != null) {
@@ -1284,9 +1295,104 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true } = {}) {
     } catch {
       // ignore individual failures — play count is best-effort
     }
-  }));
+  });
 
   return allScores;
+}
+
+async function fetchPlayCountRowsForDifficulty(cookies, difficultyNumber) {
+  const selector = difficultySelectors[difficultyNumber];
+  const difficultyName = difficultyNames[difficultyNumber];
+  const html = await fetchText(`${INTL_SCORE_SEARCH_URL}${difficultyNumber}`, {
+    cookies,
+    referer: 'https://maimaidx-eng.com/maimai-mobile/'
+  });
+  const load = await loadCheerio();
+  const $ = load(html);
+  const rows = [];
+  const detailLookups = [];
+
+  $(selector).each((_, element) => {
+    try {
+      const block = $(element);
+      if (block.find('.music_score_block').length === 0) {
+        return;
+      }
+
+      const parent = getScoreRowContainer(block);
+      const type = mapMusicTypeFromIcon(
+        block.find('img.music_kind_icon').attr('src') ||
+        parent.find('img.music_kind_icon').attr('src') ||
+        ''
+      );
+      if (!type) {
+        return;
+      }
+
+      const title = block.find('.music_name_block').text().trim();
+      if (!title) {
+        return;
+      }
+
+      const metadata = mergeScoreRowMetadata(
+        parseScoreRowMetadata(block),
+        parseScoreRowMetadata(parent)
+      );
+      const rowIndex = rows.length;
+      rows.push({
+        title,
+        difficulty: difficultyName,
+        type,
+        level: block.find('.music_lv_block').text().trim() || null,
+        playCount: metadata.playCount,
+        playedAt: metadata.playedAt
+      });
+
+      if (metadata.playCount == null) {
+        const detailParams = extractMusicDetailParams($, block, parent);
+        if (detailParams) {
+          detailLookups.push({ index: rowIndex, detailParams, difficultyNumber });
+        }
+      }
+    } catch {
+      // ignore individual parse failures
+    }
+  });
+
+  return { rows, detailLookups, difficultyNumber };
+}
+
+async function fetchAllPlayCountRows(cookies) {
+  const results = await Promise.all(
+    difficultyNames.map((_, difficultyNumber) => fetchPlayCountRowsForDifficulty(cookies, difficultyNumber))
+  );
+
+  const rows = [];
+  const pendingDetailFetches = [];
+  for (const { rows: difficultyRows, detailLookups, difficultyNumber } of results) {
+    const offset = rows.length;
+    rows.push(...difficultyRows);
+    for (const { index, detailParams } of detailLookups) {
+      pendingDetailFetches.push({ absoluteIndex: offset + index, detailParams, difficultyNumber });
+    }
+  }
+
+  await mapWithConcurrency(pendingDetailFetches, 12, async ({ absoluteIndex, detailParams, difficultyNumber }) => {
+    try {
+      const metadata = await fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber);
+      if (metadata?.playCount != null) {
+        rows[absoluteIndex] = {
+          ...rows[absoluteIndex],
+          playCount: metadata.playCount,
+          playedAt: metadata.playedAt ?? rows[absoluteIndex].playedAt
+        };
+      }
+    } catch {
+      // ignore individual failures — play count is best-effort
+    }
+  });
+
+  return rows.filter((row) => row.playCount != null);
 }
 
 async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber) {
@@ -1566,62 +1672,6 @@ function bulkPlayCountKey(query) {
   return `${query.title}::${String(query.difficulty || '').toLowerCase()}::${String(query.type || 'std').toLowerCase()}`;
 }
 
-function uniqueTitleVariants(...values) {
-  const variants = [];
-  const seen = new Set();
-  for (const value of values.flat()) {
-    const text = String(value || '').trim();
-    const normalized = normalizeTitle(text);
-    if (!text || !normalized || seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    variants.push(text);
-  }
-  return variants;
-}
-
-function buildCatalogPlayCountQueries(songCatalog) {
-  if (!songCatalog?.available || !Array.isArray(songCatalog.songs)) {
-    return [];
-  }
-
-  const queries = [];
-  const seen = new Set();
-  for (const song of songCatalog.songs) {
-    for (const chart of song.difficultyLevels || []) {
-      const difficulty = String(chart?.difficulty || '').toLowerCase();
-      const type = String(chart?.type || 'std').toLowerCase();
-      if (!song.title || !difficulty || !type || type === 'unknown') {
-        continue;
-      }
-
-      const query = {
-        title: song.title,
-        titleVariants: uniqueTitleVariants(song.title, song.displayAliases, song.aliases),
-        artist: song.artist,
-        difficulty,
-        type,
-        level: chart.level ?? null,
-        internalLevelValue: chart.internalLevelValue ?? null,
-        version: chart.version ?? null,
-        noteCounts: chart.noteCounts ?? null,
-        maxDxScore: maxDxScoreFromChart(chart),
-        favoriteId: song.favoriteId,
-        songId: song.songId
-      };
-      const key = bulkPlayCountKey(query);
-      if (seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      queries.push(query);
-    }
-  }
-
-  return queries;
-}
-
 function scorePlayCountKey(score, matcher) {
   const type = String(score?.type || 'std').toLowerCase();
   const difficulty = String(score?.difficulty || '').toLowerCase();
@@ -1637,44 +1687,63 @@ function scorePlayCountKey(score, matcher) {
   return bulkPlayCountKey(score);
 }
 
-function mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries, songCatalog) {
-  if (!playCounts?.size) {
+function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog) {
+  if (!Array.isArray(playCountRows) || playCountRows.length === 0) {
     return scoreEntries;
   }
 
   const matcher = songCatalog?.available ? buildChartMatcher(songCatalog) : null;
-  const queryByKey = new Map(playCountQueries.map((query) => [bulkPlayCountKey(query), query]));
+  const rowsByKey = new Map();
+  for (const row of playCountRows) {
+    if (row?.playCount == null) {
+      continue;
+    }
+
+    const key = scorePlayCountKey(row, matcher);
+    const existing = rowsByKey.get(key);
+    if (!existing || Number(row.playCount) > Number(existing.playCount)) {
+      rowsByKey.set(key, row);
+    }
+  }
+
   const seenScoreKeys = new Set();
   const enrichedScores = scoreEntries.map((score) => {
     const key = scorePlayCountKey(score, matcher);
     seenScoreKeys.add(key);
-    const playCount = playCounts.get(key);
-    return playCount != null ? { ...score, playCount } : score;
+    const row = rowsByKey.get(key);
+    if (!row) {
+      return score;
+    }
+
+    return {
+      ...score,
+      playCount: row.playCount,
+      playedAt: score.playedAt ?? row.playedAt ?? null
+    };
   });
 
-  for (const [key, playCount] of playCounts.entries()) {
-    if (seenScoreKeys.has(key) || playCount == null || Number(playCount) <= 0) {
+  for (const [key, row] of rowsByKey.entries()) {
+    if (seenScoreKeys.has(key) || Number(row.playCount) <= 0) {
       continue;
     }
 
-    const query = queryByKey.get(key);
-    if (!query) {
-      continue;
-    }
-
+    const matched = matcher?.resolve(row.title, row.type, row.difficulty, row.level);
+    const chart = matched?.chart || null;
+    const song = matched?.song || null;
     enrichedScores.push({
-      title: query.title,
-      artist: query.artist,
-      favoriteId: query.favoriteId,
-      songId: query.songId,
-      difficulty: query.difficulty,
-      type: query.type,
-      level: query.level,
-      internalLevelValue: query.internalLevelValue,
-      version: query.version,
-      noteCounts: query.noteCounts,
-      maxDxScore: query.maxDxScore,
-      playCount,
+      title: row.title,
+      artist: song?.artist,
+      favoriteId: song?.favoriteId,
+      songId: song?.songId,
+      difficulty: row.difficulty,
+      type: row.type,
+      level: chart?.level ?? row.level,
+      internalLevelValue: chart?.internalLevelValue ?? null,
+      version: chart?.version ?? null,
+      noteCounts: chart?.noteCounts ?? null,
+      maxDxScore: maxDxScoreFromChart(chart),
+      playCount: row.playCount,
+      playedAt: row.playedAt ?? null,
       scoreUnavailable: true
     });
   }
@@ -1789,23 +1858,8 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const recentSessions = enrichRecentPlays(detailedRecentPlays, songCatalog);
 
   try {
-    const catalogPlayCountQueries = buildCatalogPlayCountQueries(songCatalog);
-    const playCountQueries = catalogPlayCountQueries.length > 0
-      ? catalogPlayCountQueries
-      : scoreEntries
-        .filter((score) => score?.title && score?.difficulty)
-        .map((score) => ({
-          title: score.title,
-          titleVariants: [score.title],
-          difficulty: String(score.difficulty || '').toLowerCase(),
-          type: String(score.type || 'std').toLowerCase()
-        }));
-    const playCounts = await fetchBulkPlayCountsWithCookies(cookies, playCountQueries, {
-      detailMode: catalogPlayCountQueries.length > 0 ? 'played' : 'all'
-    });
-    if (playCounts.size > 0 && playCountQueries.length > 0) {
-      scoreEntries = mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries, songCatalog);
-    }
+    const playCountRows = await fetchAllPlayCountRows(cookies);
+    scoreEntries = mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog);
   } catch {
     // Keep the rest of the account sync usable if play-count enrichment fails.
   }

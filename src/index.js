@@ -1168,7 +1168,7 @@ async function handleAccountCommand(interaction) {
 
       const entries = top.map(score => {
         const song = songCatalog.available
-          ? songCatalog.getUniqueByNormalizedTitle(score.title) ?? null
+          ? songCatalog.getUniqueByNormalizedTitle(score.title) ?? songCatalog.resolveSong(score.title) ?? null
           : null;
         return { score, song };
       });
