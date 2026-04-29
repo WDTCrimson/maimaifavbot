@@ -213,6 +213,12 @@ async function drawPlayerHeader(ctx, account, v) {
 
   ctx.font = `700 32px ${FONT}`; ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'alphabetic';
   ctx.fillText(name, tx, PLAYER_H / 2 + 14);
+
+  const totalPlays = account?.metrics?.playCount;
+  if (totalPlays != null) {
+    ctx.font = `500 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText(`${Number(totalPlays).toLocaleString()} plays`, tx, PLAYER_H / 2 + 34);
+  }
   ctx.restore();
 
   // Right cluster built right-to-left: logo (rightmost) → dani → rating frame
