@@ -263,6 +263,25 @@ function drawSectionHeader(ctx, y, count) {
 }
 
 // ─── Single play-count row ────────────────────────────────────────────────────
+//
+// Horizontal zones (left → right):
+//   MARGIN(16) | stripe(6) | rank#(32) | gap(4) | jacket(96) | gap(10)
+//   | MIDDLE | gap(8) | SCORE(130) | divider(1) | PLAYCOUNT(96) | MARGIN(16)
+//
+// SCORE zone holds rank icon (top-half) + FC badge (top-half) + achievement (bottom-half)
+// PLAYCOUNT zone holds the large number + "PLAYS" label
+
+const RANK_NUM_W = 32;
+const SCORE_W    = 130;
+const PC_W       = 96;
+
+const JACKET_X   = MARGIN + 6 + RANK_NUM_W + 4;       // 58
+const MID_X      = JACKET_X + JACKET_SZ + 10;          // 164
+const PC_RIGHT   = W - MARGIN;                          // 804 (right edge of play count zone)
+const PC_LEFT    = PC_RIGHT - PC_W;                     // 708
+const SCORE_RIGHT = PC_LEFT - 1;                        // 707 (divider at 708)
+const SCORE_LEFT  = SCORE_RIGHT - SCORE_W;              // 577
+const MID_W      = SCORE_LEFT - 8 - MID_X;             // ~405px
 
 async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   const { score, song } = entry;
@@ -271,14 +290,15 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   const dark  = DIFF_DARK[diff]  || '#444';
   const name  = DIFF_NAME[diff]  || diff.toUpperCase();
   const bv    = String(badgeVersion || 13);
+  const midCY = y + ROW_H / 2;
 
-  // Row background
+  // ── Row background
   ctx.save();
   ctx.fillStyle = 'rgba(20,14,36,0.88)';
   rr(ctx, MARGIN, y, IW, ROW_H, 10); ctx.fill();
   ctx.restore();
 
-  // Left accent stripe (difficulty color)
+  // ── Left accent stripe
   ctx.save();
   rr(ctx, MARGIN, y, IW, ROW_H, 10); ctx.clip();
   const lg = ctx.createLinearGradient(MARGIN, y, MARGIN + 6, y);
@@ -287,107 +307,121 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   ctx.fillRect(MARGIN, y, 6, ROW_H);
   ctx.restore();
 
-  // Rank number
-  const rankX = MARGIN + 14;
+  // ── Rank number
   ctx.save();
-  ctx.font = `800 18px ${FONT_MONO}`;
-  ctx.fillStyle = rank === 1 ? '#ffd700' : rank <= 3 ? '#c0c0c0' : 'rgba(255,255,255,0.4)';
-  ctx.textBaseline = 'middle';
-  ctx.textAlign = 'center';
-  ctx.fillText(`#${rank}`, rankX + 10, y + ROW_H / 2);
+  ctx.font = `800 15px ${FONT_MONO}`;
+  ctx.fillStyle = rank === 1 ? '#ffd700' : rank <= 3 ? '#c0c0c0' : 'rgba(255,255,255,0.35)';
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+  ctx.fillText(`#${rank}`, MARGIN + 6 + RANK_NUM_W / 2, midCY);
   ctx.restore();
 
-  // Jacket
-  const jacketX = MARGIN + 44;
+  // ── Jacket
   const jacketY = y + (ROW_H - JACKET_SZ) / 2;
   const jacketImg = await loadCached(resolveJacketPath(song));
   const fallback  = await loadCached(join(SCORE_ASSET, 'default_cover.png'));
   const src = jacketImg || fallback;
   if (src) {
     ctx.save();
-    rr(ctx, jacketX, jacketY, JACKET_SZ, JACKET_SZ, 6); ctx.clip();
+    rr(ctx, JACKET_X, jacketY, JACKET_SZ, JACKET_SZ, 6); ctx.clip();
     const s = Math.min(src.width, src.height);
-    ctx.drawImage(src, (src.width - s) / 2, (src.height - s) / 2, s, s, jacketX, jacketY, JACKET_SZ, JACKET_SZ);
+    ctx.drawImage(src, (src.width - s) / 2, (src.height - s) / 2, s, s, JACKET_X, jacketY, JACKET_SZ, JACKET_SZ);
     ctx.restore();
   }
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.15)'; ctx.lineWidth = 1.5;
-  rr(ctx, jacketX, jacketY, JACKET_SZ, JACKET_SZ, 6); ctx.stroke();
+  rr(ctx, JACKET_X, jacketY, JACKET_SZ, JACKET_SZ, 6); ctx.stroke();
   ctx.restore();
 
-  // Middle: title, artist, diff badge
-  const midX = jacketX + JACKET_SZ + 12;
-  const midW = W - midX - 210;  // leave 210px for right section
-  const midCY = y + ROW_H / 2;
-
+  // ── Middle: title, artist, diff badge
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.85)'; ctx.shadowBlur = 4;
 
   const title = score.title || song?.title || 'Unknown';
-  ctx.font = `600 17px ${FONT}`; ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'alphabetic';
-  ctx.fillText(trimToWidth(ctx, title, midW), midX, midCY - 4);
+  ctx.font = `600 16px ${FONT}`; ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(trimToWidth(ctx, title, MID_W), MID_X, midCY - 6);
 
   const artist = song?.artist || score.artist || '';
-  ctx.font = `400 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fillText(trimToWidth(ctx, artist, midW), midX, midCY + 14);
+  ctx.font = `400 12px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillText(trimToWidth(ctx, artist, MID_W), MID_X, midCY + 10);
 
-  // Diff badge
   const levelStr = score.internalLevelValue != null
     ? Number(score.internalLevelValue).toFixed(1)
     : score.level ?? '?';
   const badgeText = `${name}  ${levelStr}`;
-  ctx.font = `700 11px ${FONT}`;
-  const bw = ctx.measureText(badgeText).width + 14;
-  const bx = midX, by2 = midCY + 22, bh = 19;
+  ctx.font = `700 10px ${FONT}`;
+  const bdgW = ctx.measureText(badgeText).width + 12;
+  const bdgH = 16, bdgY = midCY + 18;
   ctx.fillStyle = color; ctx.shadowBlur = 0;
-  rr(ctx, bx, by2, bw, bh, 3); ctx.fill();
+  rr(ctx, MID_X, bdgY, bdgW, bdgH, 3); ctx.fill();
   ctx.fillStyle = '#ffffff'; ctx.textBaseline = 'middle';
-  ctx.fillText(badgeText, bx + 7, by2 + bh / 2);
+  ctx.fillText(badgeText, MID_X + 6, bdgY + bdgH / 2);
 
   ctx.restore();
 
-  // Right section: rank icon, achievement, fc badge, play count
-  const rightX = W - MARGIN - 200;
-  const midY2  = y + ROW_H / 2;
+  // ── Score zone (SCORE_LEFT → SCORE_RIGHT)
+  // Top half: rank icon + FC badge, right-aligned
+  // Bottom half: achievement text, right-aligned
+  const topY  = y + 6;
+  const topH  = ROW_H / 2 - 6;
+  const botY  = y + ROW_H / 2;
+  const botH  = ROW_H / 2 - 6;
 
-  // Rank icon
-  let curX = rightX;
-  const rankImg = await loadCached(join(RANK_ASSET, 'prism-plus', getRankIconFile(score.achievement)));
-  if (rankImg) {
-    const rh = 40, rw2 = rankImg.width * (rh / rankImg.height);
-    ctx.drawImage(rankImg, curX, midY2 - rh / 2, rw2, rh);
-    curX += rw2 + 6;
-  }
+  let scoreRX = SCORE_RIGHT; // accumulate right-to-left
 
-  // FC badge
   const fcBadge = await loadCached(join(TOMOMAI, 'badge', bv, fcBadgeFile(score.fc)));
   if (fcBadge) {
-    const bh2 = 36, bw2 = fcBadge.width * (bh2 / fcBadge.height);
-    ctx.drawImage(fcBadge, curX, midY2 - bh2 / 2, bw2, bh2);
-    curX += bw2 + 4;
+    const bh2 = 26, bw2 = fcBadge.width * (bh2 / fcBadge.height);
+    scoreRX -= bw2;
+    ctx.drawImage(fcBadge, scoreRX, topY + (topH - bh2) / 2, bw2, bh2);
+    scoreRX -= 4;
   }
 
-  // Achievement
+  const rankImg = await loadCached(join(RANK_ASSET, 'prism-plus', getRankIconFile(score.achievement)));
+  if (rankImg) {
+    const rh2 = 30, maxW = 72;
+    const rw2 = Math.min(rankImg.width * (rh2 / rankImg.height), maxW);
+    scoreRX -= rw2;
+    ctx.drawImage(rankImg, scoreRX, topY + (topH - rh2) / 2, rw2, rh2);
+  }
+
   ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 4;
-  ctx.font = `600 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.textBaseline = 'alphabetic';
-  ctx.fillText(formatAchievement(score.achievement), curX, midY2 + 5);
+  ctx.font = `500 12px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.7)';
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'right';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 3;
+  ctx.fillText(formatAchievement(score.achievement), SCORE_RIGHT, botY + botH / 2);
   ctx.restore();
 
-  // Play count — far right, large
-  const playCount = score.playCount;
-  if (playCount != null) {
-    const pcStr = Number(playCount).toLocaleString();
+  // ── Vertical divider between score zone and play count zone
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(PC_LEFT - 1, y + 10, 1, ROW_H - 20);
+  ctx.restore();
+
+  // ── Play count zone (PC_LEFT → PC_RIGHT)
+  if (score.playCount != null) {
+    const pcStr = Number(score.playCount).toLocaleString();
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
-    ctx.font = `800 26px ${FONT_MONO}`; ctx.fillStyle = color; ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'right';
-    ctx.fillText(pcStr, W - MARGIN - 6, midY2 + 8);
-    ctx.font = `400 10px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.4)';
-    ctx.fillText('PLAYS', W - MARGIN - 6, midY2 - 10);
+    ctx.textAlign = 'right';
+
+    // Auto-size so large numbers fit within PC_W
+    let fontSize = 22;
+    ctx.font = `800 ${fontSize}px ${FONT_MONO}`;
+    while (ctx.measureText(pcStr).width > PC_W - 8 && fontSize > 13) {
+      fontSize -= 1;
+      ctx.font = `800 ${fontSize}px ${FONT_MONO}`;
+    }
+    ctx.fillStyle = color; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(pcStr, PC_RIGHT - 4, midCY + 8);
+
+    ctx.font = `500 9px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('PLAYS', PC_RIGHT - 4, midCY - 10);
+
     ctx.restore();
   }
 
-  // Row border
+  // ── Row border
   ctx.save();
   ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1;
   rr(ctx, MARGIN, y, IW, ROW_H, 10); ctx.stroke();
