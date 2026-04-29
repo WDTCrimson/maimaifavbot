@@ -504,37 +504,34 @@ async function renderHeader(ctx, snapshot) {
   ctx.textAlign = 'left';
 
   const titleStr = snapshot.title || '';
-  const trophyImg = await loadCachedImage(resolveTrophyPath(snapshot.titleType));
-  if (trophyImg) {
-    const th = trophyImg.height * 1.6, tw = trophyImg.width * 1.6;
-    ctx.drawImage(trophyImg, tx, PADDING, tw, th);
-    ctx.font = font(500, 16);
-    ctx.fillStyle = '#ffffff';
-    ctx.textBaseline = 'middle';
-    ctx.strokeStyle = '#111111';
-    ctx.lineWidth = 3;
-    ctx.strokeText(titleStr, tx + tw / 2 - ctx.measureText(titleStr).width / 2, PADDING + th / 2);
-    ctx.fillText(titleStr, tx + tw / 2 - ctx.measureText(titleStr).width / 2, PADDING + th / 2);
-  } else if (titleStr) {
-    ctx.font = font(500, 14);
-    ctx.fillStyle = 'rgba(255,255,255,0.60)';
-    ctx.textBaseline = 'top';
-    ctx.fillText(titleStr, tx, PADDING + 10);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
+  if (titleStr) {
+    ctx.font = font(500, 13);
+    ctx.textBaseline = 'alphabetic';
+    const tw = ctx.measureText(titleStr).width;
+    const pH = 22, pY = PADDING + TARGET_HEIGHT / 2 - 46;
+    ctx.fillStyle = 'rgba(255,220,80,0.18)'; ctx.shadowBlur = 0;
+    roundRect(ctx, tx, pY, tw + 20, pH, 3); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,220,80,0.38)'; ctx.lineWidth = 1;
+    roundRect(ctx, tx, pY, tw + 20, pH, 3); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,230,100,0.9)'; ctx.shadowBlur = 5;
+    ctx.fillText(titleStr, tx + 10, pY + pH - 5);
   }
+  ctx.restore();
 
-  const nameY = trophyImg ? PADDING + trophyImg.height * 1.6 + 10 : PADDING + (titleStr ? 32 : TARGET_HEIGHT / 2 - 18);
-  ctx.font = font(700, 26);
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText(snapshot.displayName, tx, nameY);
+  const midY = PADDING + TARGET_HEIGHT / 2;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
+  ctx.font = font(700, 26); ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  ctx.fillText(snapshot.displayName, tx, midY + 12);
 
   if (snapshot.playCount != null) {
-    ctx.font = font(500, 13);
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.textBaseline = 'top';
-    ctx.fillText(`${Number(snapshot.playCount).toLocaleString()} plays`, tx, nameY + 34);
+    ctx.font = font(500, 13); ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillText(`${Number(snapshot.playCount).toLocaleString()} plays`, tx, midY + 32);
   }
+  ctx.restore();
 
   // --- right cluster (right-to-left): version logo → class rank → rating frame ---
   let rx = CANVAS_WIDTH - PADDING;
