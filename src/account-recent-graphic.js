@@ -504,23 +504,36 @@ async function renderHeader(ctx, snapshot) {
   ctx.textAlign = 'left';
 
   const titleStr = snapshot.title || '';
-  if (titleStr) {
+  const trophyImg = await loadCachedImage(resolveTrophyPath(snapshot.titleType));
+  if (trophyImg) {
+    const th = trophyImg.height * 1.6, tw = trophyImg.width * 1.6;
+    ctx.drawImage(trophyImg, tx, PADDING, tw, th);
+    ctx.font = font(500, 16);
+    ctx.fillStyle = '#ffffff';
+    ctx.textBaseline = 'middle';
+    ctx.strokeStyle = '#111111';
+    ctx.lineWidth = 3;
+    ctx.strokeText(titleStr, tx + tw / 2 - ctx.measureText(titleStr).width / 2, PADDING + th / 2);
+    ctx.fillText(titleStr, tx + tw / 2 - ctx.measureText(titleStr).width / 2, PADDING + th / 2);
+  } else if (titleStr) {
     ctx.font = font(500, 14);
     ctx.fillStyle = 'rgba(255,255,255,0.60)';
     ctx.textBaseline = 'top';
     ctx.fillText(titleStr, tx, PADDING + 10);
   }
 
+  const nameY = trophyImg ? PADDING + trophyImg.height * 1.6 + 10 : PADDING + (titleStr ? 32 : TARGET_HEIGHT / 2 - 18);
   ctx.font = font(700, 26);
   ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText(snapshot.displayName, tx, PADDING + (titleStr ? 32 : TARGET_HEIGHT / 2 - 18));
+  ctx.fillText(snapshot.displayName, tx, nameY);
 
   if (snapshot.playCount != null) {
     ctx.font = font(500, 13);
     ctx.fillStyle = 'rgba(255,255,255,0.55)';
     ctx.textBaseline = 'top';
-    ctx.fillText(`${Number(snapshot.playCount).toLocaleString()} plays`, tx, PADDING + (titleStr ? 64 : TARGET_HEIGHT / 2 + 14));
+    ctx.fillText(`${Number(snapshot.playCount).toLocaleString()} plays`, tx, nameY + 34);
   }
 
   // --- right cluster (right-to-left): version logo → class rank → rating frame ---

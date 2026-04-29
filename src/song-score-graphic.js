@@ -265,6 +265,7 @@ async function drawPlayerHeader(ctx, account) {
   const gameVer   = Number(account?.gameVersion) || 13;
   const courseRankIndex = account?.extra?.courseRankIndex ?? null;
   const courseRankUrl   = account?.extra?.courseRankUrl ?? null;
+  const classRankUrl    = account?.extra?.classRankUrl ?? null;
   const iconUrl   = account?.extra?.iconUrl || account?.player?.iconUrl || null;
 
   // Semi-transparent header strip
@@ -313,8 +314,19 @@ async function drawPlayerHeader(ctx, account) {
   }
   ctx.restore();
 
-  // ── Right side: dani badge + tomomai rating frame ─────────────────────────
+  // ── Right side: class rank + dani badge + tomomai rating frame ────────────
   let rx = W - 14;
+
+  // Class rank (Otomodachi)
+  if (classRankUrl) {
+    const ci = await loadCached(classRankUrl);
+    if (ci) {
+      const ch = 42, cw = ci.width * (ch / ci.height);
+      rx -= cw;
+      ctx.drawImage(ci, rx, (PLAYER_H - ch) / 2, cw, ch);
+      rx -= 10;
+    }
+  }
 
   // Dan badge
   const daniSrc = courseRankIndex != null

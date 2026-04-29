@@ -174,6 +174,7 @@ async function drawPlayerHeader(ctx, account, v) {
   const gameVer = Number(account?.gameVersion) || 13;
   const courseRankIndex = account?.extra?.courseRankIndex ?? null;
   const courseRankUrl   = account?.extra?.courseRankUrl ?? null;
+  const classRankUrl    = account?.extra?.classRankUrl ?? null;
   const iconUrl = account?.extra?.iconUrl || account?.player?.iconUrl || null;
 
   ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -221,7 +222,7 @@ async function drawPlayerHeader(ctx, account, v) {
   }
   ctx.restore();
 
-  // Right cluster built right-to-left: logo (rightmost) → dani → rating frame
+  // Right cluster built right-to-left: logo (rightmost) → class rank → dani → rating frame
   let rx = W - 22;
 
   // Version logo (rightmost)
@@ -233,7 +234,18 @@ async function drawPlayerHeader(ctx, account, v) {
     rx -= 16;
   }
 
-  // Dani badge
+  // Class rank (Otomodachi)
+  if (classRankUrl) {
+    const ci = await loadCached(classRankUrl);
+    if (ci) {
+      const ch = 48, cw = ci.width * (ch / ci.height);
+      rx -= cw;
+      ctx.drawImage(ci, rx, (PLAYER_H - ch) / 2, cw, ch);
+      rx -= 14;
+    }
+  }
+
+  // Dani badge (Dan course rank)
   const daniSrc = courseRankIndex != null
     ? join(DANI_ASSET, `dani_${String(courseRankIndex).padStart(2, '0')}.png`)
     : courseRankUrl;
