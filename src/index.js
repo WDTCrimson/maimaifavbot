@@ -430,6 +430,7 @@ async function handlePlaylistCommand(interaction) {
 
     case 'graphic': {
       const name = interaction.options.getString('name', true);
+      await interaction.deferReply();
       await measureUsage(
         interaction,
         'playlist_graphic',
