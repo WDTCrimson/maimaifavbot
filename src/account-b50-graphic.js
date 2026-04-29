@@ -352,7 +352,7 @@ async function drawSongCard(ctx, entry, x, y, v) {
   const levelStr = formatConstant(entry.internalLevelValue);
   ctx.font = `600 13px ${FONT}`;
   const chipW = ctx.measureText(levelStr).width + 20;
-  rr(ctx, x + CARD_W - chipW, y, chipW, 28, 10);
+  ctx.beginPath(); ctx.roundRect(x + CARD_W - chipW, y, chipW, 28, [0, 10, 0, 10]);
   ctx.fillStyle = color; ctx.fill();
   ctx.fillStyle = diff === 'remaster' ? '#591a8b' : '#fff';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
