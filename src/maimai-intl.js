@@ -1258,7 +1258,8 @@ async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber)
     return null;
   }
 
-  return parseScoreRowMetadata(block);
+  const parent = getScoreRowContainer(block);
+  return mergeScoreRowMetadata(parseScoreRowMetadata(block), parseScoreRowMetadata(parent));
 }
 
 function buildBest50(scores, songCatalog) {
