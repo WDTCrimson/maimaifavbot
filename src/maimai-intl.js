@@ -1264,7 +1264,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   return { scores, detailLookups, difficultyNumber };
 }
 
-async function fetchAllScores(cookies, { fetchDetailPlayCounts = true } = {}) {
+async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCountSyncStats = null } = {}) {
   const results = await Promise.all(
     difficultyNames.map((_, difficultyNumber) => fetchScoresForDifficulty(cookies, difficultyNumber))
   );
@@ -1280,6 +1280,10 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true } = {}) {
       pendingDetailFetches.push({ absoluteIndex: offset + index, detailParams, difficultyNumber });
     }
   }
+  if (playCountSyncStats) {
+    playCountSyncStats.scoreRows = allScores.length;
+    playCountSyncStats.scoreDetailLookups = pendingDetailFetches.length;
+  }
 
   if (!fetchDetailPlayCounts) {
     return allScores;
@@ -1291,9 +1295,17 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true } = {}) {
       const metadata = await fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber);
       if (metadata?.playCount != null) {
         allScores[absoluteIndex] = { ...allScores[absoluteIndex], playCount: metadata.playCount };
+        if (playCountSyncStats) {
+          playCountSyncStats.scoreDetailSuccesses = (playCountSyncStats.scoreDetailSuccesses || 0) + 1;
+        }
+      } else if (playCountSyncStats) {
+        playCountSyncStats.scoreDetailMisses = (playCountSyncStats.scoreDetailMisses || 0) + 1;
       }
     } catch {
       // ignore individual failures — play count is best-effort
+      if (playCountSyncStats) {
+        playCountSyncStats.scoreDetailFailures = (playCountSyncStats.scoreDetailFailures || 0) + 1;
+      }
     }
   });
 
@@ -1357,7 +1369,7 @@ async function fetchPlayCountRowsForDifficulty(cookies, difficultyNumber) {
   return { rows, detailLookups, difficultyNumber };
 }
 
-async function fetchAllPlayCountRows(cookies) {
+async function fetchAllPlayCountRows(cookies, playCountSyncStats = null) {
   const results = await Promise.all(
     difficultyNames.map((_, difficultyNumber) => fetchPlayCountRowsForDifficulty(cookies, difficultyNumber))
   );
@@ -1371,6 +1383,10 @@ async function fetchAllPlayCountRows(cookies) {
       pendingDetailFetches.push({ absoluteIndex: offset + index, detailParams, difficultyNumber });
     }
   }
+  if (playCountSyncStats) {
+    playCountSyncStats.playCountRows = rows.length;
+    playCountSyncStats.rowDetailLookups = pendingDetailFetches.length;
+  }
 
   await mapWithConcurrency(pendingDetailFetches, 12, async ({ absoluteIndex, detailParams, difficultyNumber }) => {
     try {
@@ -1381,13 +1397,25 @@ async function fetchAllPlayCountRows(cookies) {
           playCount: metadata.playCount,
           playedAt: metadata.playedAt ?? rows[absoluteIndex].playedAt
         };
+        if (playCountSyncStats) {
+          playCountSyncStats.rowDetailSuccesses = (playCountSyncStats.rowDetailSuccesses || 0) + 1;
+        }
+      } else if (playCountSyncStats) {
+        playCountSyncStats.rowDetailMisses = (playCountSyncStats.rowDetailMisses || 0) + 1;
       }
     } catch {
       // ignore individual failures — play count is best-effort
+      if (playCountSyncStats) {
+        playCountSyncStats.rowDetailFailures = (playCountSyncStats.rowDetailFailures || 0) + 1;
+      }
     }
   });
 
-  return rows.filter((row) => row.playCount != null);
+  const rowsWithCounts = rows.filter((row) => row.playCount != null);
+  if (playCountSyncStats) {
+    playCountSyncStats.playCountRowsWithCounts = rowsWithCounts.length;
+  }
+  return rowsWithCounts;
 }
 
 async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber) {
@@ -1673,7 +1701,7 @@ function scorePlayCountKey(score) {
   return bulkPlayCountKey({ title: score?.title, difficulty, type });
 }
 
-function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog) {
+function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog, playCountSyncStats = null) {
   if (!Array.isArray(playCountRows) || playCountRows.length === 0) {
     return scoreEntries;
   }
@@ -1707,7 +1735,11 @@ function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog) 
       playedAt: score.playedAt ?? row.playedAt ?? null
     };
   });
+  if (playCountSyncStats) {
+    playCountSyncStats.mergedExistingRows = enrichedScores.filter((score) => score.playCount != null).length;
+  }
 
+  let addedCountOnlyRows = 0;
   for (const [key, row] of rowsByKey.entries()) {
     if (seenScoreKeys.has(key) || Number(row.playCount) <= 0) {
       continue;
@@ -1732,6 +1764,10 @@ function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog) 
       playedAt: row.playedAt ?? null,
       scoreUnavailable: true
     });
+    addedCountOnlyRows += 1;
+  }
+  if (playCountSyncStats) {
+    playCountSyncStats.addedCountOnlyRows = addedCountOnlyRows;
   }
 
   return enrichedScores;
@@ -1831,10 +1867,27 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const validation = await validateInternationalCookie(clalToken);
   const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
 
+  const playCountSync = {
+    strategy: 'score-detail-plus-all-row-detail',
+    version: 2,
+    scoreRows: 0,
+    scoreDetailLookups: 0,
+    scoreDetailSuccesses: 0,
+    scoreDetailMisses: 0,
+    scoreDetailFailures: 0,
+    playCountRows: 0,
+    rowDetailLookups: 0,
+    rowDetailSuccesses: 0,
+    rowDetailMisses: 0,
+    rowDetailFailures: 0,
+    playCountRowsWithCounts: 0,
+    mergedExistingRows: 0,
+    addedCountOnlyRows: 0
+  };
   const recentPlaysPromise = fetchRecentPlays(cookies);
   let [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
     fetchPlayerDataHtml(cookies, validation.redirectUrl),
-    fetchAllScores(cookies),
+    fetchAllScores(cookies, { playCountSyncStats: playCountSync }),
     recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
   const recentPlays = await recentPlaysPromise;
@@ -1844,11 +1897,15 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const recentSessions = enrichRecentPlays(detailedRecentPlays, songCatalog);
 
   try {
-    const playCountRows = await fetchAllPlayCountRows(cookies);
-    scoreEntries = mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog);
-  } catch {
+    const playCountRows = await fetchAllPlayCountRows(cookies, playCountSync);
+    scoreEntries = mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog, playCountSync);
+  } catch (error) {
     // Keep the rest of the account sync usable if play-count enrichment fails.
+    playCountSync.rowScanError = error?.message || String(error);
   }
+  playCountSync.finalScores = scoreEntries.length;
+  playCountSync.finalScoresWithPlayCount = scoreEntries.filter((score) => score?.playCount != null).length;
+  playCountSync.completedAt = new Date().toISOString();
 
   return {
     token: clalToken,
@@ -1863,6 +1920,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
       },
       gameVersion: best50?.currentVersionId ?? getCurrentIntlVersionId(),
       sourceFetchedAt: new Date().toISOString(),
+      playCountSync,
       best50,
       allScores: scoreEntries,
       recentSessions,
