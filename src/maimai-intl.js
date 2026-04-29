@@ -1329,6 +1329,22 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
         }
       } else if (playCountSyncStats) {
         playCountSyncStats.scoreDetailMisses = (playCountSyncStats.scoreDetailMisses || 0) + 1;
+        if (!Array.isArray(playCountSyncStats.scoreDetailMissSamples)) {
+          playCountSyncStats.scoreDetailMissSamples = [];
+        }
+        if (playCountSyncStats.scoreDetailMissSamples.length < 12) {
+          const score = allScores[absoluteIndex] || {};
+          playCountSyncStats.scoreDetailMissSamples.push({
+            title: score.title,
+            difficulty: score.difficulty,
+            type: score.type,
+            level: score.level,
+            detailTitle: metadata?.detailTitle ?? null,
+            hasDifficultyBlock: metadata?.hasDifficultyBlock ?? null,
+            bodyHasPlayCountLabel: metadata?.bodyHasPlayCountLabel ?? null,
+            playedAt: metadata?.playedAt ?? null
+          });
+        }
       }
     } catch {
       // ignore individual failures — play count is best-effort
@@ -1459,22 +1475,35 @@ async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber)
   const load = await loadCheerio();
   const $ = load(html);
   const block = $(difficultySelectors[difficultyNumber]).first();
+  const bodyText = $('body').text();
+  const detailTitle = $('.basic_block .break').first().text().trim() || null;
+  const bodyMetadata = {
+    playCount: parsePlayCountFromScoreRowText(bodyText),
+    playedAt: parsePlayedAtFromText(bodyText)
+  };
   if (!block.length) {
-    return null;
+    return {
+      ...bodyMetadata,
+      detailTitle,
+      hasDifficultyBlock: false,
+      bodyHasPlayCountLabel: /PLAY COUNT/i.test(bodyText.normalize('NFKC'))
+    };
   }
 
   const parent = getScoreRowContainer(block);
-  const bodyText = $('body').text();
-  return mergeScoreRowMetadata(
+  const metadata = mergeScoreRowMetadata(
     parseMetadataTable($, block),
     parseScoreRowMetadata(block),
     parseMetadataTable($, parent),
     parseScoreRowMetadata(parent),
-    {
-      playCount: parsePlayCountFromScoreRowText(bodyText),
-      playedAt: parsePlayedAtFromText(bodyText)
-    }
+    bodyMetadata
   );
+  return {
+    ...metadata,
+    detailTitle,
+    hasDifficultyBlock: true,
+    bodyHasPlayCountLabel: /PLAY COUNT/i.test(bodyText.normalize('NFKC'))
+  };
 }
 
 function buildBest50(scores, songCatalog) {
