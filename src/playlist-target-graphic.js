@@ -391,7 +391,6 @@ function createCellGradient(ctx, color, x, y, width, height) {
 async function drawCell(ctx, entry, index, theme, x, y, width, height) {
   const difficultyMeta = DIFFICULTIES[entry.chart?.difficulty] || DIFFICULTIES.master;
   const diffColor = difficultyMeta.inverted ? '#EBCFFF' : difficultyMeta.color;
-  const chipTextColor = difficultyMeta.inverted ? difficultyMeta.color : '#ffffff';
 
   // Dark card background + border
   ctx.save();
@@ -454,7 +453,7 @@ async function drawCell(ctx, entry, index, theme, x, y, width, height) {
   ctx.fillStyle = diffColor;
   ctx.fill();
   ctx.font = `700 13px ${theme.fontFamily}`;
-  ctx.fillStyle = chipTextColor;
+  ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(levelStr, x + width - chipW / 2, y + chipH / 2);
