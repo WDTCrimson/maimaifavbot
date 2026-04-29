@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
+import { drawMaiDeckWatermark } from './graphic-watermark.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -475,12 +476,7 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir: 
     await drawSongCard(ctx, b35[i], MARGIN + col * (CARD_W + CARD_GAP), cy + row * (CARD_H + CARD_GAP), v);
   }
 
-  // Watermark
-  ctx.save();
-  ctx.font = `500 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.3)';
-  ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
-  ctx.fillText(`Generated ${new Date().toLocaleString('en-GB')} • maimai Favorite Bot`, W - MARGIN, totalH - 12);
-  ctx.restore();
+  drawMaiDeckWatermark(ctx, { width: W, height: totalH, fontFamily: FONT });
 
   const slug = String(account?.player?.name || 'account').trim()
     .replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'account';

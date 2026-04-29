@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
+import { drawMaiDeckWatermark } from './graphic-watermark.js';
 
 const CANVAS_WIDTH = 1200;
 const TARGET_HEIGHT = 156;
@@ -901,20 +902,6 @@ async function renderLastCreditContent(ctx, credit, overlayRect) {
   }
 }
 
-async function renderFooter(ctx, _gameVersion, text) {
-  const footerHeight = 50;
-  const footerTop = ctx.canvas.height - footerHeight;
-  ctx.fillStyle = 'rgba(0,0,0,0.40)';
-  ctx.fillRect(0, footerTop, CANVAS_WIDTH, footerHeight);
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.fillRect(0, footerTop, CANVAS_WIDTH, 1);
-  ctx.font = font(500, 14);
-  ctx.fillStyle = 'rgba(255,255,255,0.45)';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, CANVAS_WIDTH / 2, footerTop + footerHeight / 2);
-}
-
 function sanitizeFileName(text) {
   const value = String(text || '').trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   return value || 'recent-credit';
@@ -935,8 +922,7 @@ export async function renderAccountRecentGraphic({ account }) {
   await renderBackground(ctx, snapshot.gameVersion, true);
   const overlayRect = await renderHeader(ctx, snapshot);
   await renderLastCreditContent(ctx, credit, overlayRect);
-  const footerText = `Recent credit at ${credit.playedAt.toLocaleString('en-US', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Tokyo' })}, rendered by MaiFav Bot`;
-  await renderFooter(ctx, snapshot.gameVersion, footerText);
+  drawMaiDeckWatermark(ctx, { width: CANVAS_WIDTH, height: canvasHeight, fontFamily: FONT_FAMILY_DEFAULT, margin: 22, fontSize: 15 });
 
   const buffer = await canvas.toBuffer('png');
   return {

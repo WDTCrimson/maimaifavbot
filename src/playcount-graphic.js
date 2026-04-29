@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
+import { drawMaiDeckWatermark } from './graphic-watermark.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -459,6 +460,8 @@ export async function renderPlayCountGraphic({ account, entries }) {
     await drawPlayCountRow(ctx, entries[i], i + 1, rowY, badgeVer);
     rowY += ROW_H + GAP;
   }
+
+  drawMaiDeckWatermark(ctx, { width: W, height: totalH, fontFamily: FONT });
 
   const buffer = await canvas.toBuffer('png');
   const playerSlug = String(account?.player?.name || 'player').trim().replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'player';

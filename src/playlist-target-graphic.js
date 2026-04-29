@@ -1,6 +1,7 @@
 import { readFile, readdir, stat } from 'node:fs/promises';
 import { extname, isAbsolute, join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
+import { drawMaiDeckWatermark } from './graphic-watermark.js';
 
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 const FONT_EXTENSIONS = new Set(['.ttf', '.otf', '.woff', '.woff2']);
@@ -18,7 +19,7 @@ const HEADER_HEIGHT = PLAYER_H + PLAYLIST_BAR_H;
 const CELL_HEIGHT = 116;
 const CELL_PADDING = 4;
 const COLUMNS = 5;
-const FOOTER_HEIGHT = 28;
+const BOTTOM_PAD = 40;
 const GRID_GAP = 6;
 const DEFAULT_DXRATING_RANK_SLUG = 'circle-plus';
 
@@ -27,8 +28,6 @@ const FONT = 'Inter, Murecho, "Noto Sans JP", sans-serif';
 const defaultTheme = {
   accentColor: '#c8a8f9',
   headerFill: 'rgba(0,0,0,0.55)',
-  footerFill: 'rgba(0,0,0,0.40)',
-  footerText: 'rgba(255,255,255,0.45)',
   titleColor: '#ffffff',
   subtitleColor: 'rgba(255,255,255,0.8)',
   cardText: '#ffffff',
@@ -203,8 +202,7 @@ async function loadTheme(themeDir) {
     resolvedDir,
     assets: {
       background: await resolveThemeAsset(resolvedDir, 'background'),
-      logo: await resolveThemeAsset(resolvedDir, 'logo'),
-      watermark: await resolveThemeAsset(resolvedDir, 'watermark')
+      logo: await resolveThemeAsset(resolvedDir, 'logo')
     }
   };
 }
@@ -645,7 +643,7 @@ export async function renderPlaylistTargetGraphic({ account, playlistName, entri
     }))
   );
   const rows = Math.max(1, Math.ceil(preparedEntries.length / COLUMNS));
-  const height = HEADER_HEIGHT + rows * CELL_HEIGHT + (rows - 1) * GRID_GAP + FOOTER_HEIGHT + 12;
+  const height = HEADER_HEIGHT + rows * CELL_HEIGHT + (rows - 1) * GRID_GAP + BOTTOM_PAD;
 
   const canvas = new Canvas(WIDTH, height);
   const ctx = canvas.getContext('2d');
@@ -691,17 +689,7 @@ export async function renderPlaylistTargetGraphic({ account, playlistName, entri
     return drawCell(ctx, entry, index, theme, x, y, cellWidth - CELL_PADDING * 2, CELL_HEIGHT);
   }));
 
-  // Footer panel
-  ctx.fillStyle = theme.footerFill;
-  ctx.fillRect(0, height - FOOTER_HEIGHT, WIDTH, FOOTER_HEIGHT);
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.fillRect(0, height - FOOTER_HEIGHT, WIDTH, 1);
-
-  ctx.fillStyle = theme.footerText;
-  ctx.font = `500 12px ${theme.fontFamily}`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('Rendered by MaiFav Bot', WIDTH / 2, height - FOOTER_HEIGHT / 2);
+  drawMaiDeckWatermark(ctx, { width: WIDTH, height, fontFamily: theme.fontFamily });
 
   const buffer = await canvas.toBuffer('png');
   return {

@@ -1,6 +1,7 @@
 import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
+import { drawMaiDeckWatermark } from './graphic-watermark.js';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -377,6 +378,8 @@ export async function renderPortraitScoreGraphic({ account, songCatalog }) {
 
   await drawGrid(ctx, b35, OLD_ORIGIN, 7);
   await drawGrid(ctx, b15, NEW_ORIGIN, 3);
+
+  drawMaiDeckWatermark(ctx, { width: CANVAS_W, height: CANVAS_H, fontFamily: FONT_FAMILY, margin: 18, fontSize: 14 });
 
   const buffer = await canvas.toBuffer('png');
   return {
