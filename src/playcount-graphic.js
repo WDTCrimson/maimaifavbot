@@ -387,7 +387,7 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
     const pcStr = Number(score.playCount).toLocaleString();
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 5;
-    ctx.textAlign = 'left';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
 
     const labelY  = midCY - 20;
