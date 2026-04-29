@@ -104,7 +104,7 @@ function maxDxScoreFromChart(chart) {
 
 function parsePlayCountFromScoreRowText(value) {
   const text = String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
-  const match = text.match(/PLAY COUNT\s*[:：]\s*((?:\d[\d,\s]*){1,8})/i);
+  const match = text.match(/PLAY COUNT\s*[:：]\s*([0-9][0-9,]*)\b/i);
   if (!match) {
     return null;
   }
@@ -1334,25 +1334,20 @@ async function fetchPlayCountRowsForDifficulty(cookies, difficultyNumber) {
         return;
       }
 
-      const metadata = mergeScoreRowMetadata(
-        parseScoreRowMetadata(block),
-        parseScoreRowMetadata(parent)
-      );
+      const metadata = parseScoreRowMetadata(block);
+      const detailParams = extractMusicDetailParams($, block, parent);
       const rowIndex = rows.length;
       rows.push({
         title,
         difficulty: difficultyName,
         type,
         level: block.find('.music_lv_block').text().trim() || null,
-        playCount: metadata.playCount,
+        playCount: detailParams ? null : metadata.playCount,
         playedAt: metadata.playedAt
       });
 
-      if (metadata.playCount == null) {
-        const detailParams = extractMusicDetailParams($, block, parent);
-        if (detailParams) {
-          detailLookups.push({ index: rowIndex, detailParams, difficultyNumber });
-        }
+      if (detailParams) {
+        detailLookups.push({ index: rowIndex, detailParams, difficultyNumber });
       }
     } catch {
       // ignore individual parse failures
@@ -1672,19 +1667,10 @@ function bulkPlayCountKey(query) {
   return `${query.title}::${String(query.difficulty || '').toLowerCase()}::${String(query.type || 'std').toLowerCase()}`;
 }
 
-function scorePlayCountKey(score, matcher) {
+function scorePlayCountKey(score) {
   const type = String(score?.type || 'std').toLowerCase();
   const difficulty = String(score?.difficulty || '').toLowerCase();
-  const matched = matcher?.resolve(score?.title, type, difficulty, score?.level);
-  if (matched?.song?.title) {
-    return bulkPlayCountKey({
-      title: matched.song.title,
-      difficulty,
-      type
-    });
-  }
-
-  return bulkPlayCountKey(score);
+  return bulkPlayCountKey({ title: score?.title, difficulty, type });
 }
 
 function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog) {
@@ -1699,7 +1685,7 @@ function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog) 
       continue;
     }
 
-    const key = scorePlayCountKey(row, matcher);
+    const key = scorePlayCountKey(row);
     const existing = rowsByKey.get(key);
     if (!existing || Number(row.playCount) > Number(existing.playCount)) {
       rowsByKey.set(key, row);
@@ -1708,7 +1694,7 @@ function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog) 
 
   const seenScoreKeys = new Set();
   const enrichedScores = scoreEntries.map((score) => {
-    const key = scorePlayCountKey(score, matcher);
+    const key = scorePlayCountKey(score);
     seenScoreKeys.add(key);
     const row = rowsByKey.get(key);
     if (!row) {
