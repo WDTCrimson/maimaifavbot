@@ -6,6 +6,8 @@ const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp'];
 const FONT_EXTENSIONS = new Set(['.ttf', '.otf', '.woff', '.woff2']);
 const loadedThemeFonts = new Map();
 const imageCache = new Map();
+const REGISTERED_FONTS = new Set();
+const TOMOMAI_FONTS = join(process.cwd(), 'data', 'assets', 'tomomai', 'res', 'fonts');
 
 const WIDTH = 1500;
 const HEADER_HEIGHT = 100;
@@ -16,17 +18,19 @@ const FOOTER_HEIGHT = 28;
 const GRID_GAP = 6;
 const DEFAULT_DXRATING_RANK_SLUG = 'circle-plus';
 
+const FONT = 'Inter, Murecho, "Noto Sans JP", sans-serif';
+
 const defaultTheme = {
   accentColor: '#c8a8f9',
-  headerFill: 'rgba(0,0,0,0.82)',
-  footerFill: 'rgba(0,0,0,0.4)',
-  footerText: '#ffffff',
+  headerFill: 'rgba(0,0,0,0.55)',
+  footerFill: 'rgba(0,0,0,0.40)',
+  footerText: 'rgba(255,255,255,0.45)',
   titleColor: '#ffffff',
   subtitleColor: 'rgba(255,255,255,0.8)',
   cardText: '#ffffff',
   badgeFill: 'rgba(0,0,0,0.38)',
   badgeStroke: 'rgba(255,255,255,0.18)',
-  fontFamily: 'Inter, Noto Sans JP, Arial, sans-serif'
+  fontFamily: FONT
 };
 
 const DIFFICULTIES = {
@@ -107,6 +111,20 @@ async function fileExists(path) {
     return fileStat.isFile();
   } catch {
     return false;
+  }
+}
+
+async function registerFonts() {
+  if (REGISTERED_FONTS.size) return;
+  const mappings = [
+    ['Inter',      'Inter-VariableFont_opsz,wght.woff2'],
+    ['Murecho',    'Murecho-VariableFont_wght.woff2'],
+    ['Noto Sans JP','NotoSansJP-VariableFont_wght.woff2'],
+    ['Geist Mono', 'GeistMono-VariableFont_wght.woff2'],
+  ];
+  for (const [family, file] of mappings) {
+    const path = join(TOMOMAI_FONTS, file);
+    if (await fileExists(path)) { FontLibrary.use(family, [path]); REGISTERED_FONTS.add(family); }
   }
 }
 
@@ -351,13 +369,13 @@ function drawBadge(ctx, { x, y, text, fill = 'rgba(0,0,0,0.35)', color = '#fff',
 function drawFact(ctx, { x, y, value, label, align = 'right' }) {
   ctx.save();
   ctx.textAlign = align;
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = '#fff';
-  ctx.font = `700 30px ${ctx._fontFamily}`;
-  ctx.fillText(String(value), x, y);
-  ctx.fillStyle = 'rgba(255,255,255,0.78)';
-  ctx.font = `500 14px ${ctx._fontFamily}`;
-  ctx.fillText(String(label), x, y + 20);
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = `700 24px ${ctx._fontFamily}`;
+  ctx.fillText(String(value), x, y - 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.50)';
+  ctx.font = `500 12px ${ctx._fontFamily}`;
+  ctx.fillText(String(label), x, y + 12);
   ctx.restore();
 }
 
@@ -371,45 +389,48 @@ function createCellGradient(ctx, color, x, y, width, height) {
 
 function drawCell(ctx, entry, index, theme, x, y, width, height) {
   const difficultyMeta = DIFFICULTIES[entry.chart?.difficulty] || DIFFICULTIES.master;
-  const backgroundColor = difficultyMeta.inverted ? '#EBCFFF' : difficultyMeta.color;
-  const foregroundColor = difficultyMeta.inverted ? difficultyMeta.color : theme.cardText;
-  const shadowColor = difficultyMeta.inverted ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)';
+  const diffColor = difficultyMeta.color;
 
+  // Dark card background + border
   ctx.save();
-  roundedRectPath(ctx, x, y, width, height, 12);
-  ctx.fillStyle = createCellGradient(ctx, backgroundColor, x, y, width, height);
+  roundedRectPath(ctx, x, y, width, height, 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
   ctx.fill();
-  ctx.shadowColor = 'rgba(0,0,0,0.3)';
-  ctx.shadowBlur = 4;
-  ctx.shadowOffsetY = 1;
+  ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
   ctx.restore();
 
+  // Difficulty accent bar on left edge
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, 4, height, [10, 0, 0, 10]);
+  ctx.fillStyle = diffColor;
+  ctx.fill();
+  ctx.restore();
+
+  // Jacket on right with fade
   const coverWidth = entry.cover ? 108 : 0;
   ctx.save();
-  roundedRectPath(ctx, x, y, width, height, 12);
+  roundedRectPath(ctx, x, y, width, height, 10);
   ctx.clip();
   if (entry.cover) {
     drawMaskedCover(ctx, entry.cover, x + width - coverWidth, y, coverWidth, height);
   }
-  const leftFade = ctx.createLinearGradient(x, y, x + Math.min(width - coverWidth + 12, width), y);
-  leftFade.addColorStop(0, difficultyMeta.inverted ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)');
-  leftFade.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = leftFade;
-  ctx.fillRect(x, y, width, height);
   ctx.restore();
 
-  const leftX = x + 10;
+  const leftX = x + 14;
   const topY = y + 10;
   const contentWidth = Math.max(120, width - coverWidth - 28);
   const hasTarget = entry.target?.achievementRate != null;
 
   ctx.save();
-  ctx.fillStyle = foregroundColor;
+  ctx.fillStyle = '#ffffff';
   ctx.font = `700 14px ${theme.fontFamily}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.shadowColor = shadowColor;
-  ctx.shadowBlur = 2;
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 3;
   const titleLines = wrapTextToWidth(ctx, entry.song.title, contentWidth, 2);
   titleLines.forEach((line, lineIndex) => {
     ctx.fillText(line, leftX, topY + lineIndex * 16);
@@ -455,7 +476,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
   });
 
   ctx.font = hasTarget ? `700 15px ${theme.fontFamily}` : `700 13px ${theme.fontFamily}`;
-  ctx.fillStyle = foregroundColor;
+  ctx.fillStyle = '#ffffff';
   ctx.fillText(
     hasTarget ? formatAchievementTarget(entry.target?.achievementRate) : 'NO TARGET',
     leftX + 54,
@@ -519,6 +540,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
 }
 
 export async function renderPlaylistTargetGraphic({ playlistName, entries, themeDir }) {
+  await registerFonts();
   const { theme, assets } = await loadTheme(themeDir);
   const preparedEntries = await Promise.all(
     entries.map(async (entry) => ({
@@ -538,14 +560,11 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   if (background) {
     drawImageCover(ctx, background, 0, 0, WIDTH, height);
   } else {
-    const gradient = ctx.createLinearGradient(0, 0, WIDTH, height);
-    gradient.addColorStop(0, '#f4b6d9');
-    gradient.addColorStop(1, '#d56ca0');
-    ctx.fillStyle = gradient;
+    ctx.fillStyle = '#0d0d12';
     ctx.fillRect(0, 0, WIDTH, height);
   }
 
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
   ctx.fillRect(0, 0, WIDTH, height);
 
   const logo = await getImage(assets.logo);
@@ -553,11 +572,11 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   const songsWithTargets = preparedEntries.filter((entry) => entry.target?.achievementRate != null).length;
   const totalTargetRating = preparedEntries.reduce((sum, entry) => sum + (entry.targetRating || 0), 0);
 
-  ctx.save();
-  roundedRectPath(ctx, 4, 4, WIDTH - 8, HEADER_HEIGHT - 8, 10);
+  // Header panel
   ctx.fillStyle = theme.headerFill;
-  ctx.fill();
-  ctx.restore();
+  ctx.fillRect(0, 0, WIDTH, HEADER_HEIGHT);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(0, HEADER_HEIGHT - 1, WIDTH, 1);
 
   if (logo) {
     const logoHeight = 70;
@@ -574,10 +593,10 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
   }
 
   ctx.fillStyle = theme.titleColor;
-  ctx.font = `700 34px ${theme.fontFamily}`;
+  ctx.font = `700 28px ${theme.fontFamily}`;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(trimText(playlistName, 42), 20, HEADER_HEIGHT / 2 - 2);
+  ctx.fillText(trimText(playlistName, 42), 22, HEADER_HEIGHT / 2);
 
   drawFact(ctx, { x: WIDTH - 210, y: HEADER_HEIGHT / 2 - 2, value: totalTargetRating || '—', label: 'Target Rating' });
   drawFact(ctx, { x: WIDTH - 360, y: HEADER_HEIGHT / 2 - 2, value: songsWithTargets, label: 'Targeted Songs' });
@@ -592,17 +611,17 @@ export async function renderPlaylistTargetGraphic({ playlistName, entries, theme
     drawCell(ctx, entry, index, theme, x, y, cellWidth - CELL_PADDING * 2, CELL_HEIGHT);
   });
 
-  ctx.save();
-  roundedRectPath(ctx, 4, height - FOOTER_HEIGHT - 4, WIDTH - 8, FOOTER_HEIGHT, 10);
+  // Footer panel
   ctx.fillStyle = theme.footerFill;
-  ctx.fill();
-  ctx.restore();
+  ctx.fillRect(0, height - FOOTER_HEIGHT, WIDTH, FOOTER_HEIGHT);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(0, height - FOOTER_HEIGHT, WIDTH, 1);
 
   ctx.fillStyle = theme.footerText;
-  ctx.font = `700 12px ${theme.fontFamily}`;
+  ctx.font = `500 12px ${theme.fontFamily}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText('Rendered by MaiFav Bot', WIDTH / 2, height - FOOTER_HEIGHT / 2 - 4);
+  ctx.fillText('Rendered by MaiFav Bot', WIDTH / 2, height - FOOTER_HEIGHT / 2);
 
   const buffer = await canvas.toBuffer('png');
   return {
