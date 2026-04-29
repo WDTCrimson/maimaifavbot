@@ -405,9 +405,9 @@ function buildChartMatcher(songCatalog) {
   const exact = new Map();
   const loose = new Map();
 
-  for (const song of songCatalog?.songs || []) {
-    const norm = normalizeTitle(song.title);
-    const soft = normalizeTitleLoose(song.title);
+  function addTitle(value, song) {
+    const norm = normalizeTitle(value);
+    const soft = normalizeTitleLoose(value);
     if (norm) {
       if (!exact.has(norm)) {
         exact.set(norm, []);
@@ -419,6 +419,13 @@ function buildChartMatcher(songCatalog) {
         loose.set(soft, []);
       }
       loose.get(soft).push(song);
+    }
+  }
+
+  for (const song of songCatalog?.songs || []) {
+    addTitle(song.title, song);
+    for (const alias of [...(song.aliases || []), ...(song.displayAliases || [])]) {
+      addTitle(alias, song);
     }
   }
 
@@ -444,6 +451,8 @@ function buildChartMatcher(songCatalog) {
         let score = 0;
         if (normalizeTitle(song.title) === norm) score += 50;
         if (normalizeTitleLoose(song.title) === soft) score += 20;
+        if ((song.aliases || []).some((alias) => normalizeTitle(alias) === norm)) score += 30;
+        if ((song.displayAliases || []).some((alias) => normalizeTitle(alias) === norm)) score += 30;
         if (String(chart.level || '').trim() === String(level || '').trim()) score += 10;
 
         const candidate = { song, chart, score };
@@ -1557,6 +1566,21 @@ function bulkPlayCountKey(query) {
   return `${query.title}::${String(query.difficulty || '').toLowerCase()}::${String(query.type || 'std').toLowerCase()}`;
 }
 
+function uniqueTitleVariants(...values) {
+  const variants = [];
+  const seen = new Set();
+  for (const value of values.flat()) {
+    const text = String(value || '').trim();
+    const normalized = normalizeTitle(text);
+    if (!text || !normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    variants.push(text);
+  }
+  return variants;
+}
+
 function buildCatalogPlayCountQueries(songCatalog) {
   if (!songCatalog?.available || !Array.isArray(songCatalog.songs)) {
     return [];
@@ -1574,6 +1598,7 @@ function buildCatalogPlayCountQueries(songCatalog) {
 
       const query = {
         title: song.title,
+        titleVariants: uniqueTitleVariants(song.title, song.displayAliases, song.aliases),
         artist: song.artist,
         difficulty,
         type,
@@ -1597,15 +1622,31 @@ function buildCatalogPlayCountQueries(songCatalog) {
   return queries;
 }
 
-function mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries) {
+function scorePlayCountKey(score, matcher) {
+  const type = String(score?.type || 'std').toLowerCase();
+  const difficulty = String(score?.difficulty || '').toLowerCase();
+  const matched = matcher?.resolve(score?.title, type, difficulty, score?.level);
+  if (matched?.song?.title) {
+    return bulkPlayCountKey({
+      title: matched.song.title,
+      difficulty,
+      type
+    });
+  }
+
+  return bulkPlayCountKey(score);
+}
+
+function mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries, songCatalog) {
   if (!playCounts?.size) {
     return scoreEntries;
   }
 
+  const matcher = songCatalog?.available ? buildChartMatcher(songCatalog) : null;
   const queryByKey = new Map(playCountQueries.map((query) => [bulkPlayCountKey(query), query]));
   const seenScoreKeys = new Set();
   const enrichedScores = scoreEntries.map((score) => {
-    const key = bulkPlayCountKey(score);
+    const key = scorePlayCountKey(score, matcher);
     seenScoreKeys.add(key);
     const playCount = playCounts.get(key);
     return playCount != null ? { ...score, playCount } : score;
@@ -1678,10 +1719,13 @@ async function fetchBulkPlayCountsWithCookies(cookies, queries, { detailMode = '
         const iconSrc     = block.find('img.music_kind_icon').attr('src') || parent.find('img.music_kind_icon').attr('src') || '';
         const blockType   = mapMusicTypeFromIcon(iconSrc) || 'std';
 
-        const q = qs.find(q =>
-          normalizeTitle(q.title) === blockNorm &&
-          String(q.type || 'std').toLowerCase() === blockType
-        );
+        const q = qs.find((q) => {
+          if (String(q.type || 'std').toLowerCase() !== blockType) {
+            return false;
+          }
+          const titleVariants = q.titleVariants?.length ? q.titleVariants : [q.title];
+          return titleVariants.some((title) => normalizeTitle(title) === blockNorm);
+        });
         if (!q) return;
 
         const mapKey = bulkPlayCountKey(q);
@@ -1752,6 +1796,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
         .filter((score) => score?.title && score?.difficulty)
         .map((score) => ({
           title: score.title,
+          titleVariants: [score.title],
           difficulty: String(score.difficulty || '').toLowerCase(),
           type: String(score.type || 'std').toLowerCase()
         }));
@@ -1759,7 +1804,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
       detailMode: catalogPlayCountQueries.length > 0 ? 'played' : 'all'
     });
     if (playCounts.size > 0 && playCountQueries.length > 0) {
-      scoreEntries = mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries);
+      scoreEntries = mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries, songCatalog);
     }
   } catch {
     // Keep the rest of the account sync usable if play-count enrichment fails.
