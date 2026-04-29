@@ -1834,7 +1834,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const recentPlaysPromise = fetchRecentPlays(cookies);
   let [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
     fetchPlayerDataHtml(cookies, validation.redirectUrl),
-    fetchAllScores(cookies, { fetchDetailPlayCounts: false }),
+    fetchAllScores(cookies),
     recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
   const recentPlays = await recentPlaysPromise;
