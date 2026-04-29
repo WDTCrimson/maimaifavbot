@@ -1312,6 +1312,10 @@ function buildBest50(scores, songCatalog) {
   const rated = [];
 
   for (const score of scores) {
+    if (!Number.isFinite(Number(score.achievement))) {
+      continue;
+    }
+
     const matched = matcher.resolve(score.title, score.type, score.difficulty, score.level);
     if (!matched) {
       continue;
@@ -1553,11 +1557,95 @@ function bulkPlayCountKey(query) {
   return `${query.title}::${String(query.difficulty || '').toLowerCase()}::${String(query.type || 'std').toLowerCase()}`;
 }
 
+function buildCatalogPlayCountQueries(songCatalog) {
+  if (!songCatalog?.available || !Array.isArray(songCatalog.songs)) {
+    return [];
+  }
+
+  const queries = [];
+  const seen = new Set();
+  for (const song of songCatalog.songs) {
+    for (const chart of song.difficultyLevels || []) {
+      const difficulty = String(chart?.difficulty || '').toLowerCase();
+      const type = String(chart?.type || 'std').toLowerCase();
+      if (!song.title || !difficulty || !type || type === 'unknown') {
+        continue;
+      }
+
+      const query = {
+        title: song.title,
+        artist: song.artist,
+        difficulty,
+        type,
+        level: chart.level ?? null,
+        internalLevelValue: chart.internalLevelValue ?? null,
+        version: chart.version ?? null,
+        noteCounts: chart.noteCounts ?? null,
+        maxDxScore: maxDxScoreFromChart(chart),
+        favoriteId: song.favoriteId,
+        songId: song.songId
+      };
+      const key = bulkPlayCountKey(query);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      queries.push(query);
+    }
+  }
+
+  return queries;
+}
+
+function mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries) {
+  if (!playCounts?.size) {
+    return scoreEntries;
+  }
+
+  const queryByKey = new Map(playCountQueries.map((query) => [bulkPlayCountKey(query), query]));
+  const seenScoreKeys = new Set();
+  const enrichedScores = scoreEntries.map((score) => {
+    const key = bulkPlayCountKey(score);
+    seenScoreKeys.add(key);
+    const playCount = playCounts.get(key);
+    return playCount != null ? { ...score, playCount } : score;
+  });
+
+  for (const [key, playCount] of playCounts.entries()) {
+    if (seenScoreKeys.has(key) || playCount == null || Number(playCount) <= 0) {
+      continue;
+    }
+
+    const query = queryByKey.get(key);
+    if (!query) {
+      continue;
+    }
+
+    enrichedScores.push({
+      title: query.title,
+      artist: query.artist,
+      favoriteId: query.favoriteId,
+      songId: query.songId,
+      difficulty: query.difficulty,
+      type: query.type,
+      level: query.level,
+      internalLevelValue: query.internalLevelValue,
+      version: query.version,
+      noteCounts: query.noteCounts,
+      maxDxScore: query.maxDxScore,
+      playCount,
+      scoreUnavailable: true
+    });
+  }
+
+  return enrichedScores;
+}
+
 // Bulk-fetch play counts for many songs at once.
 // queries: array of { title, difficulty, type }
 // Returns a Map keyed by `${title}::${difficulty}::${type}` → playCount
 // (title-aware keying avoids collisions when songs share difficulty+type)
-async function fetchBulkPlayCountsWithCookies(cookies, queries) {
+async function fetchBulkPlayCountsWithCookies(cookies, queries, { detailMode = 'all' } = {}) {
   if (!queries?.length) return new Map();
 
   const byDiffNum = new Map();
@@ -1607,7 +1695,11 @@ async function fetchBulkPlayCountsWithCookies(cookies, queries) {
         }
 
         const detailParams = extractMusicDetailParams($, block, parent);
-        if (detailParams && !detailLookups.has(mapKey)) {
+        const hasPlayedEvidence =
+          metadata.playedAt ||
+          block.find('.music_score_block').toArray().some((scoreBlock) => /(\d+\.?\d*)%/.test($(scoreBlock).text()));
+        const shouldFetchDetail = detailMode === 'all' || hasPlayedEvidence;
+        if (shouldFetchDetail && detailParams && !detailLookups.has(mapKey)) {
           detailLookups.set(mapKey, { detailParams, difficultyNumber: diffNum });
         }
       });
@@ -1648,28 +1740,30 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   ]);
   const recentPlays = await recentPlaysPromise;
 
+  const profile = await extractPlayerSnapshot(playerDataHtml);
+  const best50 = buildBest50(scoreEntries, songCatalog);
+  const recentSessions = enrichRecentPlays(detailedRecentPlays, songCatalog);
+
   try {
-    const playCountQueries = scoreEntries
-      .filter((score) => score?.title && score?.difficulty)
-      .map((score) => ({
-        title: score.title,
-        difficulty: String(score.difficulty || '').toLowerCase(),
-        type: String(score.type || 'std').toLowerCase()
-      }));
-    const playCounts = await fetchBulkPlayCountsWithCookies(cookies, playCountQueries);
-    if (playCounts.size > 0) {
-      scoreEntries = scoreEntries.map((score) => {
-        const playCount = playCounts.get(bulkPlayCountKey(score));
-        return playCount != null ? { ...score, playCount } : score;
-      });
+    const catalogPlayCountQueries = buildCatalogPlayCountQueries(songCatalog);
+    const playCountQueries = catalogPlayCountQueries.length > 0
+      ? catalogPlayCountQueries
+      : scoreEntries
+        .filter((score) => score?.title && score?.difficulty)
+        .map((score) => ({
+          title: score.title,
+          difficulty: String(score.difficulty || '').toLowerCase(),
+          type: String(score.type || 'std').toLowerCase()
+        }));
+    const playCounts = await fetchBulkPlayCountsWithCookies(cookies, playCountQueries, {
+      detailMode: catalogPlayCountQueries.length > 0 ? 'played' : 'all'
+    });
+    if (playCounts.size > 0 && playCountQueries.length > 0) {
+      scoreEntries = mergePlayCountsIntoScores(scoreEntries, playCounts, playCountQueries);
     }
   } catch {
     // Keep the rest of the account sync usable if play-count enrichment fails.
   }
-
-  const profile = await extractPlayerSnapshot(playerDataHtml);
-  const best50 = buildBest50(scoreEntries, songCatalog);
-  const recentSessions = enrichRecentPlays(detailedRecentPlays, songCatalog);
 
   return {
     token: clalToken,
