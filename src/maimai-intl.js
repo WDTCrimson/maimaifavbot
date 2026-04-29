@@ -1302,6 +1302,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
 
 async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCountSyncStats = null } = {}) {
   const allScores = [];
+  const detailMetadataCache = new Map();
 
   for (let difficultyNumber = 0; difficultyNumber < difficultyNames.length; difficultyNumber += 1) {
     const { scores, detailLookups } = await fetchScoresForDifficulty(cookies, difficultyNumber);
@@ -1321,8 +1322,25 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
     // them before loading another difficulty page.
     await mapWithConcurrency(detailLookups, 1, async ({ index, detailParams }) => {
       const absoluteIndex = offset + index;
+      const score = allScores[absoluteIndex] || {};
+      const cacheKey = scoreSongPlayCountKey(score);
       try {
-        const metadata = await fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber);
+        let metadataByDifficulty = cacheKey ? detailMetadataCache.get(cacheKey) : null;
+        if (metadataByDifficulty) {
+          if (playCountSyncStats) {
+            playCountSyncStats.scoreDetailCacheHits = (playCountSyncStats.scoreDetailCacheHits || 0) + 1;
+          }
+        } else {
+          metadataByDifficulty = await fetchMusicDetailAllMetadata(cookies, detailParams, difficultyNumber);
+          if (cacheKey) {
+            detailMetadataCache.set(cacheKey, metadataByDifficulty);
+          }
+          if (playCountSyncStats) {
+            playCountSyncStats.scoreDetailPageFetches = (playCountSyncStats.scoreDetailPageFetches || 0) + 1;
+          }
+        }
+
+        const metadata = metadataByDifficulty?.get(difficultyNumber) || null;
         if (metadata?.playCount != null) {
           allScores[absoluteIndex] = { ...allScores[absoluteIndex], playCount: metadata.playCount };
           if (playCountSyncStats) {
@@ -1334,7 +1352,6 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
             playCountSyncStats.scoreDetailMissSamples = [];
           }
           if (playCountSyncStats.scoreDetailMissSamples.length < 12) {
-            const score = allScores[absoluteIndex] || {};
             playCountSyncStats.scoreDetailMissSamples.push({
               title: score.title,
               difficulty: score.difficulty,
@@ -1460,27 +1477,12 @@ async function fetchAllPlayCountRows(cookies, playCountSyncStats = null) {
   return rowsWithCounts;
 }
 
-async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber) {
-  if (!detailParams || difficultyNumber == null || difficultyNumber < 0 || difficultyNumber >= difficultySelectors.length) {
-    return null;
-  }
-
-  const html = await fetchText(`${INTL_MUSIC_DETAIL_URL}?${detailParams}`, {
-    cookies,
-    referer: `${INTL_SCORE_SEARCH_URL}${difficultyNumber}`
-  });
-  const load = await loadCheerio();
-  const $ = load(html);
+function parseMusicDetailMetadataForDifficulty($, difficultyNumber, bodyMetadata, detailTitle, bodyText) {
   const block = $(difficultySelectors[difficultyNumber]).first();
-  const bodyText = $('body').text();
-  const detailTitle = $('.basic_block .break').first().text().trim() || null;
-  const bodyMetadata = {
-    playCount: parsePlayCountFromScoreRowText(bodyText),
-    playedAt: parsePlayedAtFromText(bodyText)
-  };
   if (!block.length) {
     return {
-      ...bodyMetadata,
+      playCount: null,
+      playedAt: null,
       detailTitle,
       hasDifficultyBlock: false,
       bodyHasPlayCountLabel: /PLAY COUNT/i.test(bodyText.normalize('NFKC'))
@@ -1501,6 +1503,40 @@ async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber)
     hasDifficultyBlock: true,
     bodyHasPlayCountLabel: /PLAY COUNT/i.test(bodyText.normalize('NFKC'))
   };
+}
+
+async function fetchMusicDetailAllMetadata(cookies, detailParams, refererDifficultyNumber) {
+  if (!detailParams || refererDifficultyNumber == null || refererDifficultyNumber < 0 || refererDifficultyNumber >= difficultySelectors.length) {
+    return new Map();
+  }
+
+  const html = await fetchText(`${INTL_MUSIC_DETAIL_URL}?${detailParams}`, {
+    cookies,
+    referer: `${INTL_SCORE_SEARCH_URL}${refererDifficultyNumber}`
+  });
+  const load = await loadCheerio();
+  const $ = load(html);
+  const bodyText = $('body').text();
+  const detailTitle = $('.basic_block .break').first().text().trim() || null;
+  const bodyMetadata = {
+    playCount: parsePlayCountFromScoreRowText(bodyText),
+    playedAt: parsePlayedAtFromText(bodyText)
+  };
+  const metadataByDifficulty = new Map();
+
+  for (let difficultyNumber = 0; difficultyNumber < difficultySelectors.length; difficultyNumber += 1) {
+    metadataByDifficulty.set(
+      difficultyNumber,
+      parseMusicDetailMetadataForDifficulty($, difficultyNumber, bodyMetadata, detailTitle, bodyText)
+    );
+  }
+
+  return metadataByDifficulty;
+}
+
+async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber) {
+  const metadataByDifficulty = await fetchMusicDetailAllMetadata(cookies, detailParams, difficultyNumber);
+  return metadataByDifficulty.get(difficultyNumber) || null;
 }
 
 function buildBest50(scores, songCatalog) {
@@ -1760,6 +1796,14 @@ function bulkPlayCountKey(query) {
   return `${query.title}::${String(query.difficulty || '').toLowerCase()}::${String(query.type || 'std').toLowerCase()}`;
 }
 
+function scoreSongPlayCountKey(score) {
+  if (!score?.title) {
+    return null;
+  }
+  const type = String(score?.type || 'std').toLowerCase();
+  return `${score.title}::${type}`;
+}
+
 function scorePlayCountKey(score) {
   const type = String(score?.type || 'std').toLowerCase();
   const difficulty = String(score?.difficulty || '').toLowerCase();
@@ -1934,10 +1978,12 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
 
   const playCountSync = {
-    strategy: 'score-detail-plus-all-row-detail',
-    version: 3,
+    strategy: 'score-detail',
+    version: 5,
     scoreRows: 0,
     scoreDetailLookups: 0,
+    scoreDetailPageFetches: 0,
+    scoreDetailCacheHits: 0,
     scoreDetailSuccesses: 0,
     scoreDetailMisses: 0,
     scoreDetailFailures: 0,
@@ -1962,13 +2008,6 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const best50 = buildBest50(scoreEntries, songCatalog);
   const recentSessions = enrichRecentPlays(detailedRecentPlays, songCatalog);
 
-  try {
-    const playCountRows = await fetchAllPlayCountRows(cookies, playCountSync);
-    scoreEntries = mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog, playCountSync);
-  } catch (error) {
-    // Keep the rest of the account sync usable if play-count enrichment fails.
-    playCountSync.rowScanError = error?.message || String(error);
-  }
   playCountSync.finalScores = scoreEntries.length;
   playCountSync.finalScoresWithPlayCount = scoreEntries.filter((score) => score?.playCount != null).length;
   playCountSync.completedAt = new Date().toISOString();
