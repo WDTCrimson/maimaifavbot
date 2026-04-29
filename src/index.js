@@ -458,7 +458,9 @@ async function handlePlaylistCommand(interaction) {
           }
 
           const targetEntries = buildPlaylistTargetEntries(playlist);
+          const account = store.getAccount(userId);
           const graphic = await renderPlaylistTargetGraphic({
+            account,
             playlistName: playlist.name,
             entries: targetEntries,
             themeDir: config.graphicThemeDir

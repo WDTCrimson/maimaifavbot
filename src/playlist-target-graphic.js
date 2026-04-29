@@ -388,7 +388,7 @@ function createCellGradient(ctx, color, x, y, width, height) {
   return gradient;
 }
 
-function drawCell(ctx, entry, index, theme, x, y, width, height) {
+async function drawCell(ctx, entry, index, theme, x, y, width, height) {
   const difficultyMeta = DIFFICULTIES[entry.chart?.difficulty] || DIFFICULTIES.master;
   const diffColor = difficultyMeta.color;
 
@@ -437,20 +437,12 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
     ctx.fillText(line, leftX, topY + lineIndex * 16);
   });
 
-  const typeText = String(entry.chart?.chartType || entry.chart?.type || '').toLowerCase() === 'std' ? 'STD' : 'DX';
-  const badgeY = y + 44;
-  drawBadge(ctx, {
-    x: leftX,
-    y: badgeY,
-    text: typeText,
-    fill: 'rgba(0,0,0,0.45)',
-    color: '#fff',
-    stroke: 'rgba(255,255,255,0.2)',
-    font: `700 11px ${theme.fontFamily}`,
-    paddingX: 7,
-    paddingY: 3,
-    radius: 10
-  });
+  const isDx = String(entry.chart?.chartType || entry.chart?.type || '').toLowerCase() !== 'std';
+  const typeBadgeImg = await getImage(join(process.cwd(), 'data', 'assets', 'logo', 'otoge-db', isDx ? 'chart_badge_dx.png' : 'chart_badge_std.png'));
+  if (typeBadgeImg) {
+    const th = 20, tw = typeBadgeImg.width * (th / typeBadgeImg.height);
+    ctx.drawImage(typeBadgeImg, leftX, y + 44, tw, th);
+  }
 
   // Level chip — B50 style, top-right corner
   const levelStr = formatInternal(entry.chart?.internalLevelValue);
@@ -492,7 +484,7 @@ function drawCell(ctx, entry, index, theme, x, y, width, height) {
   if (hasTarget) {
     ctx.font = `500 11px ${theme.fontFamily}`;
     ctx.fillStyle = 'rgba(255,255,255,0.78)';
-    const note = entry.target.difficulty ? typeText : `AUTO • ${typeText}`;
+    const note = entry.target.difficulty ? '' : 'AUTO';
     const noteY = y + 92;
     const noteText = trimTextToWidth(ctx, note, contentWidth - 88);
     ctx.fillText(noteText, leftX, noteY);
@@ -694,13 +686,13 @@ export async function renderPlaylistTargetGraphic({ account, playlistName, entri
   ctx.fillText(`${songCount} song${songCount !== 1 ? 's' : ''}`, WIDTH - 22, barY + PLAYLIST_BAR_H / 2);
 
   const cellWidth = WIDTH / COLUMNS;
-  preparedEntries.forEach((entry, index) => {
+  await Promise.all(preparedEntries.map((entry, index) => {
     const row = Math.floor(index / COLUMNS);
     const column = index % COLUMNS;
     const x = column * cellWidth + CELL_PADDING;
     const y = HEADER_HEIGHT + row * (CELL_HEIGHT + GRID_GAP);
-    drawCell(ctx, entry, index, theme, x, y, cellWidth - CELL_PADDING * 2, CELL_HEIGHT);
-  });
+    return drawCell(ctx, entry, index, theme, x, y, cellWidth - CELL_PADDING * 2, CELL_HEIGHT);
+  }));
 
   // Footer panel
   ctx.fillStyle = theme.footerFill;
