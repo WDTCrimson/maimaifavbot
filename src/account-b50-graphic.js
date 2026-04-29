@@ -151,7 +151,7 @@ async function drawBackground(ctx, v, totalH) {
   const charImg = await loadCached(join(THEME_DIR, `character-${v}.png`));
   if (charImg) {
     ctx.save();
-    ctx.globalAlpha = 0.28;
+    ctx.globalAlpha = 0.90;
     ctx.drawImage(
       charImg,
       vs.charLeft, vs.charTop,
@@ -215,10 +215,33 @@ async function drawPlayerHeader(ctx, account, v) {
   ctx.fillText(name, tx, PLAYER_H / 2 + 14);
   ctx.restore();
 
-  // Right cluster: version logo → dani badge → rating frame (built right-to-left)
+  // Right cluster built right-to-left: logo (rightmost) → dani → rating frame
   let rx = W - 22;
 
-  // Rating frame (rightmost)
+  // Version logo (rightmost)
+  const logoImg = await loadCached(join(THEME_DIR, `logo-${v}.png`));
+  if (logoImg) {
+    const lh = 54, lw = logoImg.width * (lh / logoImg.height);
+    rx -= lw;
+    ctx.drawImage(logoImg, rx, (PLAYER_H - lh) / 2, lw, lh);
+    rx -= 16;
+  }
+
+  // Dani badge
+  const daniSrc = courseRankIndex != null
+    ? join(DANI_ASSET, `dani_${String(courseRankIndex).padStart(2, '0')}.png`)
+    : courseRankUrl;
+  if (daniSrc) {
+    const di = await loadCached(daniSrc);
+    if (di) {
+      const dh = 48, dw = di.width * (dh / di.height);
+      rx -= dw;
+      ctx.drawImage(di, rx, (PLAYER_H - dh) / 2, dw, dh);
+      rx -= 14;
+    }
+  }
+
+  // Rating frame
   const frameImg = await loadCached(join(TOMOMAI, 'rating', `${ratingVariant(rating, gameVer)}.png`));
   const FRAME_SCALE = 0.80;
   if (frameImg) {
@@ -239,29 +262,6 @@ async function drawPlayerHeader(ctx, account, v) {
       dx += 23 * FRAME_SCALE / 0.75;
     }
     ctx.restore();
-    rx -= 14;
-  }
-
-  // Dani badge
-  const daniSrc = courseRankIndex != null
-    ? join(DANI_ASSET, `dani_${String(courseRankIndex).padStart(2, '0')}.png`)
-    : courseRankUrl;
-  if (daniSrc) {
-    const di = await loadCached(daniSrc);
-    if (di) {
-      const dh = 48, dw = di.width * (dh / di.height);
-      rx -= dw;
-      ctx.drawImage(di, rx, (PLAYER_H - dh) / 2, dw, dh);
-      rx -= 16;
-    }
-  }
-
-  // Version logo
-  const logoImg = await loadCached(join(THEME_DIR, `logo-${v}.png`));
-  if (logoImg) {
-    const lh = 54, lw = logoImg.width * (lh / logoImg.height);
-    rx -= lw;
-    ctx.drawImage(logoImg, rx, (PLAYER_H - lh) / 2, lw, lh);
   }
 }
 
@@ -332,17 +332,14 @@ async function drawSongCard(ctx, entry, x, y, v) {
   ctx.restore();
 
   // ── Top-left: DX / STD badge
-  const type = String(entry.type || '').toLowerCase() === 'dx' ? 'DX' : 'STD';
-  const typeBg = type === 'DX' ? '#f59e0b' : '#3b82f6';
-  const typW = type === 'DX' ? 34 : 38, typH = 17;
-  ctx.save();
-  rr(ctx, x + 8, y + 8, typW, typH, 8);
-  ctx.fillStyle = typeBg; ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1; ctx.stroke();
-  ctx.font = `700 10px ${FONT}`; ctx.fillStyle = '#fff';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(type, x + 8 + typW / 2, y + 8 + typH / 2 + 0.5);
-  ctx.restore();
+  const isDx = String(entry.type || '').toLowerCase() === 'dx';
+  const typeBadge = await loadCached(
+    join(process.cwd(), 'data', 'assets', 'logo', 'otoge-db', isDx ? 'chart_badge_dx.png' : 'chart_badge_std.png')
+  );
+  if (typeBadge) {
+    const th = 20, tw = typeBadge.width * (th / typeBadge.height);
+    ctx.drawImage(typeBadge, x + 8, y + 8, tw, th);
+  }
 
   // ── Top-right: internal level chip
   ctx.save();
