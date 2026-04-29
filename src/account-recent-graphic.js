@@ -12,10 +12,10 @@ const REGISTERED_FONTS = new Set();
 const ASSET_ROOT = join(process.cwd(), 'data', 'assets', 'tomomai', 'res');
 
 const VERSION_SETTINGS = {
-  10: { character: { scaleX: 0.56, scaleY: 0.56, left: CANVAS_WIDTH - 580, top: -100, opacity: 1 }, logoScale: 1, contentBackgroundColor: '#00000010', footerBackgroundColor: '#00000020' },
-  11: { character: { scaleX: 0.7, scaleY: 0.7, left: CANVAS_WIDTH - 520, top: -100, opacity: 1 }, logoScale: 1, contentBackgroundColor: '#00000020', footerBackgroundColor: '#00000040' },
-  12: { character: { scaleX: 0.6, scaleY: 0.6, left: CANVAS_WIDTH - 540, top: -30, opacity: 1 }, logoScale: 1, contentBackgroundColor: '#00000020', footerBackgroundColor: '#00000040' },
-  13: { character: { scaleX: 0.65, scaleY: 0.65, left: CANVAS_WIDTH - 540, top: -30, opacity: 1 }, logoScale: 1.2, contentBackgroundColor: '#00000020', footerBackgroundColor: '#00000040' }
+  10: { charScale: 0.56, charLeft: 620, charTop: -100 },
+  11: { charScale: 0.70, charLeft: 680, charTop: -100 },
+  12: { charScale: 0.60, charLeft: 660, charTop: -30  },
+  13: { charScale: 0.65, charLeft: 660, charTop: -30  },
 };
 
 const BASE_SCORE_PER_TYPE = {
@@ -134,9 +134,6 @@ function getRemoteTypeBadgeUrl(track) {
     : 'https://maimaidx-eng.com/maimai-mobile/img/music_standard.png';
 }
 
-function getVersionSettings(gameVersion) {
-  return VERSION_SETTINGS[Number(gameVersion) || 12] || VERSION_SETTINGS[12];
-}
 
 async function registerFonts() {
   if (REGISTERED_FONTS.size) {
@@ -205,6 +202,7 @@ function mapAccountToSnapshot(account) {
     title: account?.extra?.title || account?.player?.title || '',
     titleType: account?.extra?.titleType || 'normal',
     rating: Number(account?.metrics?.rating) || 0,
+    playCount: account?.metrics?.playCount ?? null,
     classRankUrl: account?.extra?.classRankUrl || null,
     courseRankUrl: account?.extra?.courseRankUrl || null,
     gameVersion: pickGameVersion(account?.gameVersion)
@@ -457,135 +455,119 @@ async function renderScoreText(ctx, colorPath, text, x, y, scale, tintColor, bor
 }
 
 async function renderBackground(ctx, gameVersion, long) {
+  const canvasHeight = ctx.canvas.height;
   const background = await loadCachedImage(join(ASSET_ROOT, 'bg', `${gameVersion}${long ? '_long' : ''}.png`));
   if (background) {
-    const canvasHeight = ctx.canvas.height;
     ctx.drawImage(background, 0, 0, CANVAS_WIDTH * 2, canvasHeight * 2, 0, 0, CANVAS_WIDTH, canvasHeight);
   }
-}
 
-async function renderHeaderBackground(ctx, snapshot) {
-  const versionSettings = getVersionSettings(snapshot.gameVersion);
-  const character = await loadCachedImage(join(ASSET_ROOT, 'character', `${snapshot.gameVersion}.png`));
-  if (character) {
+  const vs = VERSION_SETTINGS[gameVersion] || VERSION_SETTINGS[13];
+  const charImg = await loadCachedImage(join(ASSET_ROOT, 'character', `${gameVersion}.png`));
+  if (charImg) {
     ctx.save();
-    ctx.globalAlpha = versionSettings.character.opacity;
-    ctx.beginPath();
-    ctx.rect(0, 0, CANVAS_WIDTH, TARGET_HEIGHT + PADDING * 2);
-    ctx.clip();
-    ctx.drawImage(character, versionSettings.character.left, versionSettings.character.top, character.width * versionSettings.character.scaleX, character.height * versionSettings.character.scaleY);
+    ctx.globalAlpha = 0.90;
+    ctx.drawImage(charImg, vs.charLeft, vs.charTop, charImg.width * vs.charScale, charImg.height * vs.charScale);
     ctx.restore();
   }
 
-  const logo = await loadCachedImage(join(ASSET_ROOT, 'logo', `${snapshot.gameVersion}.png`));
-  if (logo && character) {
-    const logoScale = (TARGET_HEIGHT - 60) / logo.height * versionSettings.logoScale;
-    const logoWidth = logo.width * logoScale;
-    const logoHeight = logo.height * logoScale;
-    const characterWidth = character.width * versionSettings.character.scaleX;
-    const logoLeft = versionSettings.character.left + characterWidth / 2 - logoWidth / 2;
-    const logoTop = TARGET_HEIGHT - logoHeight / 2;
-    ctx.save();
-    ctx.shadowColor = '#FFFFFF50';
-    ctx.shadowBlur = 32;
-    ctx.drawImage(logo, logoLeft, logoTop, logoWidth, logoHeight);
-    ctx.restore();
-  }
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, canvasHeight);
 }
 
 async function renderHeader(ctx, snapshot) {
-  await renderHeaderBackground(ctx, snapshot);
+  const ICON_SZ = TARGET_HEIGHT;
+  const headerMid = PADDING + TARGET_HEIGHT / 2;
 
+  // dark header panel
+  ctx.fillStyle = 'rgba(0,0,0,0.40)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, TARGET_HEIGHT + PADDING * 2);
+
+  // --- left: profile icon ---
   const profile = snapshot.iconUrl ? await loadCachedImage(snapshot.iconUrl) : null;
-  let profileWidth = TARGET_HEIGHT;
   if (profile) {
-    const profileScale = TARGET_HEIGHT / profile.height;
-    profileWidth = profile.width * profileScale;
-    ctx.drawImage(profile, PADDING, PADDING, profileWidth, TARGET_HEIGHT);
+    ctx.save();
+    ctx.beginPath();
+    roundRect(ctx, PADDING, PADDING, ICON_SZ, ICON_SZ, 10);
+    ctx.clip();
+    const ratio = Math.max(ICON_SZ / profile.width, ICON_SZ / profile.height);
+    const pw = profile.width * ratio, ph = profile.height * ratio;
+    ctx.drawImage(profile, PADDING + (ICON_SZ - pw) / 2, PADDING + (ICON_SZ - ph) / 2, pw, ph);
+    ctx.restore();
   } else {
-    ctx.fillStyle = 'rgba(255,255,255,0.18)';
-    roundRect(ctx, PADDING, PADDING, TARGET_HEIGHT, TARGET_HEIGHT, 18);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    roundRect(ctx, PADDING, PADDING, ICON_SZ, ICON_SZ, 10);
     ctx.fill();
   }
 
-  const trophyBackground = await loadCachedImage(resolveTrophyPath(snapshot.titleType));
-  const trophyLeft = PADDING + 28 + profileWidth;
-  const trophyTop = PADDING;
-  const trophyWidth = trophyBackground ? trophyBackground.width * 1.6 : 370;
-  const trophyHeight = trophyBackground ? trophyBackground.height * 1.6 : 54;
-  if (trophyBackground) {
-    ctx.drawImage(trophyBackground, trophyLeft, trophyTop, trophyWidth, trophyHeight);
-  } else {
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    roundRect(ctx, trophyLeft, trophyTop, trophyWidth, trophyHeight, 12);
-    ctx.fill();
+  // --- left text stack ---
+  const tx = PADDING + ICON_SZ + 18;
+  ctx.textAlign = 'left';
+
+  const titleStr = snapshot.title || '';
+  if (titleStr) {
+    ctx.font = font(500, 14);
+    ctx.fillStyle = 'rgba(255,255,255,0.60)';
+    ctx.textBaseline = 'top';
+    ctx.fillText(titleStr, tx, PADDING + 10);
   }
 
-  ctx.font = font(450, 18);
-  const trophyTextWidth = measureTextWidth(ctx, snapshot.title || '');
-  const trophyTextLeft = trophyLeft + trophyWidth / 2 - trophyTextWidth / 2;
-  const trophyTextTop = trophyTop + trophyHeight / 2 - 9;
-  ctx.strokeStyle = '#111111';
-  ctx.lineWidth = 4;
-  ctx.strokeText(snapshot.title || '', trophyTextLeft, trophyTextTop + 18);
-  ctx.fillStyle = 'white';
-  ctx.fillText(snapshot.title || '', trophyTextLeft, trophyTextTop + 18);
+  ctx.font = font(700, 26);
+  ctx.fillStyle = '#ffffff';
+  ctx.textBaseline = 'top';
+  ctx.fillText(snapshot.displayName, tx, PADDING + (titleStr ? 32 : TARGET_HEIGHT / 2 - 18));
 
-  const nameRectWidth = trophyWidth;
-  const nameRectHeight = trophyHeight + 28;
-  const nameRectLeft = trophyLeft;
-  const nameRectTop = trophyTop + trophyHeight + 20;
-  ctx.save();
-  ctx.globalAlpha = 0.2;
-  ctx.fillStyle = 'black';
-  roundRect(ctx, nameRectLeft, nameRectTop, nameRectWidth, nameRectHeight, 10);
-  ctx.fill();
-  ctx.restore();
-
-  ctx.font = font(700, 28);
-  const nameTextWidth = measureTextWidth(ctx, snapshot.displayName);
-  const nameTextLeft = nameRectLeft + trophyWidth / 2 - nameTextWidth / 2;
-  const nameTextTop = nameRectTop + nameRectHeight / 2 - 14;
-  ctx.fillStyle = '#f9f0f4';
-  ctx.fillText(snapshot.displayName, nameTextLeft, nameTextTop + 24);
-
-  const ratingFrame = await loadCachedImage(resolveRatingPlatePath(snapshot.rating, snapshot.gameVersion));
-  const ratingScale = 0.75;
-  const ratingWidth = ratingFrame ? ratingFrame.width * ratingScale : 240;
-  const ratingHeight = ratingFrame ? ratingFrame.height * ratingScale : 64;
-  const ratingLeft = nameRectLeft - 2;
-  const ratingTop = nameRectTop + nameRectHeight + 18;
-  if (ratingFrame) {
-    ctx.drawImage(ratingFrame, ratingLeft, ratingTop, ratingWidth, ratingHeight);
+  if (snapshot.playCount != null) {
+    ctx.font = font(500, 13);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.textBaseline = 'top';
+    ctx.fillText(`${Number(snapshot.playCount).toLocaleString()} plays`, tx, PADDING + (titleStr ? 64 : TARGET_HEIGHT / 2 + 14));
   }
-  ctx.font = font(600, ratingHeight * 0.53, true);
-  ctx.fillStyle = '#f9f0f4';
-  let digitLeft = ratingLeft + ratingWidth * 0.43;
-  for (const char of String(snapshot.rating || 0)) {
-    ctx.fillText(char, digitLeft, ratingTop + ratingHeight * 0.72);
-    digitLeft += 23;
+
+  // --- right cluster (right-to-left): version logo → class rank → rating frame ---
+  let rx = CANVAS_WIDTH - PADDING;
+
+  const logoImg = await loadCachedImage(join(ASSET_ROOT, 'logo', `${snapshot.gameVersion}.png`));
+  if (logoImg) {
+    const lh = TARGET_HEIGHT * 0.48;
+    const lw = logoImg.width * (lh / logoImg.height);
+    rx -= lw;
+    ctx.drawImage(logoImg, rx, headerMid - lh / 2, lw, lh);
+    rx -= 16;
   }
 
   const classRank = snapshot.classRankUrl ? await loadCachedImage(snapshot.classRankUrl) : null;
   if (classRank) {
-    const scale = 0.7;
-    const width = classRank.width * scale;
-    const height = classRank.height * scale;
-    ctx.drawImage(classRank, ratingLeft + ratingWidth + 10, ratingTop + ratingHeight / 2 - height / 2, width, height);
+    const dh = classRank.height * 0.7, dw = classRank.width * 0.7;
+    rx -= dw;
+    ctx.drawImage(classRank, rx, headerMid - dh / 2, dw, dh);
+    rx -= 14;
   }
 
   const courseRank = snapshot.courseRankUrl ? await loadCachedImage(snapshot.courseRankUrl) : null;
   if (courseRank) {
-    const scale = 0.6;
-    const width = courseRank.width * scale;
-    const height = courseRank.height * scale;
-    const x = ratingLeft + ratingWidth + 10 + (classRank ? classRank.width * 0.7 + 10 : 0);
-    ctx.drawImage(courseRank, x, ratingTop + ratingHeight / 2 - height / 2, width, height);
+    const dh = courseRank.height * 0.6, dw = courseRank.width * 0.6;
+    rx -= dw;
+    ctx.drawImage(courseRank, rx, headerMid - dh / 2, dw, dh);
+    rx -= 14;
   }
 
-  const overlayTop = TARGET_HEIGHT + PADDING * 2;
-  ctx.fillStyle = getVersionSettings(snapshot.gameVersion).contentBackgroundColor;
-  ctx.fillRect(0, overlayTop, CANVAS_WIDTH, ctx.canvas.height - overlayTop);
+  const ratingFrame = await loadCachedImage(resolveRatingPlatePath(snapshot.rating, snapshot.gameVersion));
+  if (ratingFrame) {
+    const rs = 0.75;
+    const fw = ratingFrame.width * rs, fh = ratingFrame.height * rs;
+    rx -= fw;
+    ctx.drawImage(ratingFrame, rx, headerMid - fh / 2, fw, fh);
+    ctx.font = font(600, Math.round(fh * 0.53), true);
+    ctx.fillStyle = '#f9f0f4';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    let dx = rx + fw * 0.43;
+    for (const char of String(snapshot.rating || 0)) {
+      ctx.fillText(char, dx, headerMid - fh / 2 + fh * 0.72);
+      dx += 23;
+    }
+  }
+
   return createOverlayRect(ctx.canvas.height);
 }
 
@@ -908,19 +890,18 @@ async function renderLastCreditContent(ctx, credit, overlayRect) {
   }
 }
 
-async function renderFooter(ctx, gameVersion, text) {
+async function renderFooter(ctx, _gameVersion, text) {
   const footerHeight = 50;
   const footerTop = ctx.canvas.height - footerHeight;
-  ctx.fillStyle = getVersionSettings(gameVersion).footerBackgroundColor;
+  ctx.fillStyle = 'rgba(0,0,0,0.40)';
   ctx.fillRect(0, footerTop, CANVAS_WIDTH, footerHeight);
-  ctx.save();
-  ctx.globalAlpha = 0.86;
-  ctx.font = font(500, 16);
-  ctx.fillStyle = '#f9f0f4';
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(0, footerTop, CANVAS_WIDTH, 1);
+  ctx.font = font(500, 14);
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(text, CANVAS_WIDTH / 2, footerTop + footerHeight / 2);
-  ctx.restore();
 }
 
 function sanitizeFileName(text) {
