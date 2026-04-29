@@ -349,8 +349,8 @@ async function drawSongCard(ctx, entry, x, y, v) {
   rr(ctx, x + CARD_W - chipW, y, chipW, 28, 10);
   ctx.fillStyle = color; ctx.fill();
   ctx.fillStyle = diff === 'remaster' ? '#591a8b' : '#fff';
-  ctx.textAlign = 'right'; ctx.textBaseline = 'top';
-  ctx.fillText(levelStr, x + CARD_W - 8, y + 6);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(levelStr, x + CARD_W - chipW / 2, y + 14);
   ctx.restore();
 
   // ── Middle-left: FC + FS badges
@@ -403,8 +403,23 @@ export async function renderAccountB50Graphic({ account, songCatalog, themeDir: 
     }));
   }
 
-  const b15 = await buildEntries(best50.b15);
-  const b35 = await buildEntries(best50.b35);
+  const DIFF_ORDER = { remaster: 5, master: 4, expert: 3, advanced: 2, basic: 1, utage: 0 };
+
+  function sortEntries(entries) {
+    return [...entries].sort((a, b) => {
+      const rDiff = Number(b.rating) - Number(a.rating);
+      if (rDiff !== 0) return rDiff;
+      const dDiff = (DIFF_ORDER[String(b.difficulty).toLowerCase()] ?? -1)
+                  - (DIFF_ORDER[String(a.difficulty).toLowerCase()] ?? -1);
+      if (dDiff !== 0) return dDiff;
+      const cDiff = Number(b.internalLevelValue) - Number(a.internalLevelValue);
+      if (cDiff !== 0) return cDiff;
+      return String(a.title ?? '').localeCompare(String(b.title ?? ''));
+    });
+  }
+
+  const b15 = sortEntries(await buildEntries(best50.b15));
+  const b35 = sortEntries(await buildEntries(best50.b35));
 
   const b15Rows   = Math.ceil(b15.length / COLUMNS);
   const b35Rows   = Math.ceil(b35.length / COLUMNS);
