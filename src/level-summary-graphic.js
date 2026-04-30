@@ -177,6 +177,102 @@ function parseLevelBracket(bracket) {
   return v => v >= base - 0.001 && v < base + 0.6;
 }
 
+function normalizeLookupText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getScoreType(score) {
+  return String(score?.type || score?.chartType || '').trim().toLowerCase();
+}
+
+function getScoreDifficulty(score) {
+  return String(score?.difficulty || '').trim().toLowerCase();
+}
+
+function findMatchingChart(song, score) {
+  const charts = Array.isArray(song?.difficultyLevels) ? song.difficultyLevels : [];
+  const scoreType = getScoreType(score);
+  const scoreDifficulty = getScoreDifficulty(score);
+  if (!scoreDifficulty) {
+    return null;
+  }
+
+  const matches = charts.filter((chart) => {
+    const chartDifficulty = String(chart.difficulty || '').trim().toLowerCase();
+    const chartType = String(chart.type || '').trim().toLowerCase();
+    return chartDifficulty === scoreDifficulty && (!scoreType || chartType === scoreType);
+  });
+  if (matches.length <= 1) {
+    return matches[0] || null;
+  }
+
+  const level = String(score?.level || '').trim();
+  return matches.find((chart) => String(chart.level || '').trim() === level) || matches[0];
+}
+
+function pickSongWithMatchingChart(candidates, score) {
+  for (const song of candidates) {
+    const chart = findMatchingChart(song, score);
+    if (chart) {
+      return { song, chart };
+    }
+  }
+  return null;
+}
+
+function resolveScoreSongAndChart(songCatalog, score) {
+  if (!songCatalog?.available || !score) {
+    return { song: null, chart: null };
+  }
+
+  const idCandidates = [
+    score.songId,
+    score.favoriteId
+  ].filter(Boolean);
+  for (const id of idCandidates) {
+    const song =
+      songCatalog.getByStoredId?.(id) ||
+      songCatalog.getByFavoriteId?.(id) ||
+      songCatalog.getByLegacyFavoriteId?.(id) ||
+      songCatalog.getBySongId?.(id);
+    if (!song) {
+      continue;
+    }
+    return { song, chart: findMatchingChart(song, score) };
+  }
+
+  const title = normalizeLookupText(score.title);
+  const artist = normalizeLookupText(score.artist);
+  if (title && artist) {
+    const song = songCatalog.getByNormalizedTitleArtist?.(title, artist);
+    if (song) {
+      return { song, chart: findMatchingChart(song, score) };
+    }
+  }
+
+  const titleMatches = songCatalog.getByNormalizedTitle?.(title) || [];
+  const chartMatch = pickSongWithMatchingChart(titleMatches, score);
+  if (chartMatch) {
+    return chartMatch;
+  }
+  if (titleMatches.length === 1) {
+    const song = titleMatches[0];
+    return { song, chart: findMatchingChart(song, score) };
+  }
+
+  try {
+    const song = songCatalog.resolveSong?.(score.title);
+    const chart = findMatchingChart(song, score);
+    return chart ? { song, chart } : { song: null, chart: null };
+  } catch {
+    return { song: null, chart: null };
+  }
+}
+
 function rankRowHeight(cardCount) {
   const rows = Math.ceil(cardCount / CARDS_PER_ROW);
   return ROW_PAD_V + rows * CARD_SZ + (rows - 1) * CARD_GAP + ROW_PAD_V;
@@ -464,19 +560,37 @@ export async function renderLevelSummaryGraphic({ account, scores, difficulty, l
   const inBracket = parseLevelBracket(levelBracket);
   const diff = String(difficulty || 'master').toLowerCase();
 
-  // Filter scores to this difficulty + level bracket and enrich with jacket paths
-  const filtered = scores
-    .filter(s => {
-      const d = String(s.difficulty || '').toLowerCase();
-      const ilv = Number(s.internalLevelValue);
-      return d === diff && Number.isFinite(ilv) && inBracket(ilv);
-    })
-    .map(s => {
-      const song = s.favoriteId
-        ? songCatalog.getByFavoriteId(s.favoriteId)
-        : songCatalog.getByTitle?.(s.title);
-      return { ...s, imagePath: resolveSongImagePath(song) };
-    });
+  // Filter scores to this difficulty + level bracket and enrich with chart/catalog data.
+  const enriched = scores.map(s => {
+    const { song, chart } = resolveScoreSongAndChart(songCatalog, s);
+    const chartInternalLevelValue = Number(chart?.internalLevelValue);
+    const scoreInternalLevelValue = Number(s.internalLevelValue);
+    const internalLevelValue = Number.isFinite(chartInternalLevelValue)
+      ? chartInternalLevelValue
+      : Number.isFinite(scoreInternalLevelValue)
+        ? scoreInternalLevelValue
+        : null;
+    return {
+      ...s,
+      title: song?.title || s.title,
+      artist: song?.artist || s.artist,
+      type: s.type || s.chartType || chart?.type || null,
+      level: s.level || chart?.level || null,
+      internalLevelValue,
+      maxDxScore: s.maxDxScore ?? null,
+      noteCounts: s.noteCounts || chart?.noteCounts || null,
+      version: s.version || chart?.version || null,
+      favoriteId: s.favoriteId || song?.favoriteId || null,
+      songId: s.songId || song?.songId || null,
+      imagePath: resolveSongImagePath(song)
+    };
+  });
+
+  const filtered = enriched.filter(s => {
+    const d = getScoreDifficulty(s);
+    const ilv = s.internalLevelValue;
+    return d === diff && ilv != null && inBracket(ilv);
+  });
 
   if (filtered.length === 0) {
     const label = DIFF_LABEL[diff] || diff.toUpperCase();
