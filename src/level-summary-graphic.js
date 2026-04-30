@@ -284,7 +284,10 @@ async function drawBackground(ctx, v, totalH) {
   const bgImg = await loadCached(join(TOMOMAI, 'bg', `${v}.png`));
   if (bgImg) {
     const scale = W / bgImg.width;
-    ctx.drawImage(bgImg, 0, 0, bgImg.width, Math.ceil(totalH / scale), 0, 0, W, totalH);
+    const tileH = Math.round(bgImg.height * scale);
+    for (let y = 0; y < totalH; y += tileH) {
+      ctx.drawImage(bgImg, 0, y, W, tileH);
+    }
   } else {
     ctx.fillStyle = '#180826';
     ctx.fillRect(0, 0, W, totalH);
