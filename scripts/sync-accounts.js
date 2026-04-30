@@ -119,10 +119,11 @@ async function main() {
           linkedAuth: account.linkedAuth
         });
         const scoreCount = store.getAccountScores(userId).length;
+        const recentCount = store.getAccountRecentSessions(userId).length;
         const countWithPlayCounts = store.getAccountScores(userId).filter((score) => score?.playCount != null).length;
         synced += 1;
         console.log(
-          `DONE ${formatUserLabel(userId, stored)}: ${scoreCount} score row(s), ${countWithPlayCounts} with play counts.`
+          `DONE ${formatUserLabel(userId, stored)}: ${scoreCount} score row(s), ${countWithPlayCounts} with play counts, ${recentCount} recent row(s).`
         );
       }
     } catch (error) {

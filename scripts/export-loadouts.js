@@ -117,7 +117,7 @@ async function main() {
     exportedAt: new Date().toISOString(),
     backend,
     source: backend === 'sqlite' ? sqliteFile : jsonFile,
-    state: store.state
+    state: store.getExportState()
   };
 
   await writeFile(outputPath, JSON.stringify(snapshot, null, 2), 'utf8');

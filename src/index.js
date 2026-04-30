@@ -874,7 +874,7 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const embeds = [buildAccountStatusEmbed(account)];
+      const embeds = [buildAccountStatusEmbed(account, store.getAccountRecentSessions(userId))];
       if (pendingSession) {
         embeds.push(buildPendingAccountLinkEmbed(pendingSession));
       }
@@ -955,7 +955,7 @@ async function handleAccountCommand(interaction) {
 
           await replyPayload(interaction, {
             content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.`,
-            embeds: [buildAccountStatusEmbed(stored)]
+            embeds: [buildAccountStatusEmbed(stored, store.getAccountRecentSessions(userId))]
           });
 
           return {
@@ -1047,7 +1047,8 @@ async function handleAccountCommand(interaction) {
             };
           }
 
-          if (!Array.isArray(account.recentSessions) || !account.recentSessions.length) {
+          const recentSessions = store.getAccountRecentSessions(userId);
+          if (!recentSessions.length) {
             await replySafely(
               interaction,
               'This account snapshot does not include recent play data yet. Run `/account sync` first.'
@@ -1058,7 +1059,7 @@ async function handleAccountCommand(interaction) {
             };
           }
 
-          const hasDetailedRecent = account.recentSessions.some((play) => play?.details);
+          const hasDetailedRecent = recentSessions.some((play) => play?.details);
           if (!hasDetailedRecent) {
             await replySafely(
               interaction,
@@ -1070,7 +1071,7 @@ async function handleAccountCommand(interaction) {
             };
           }
 
-          const graphic = await renderAccountRecentGraphic({ account });
+          const graphic = await renderAccountRecentGraphic({ account: { ...account, recentSessions } });
           const attachment = new AttachmentBuilder(graphic.buffer, {
             name: graphic.fileName
           });
@@ -1082,7 +1083,7 @@ async function handleAccountCommand(interaction) {
 
           return {
             provider: account.provider || null,
-            trackCount: Array.isArray(account.recentSessions) ? account.recentSessions.length : 0
+            trackCount: recentSessions.length
           };
         }
       );
@@ -1098,7 +1099,7 @@ async function handleAccountCommand(interaction) {
 
       await replyPayload(interaction, {
         content: `Imported **${formatAccountProvider(stored.provider)}** account snapshot.`,
-        embeds: [buildAccountStatusEmbed(stored)]
+        embeds: [buildAccountStatusEmbed(stored, store.getAccountRecentSessions(userId))]
       });
       return;
     }
@@ -3598,7 +3599,7 @@ function buildSongSuggestionEmbed({ range, focus, suggestions, unresolvedCount }
   return embed;
 }
 
-function buildAccountStatusEmbed(account) {
+function buildAccountStatusEmbed(account, recentSessions = []) {
   const playerLines = [
     `Provider: ${formatAccountProvider(account.provider)}`,
     account.linkMethod ? `Link method: ${formatAccountLinkMethod(account.linkMethod)}` : null,
@@ -3622,7 +3623,7 @@ function buildAccountStatusEmbed(account) {
   ].filter(Boolean);
 
   const best50Lines = buildAccountBest50Lines(account.best50);
-  const recentLines = buildAccountRecentLines(account.recentSessions);
+  const recentLines = buildAccountRecentLines(recentSessions);
 
   const embed = new EmbedBuilder()
     .setColor(0xf59e0b)

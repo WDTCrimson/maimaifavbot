@@ -116,7 +116,7 @@ async function main() {
       exportedAt: new Date().toISOString(),
       backend,
       source: backend === 'sqlite' ? sqliteFile : jsonFile,
-      state: store.state
+      state: store.getExportState()
     });
     console.log(`Saved pre-restore backup to ${backupPath}`);
   }
