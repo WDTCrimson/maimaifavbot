@@ -1124,7 +1124,7 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const allScores = Array.isArray(account.allScores) ? account.allScores : [];
+      const allScores = store.getAccountScores(userId);
       const b50Entries = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
       const scores = allScores.length > 0 ? allScores : b50Entries;
 
@@ -1153,23 +1153,20 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const allScores = Array.isArray(account.allScores) ? account.allScores : [];
+      const allScores = store.getAccountScores(userId);
       if (allScores.length === 0) {
         await replySafely(interaction, 'No score data available. Run `/account sync` first.');
         return;
       }
 
-      const withCounts = allScores.filter(s => s.playCount != null && Number(s.playCount) > 0);
+      const count = interaction.options.getInteger('count') ?? 10;
+      const withCounts = store.getTopPlayCountScores(userId, count);
       if (withCounts.length === 0) {
         await replySafely(interaction, 'No play count data in your snapshot. Run `/account sync` to refresh — sync now collects play counts for every song.');
         return;
       }
 
-      const count = interaction.options.getInteger('count') ?? 10;
-      withCounts.sort((a, b) => Number(b.playCount) - Number(a.playCount));
-      const top = withCounts.slice(0, count);
-
-      const entries = top.map(score => {
+      const entries = withCounts.map(score => {
         const song = songCatalog.available
           ? songCatalog.getUniqueByNormalizedTitle(score.title) ?? songCatalog.resolveSong(score.title) ?? null
           : null;
@@ -1180,7 +1177,7 @@ async function handleAccountCommand(interaction) {
       const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
 
       await replyPayload(interaction, {
-        content: `Top ${top.length} songs by play count for **${account.player?.name || 'linked account'}**.`,
+        content: `Top ${withCounts.length} songs by play count for **${account.player?.name || 'linked account'}**.`,
         files: [attachment]
       });
       return;
@@ -1422,7 +1419,7 @@ async function handleSongCommand(interaction) {
       };
 
       // Collect all difficulty scores for this song from allScores, then fall back to B50
-      const rawAllScores = Array.isArray(account.allScores) ? account.allScores : [];
+      const rawAllScores = store.getAccountScores(interaction.user.id);
       const b50Entries   = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
 
       let songScores = rawAllScores.filter(e =>

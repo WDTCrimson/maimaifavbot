@@ -200,6 +200,81 @@ function normalizeLoadedState(state) {
   return normalized;
 }
 
+function serializeNullableJson(value) {
+  return value == null ? null : JSON.stringify(value);
+}
+
+function parseNullableJson(value) {
+  if (value == null || value === '') {
+    return null;
+  }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeAccountScoreEntry(score) {
+  if (!score || typeof score !== 'object') {
+    return null;
+  }
+
+  const title = String(score.title || '').trim();
+  const difficulty = String(score.difficulty || '').trim().toLowerCase();
+  const type = String(score.type || score.chartType || 'std').trim().toLowerCase();
+  if (!title || !difficulty || !type) {
+    return null;
+  }
+
+  return {
+    ...score,
+    title,
+    difficulty,
+    type
+  };
+}
+
+function accountJsonForSqlite(account) {
+  if (!account || typeof account !== 'object') {
+    return null;
+  }
+  const stored = { ...account };
+  delete stored.allScores;
+  return JSON.stringify(stored);
+}
+
+function accountScoreFromRow(row) {
+  const data = parseNullableJson(row.data_json) || {};
+  const noteCounts = parseNullableJson(row.note_counts_json);
+  const score = {
+    ...data,
+    title: row.title,
+    difficulty: row.difficulty,
+    type: row.chart_type,
+    level: row.level ?? data.level,
+    achievement: row.achievement ?? data.achievement,
+    dxScore: row.dx_score ?? data.dxScore,
+    maxDxScore: row.max_dx_score ?? data.maxDxScore,
+    fc: row.fc ?? data.fc,
+    fs: row.fs ?? data.fs,
+    playCount: row.play_count ?? data.playCount,
+    playedAt: row.played_at ?? data.playedAt,
+    rating: row.rating ?? data.rating,
+    internalLevelValue: row.internal_level_value ?? data.internalLevelValue,
+    version: row.version ?? data.version,
+    favoriteId: row.favorite_id ?? data.favoriteId,
+    songId: row.song_id ?? data.songId,
+    artist: row.artist ?? data.artist,
+    scoreUnavailable: Boolean(row.score_unavailable),
+    syncedAt: row.synced_at ?? data.syncedAt
+  };
+  if (noteCounts != null) {
+    score.noteCounts = noteCounts;
+  }
+  return score;
+}
+
 class JsonStoreBackend {
   constructor(filePath) {
     this.filePath = filePath;
@@ -283,6 +358,40 @@ class SqliteStoreBackend {
         account_json TEXT
       );
 
+      CREATE TABLE IF NOT EXISTS account_score_charts (
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        chart_type TEXT NOT NULL,
+        level TEXT,
+        achievement INTEGER,
+        dx_score INTEGER,
+        max_dx_score INTEGER,
+        fc TEXT,
+        fs TEXT,
+        play_count INTEGER,
+        played_at TEXT,
+        rating INTEGER,
+        internal_level_value REAL,
+        version TEXT,
+        favorite_id TEXT,
+        song_id TEXT,
+        artist TEXT,
+        score_unavailable INTEGER NOT NULL DEFAULT 0,
+        score_order INTEGER NOT NULL DEFAULT 0,
+        note_counts_json TEXT,
+        data_json TEXT NOT NULL,
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, title, difficulty, chart_type),
+        FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_account_score_charts_user_play_count
+        ON account_score_charts(user_id, play_count DESC);
+
+      CREATE INDEX IF NOT EXISTS idx_account_score_charts_user_title
+        ON account_score_charts(user_id, title);
+
       CREATE TABLE IF NOT EXISTS loadouts (
         user_id TEXT NOT NULL,
         loadout_key TEXT NOT NULL,
@@ -322,6 +431,47 @@ class SqliteStoreBackend {
         expires_at TEXT NOT NULL
       );
     `);
+    this.ensureAccountScoreSchema();
+    this.backfillAccountScoreChartsFromJson();
+  }
+
+  ensureAccountScoreSchema() {
+    const columns = new Set(
+      this.db.prepare('PRAGMA table_info(account_score_charts)').all().map((column) => column.name)
+    );
+    if (!columns.has('score_order')) {
+      this.db.exec('ALTER TABLE account_score_charts ADD COLUMN score_order INTEGER NOT NULL DEFAULT 0');
+    }
+  }
+
+  backfillAccountScoreChartsFromJson() {
+    const existing = this.db.prepare('SELECT COUNT(*) AS count FROM account_score_charts').get();
+    const shouldBackfillScores = !existing || existing.count === 0;
+
+    const rows = this.db.prepare('SELECT user_id, account_json FROM users WHERE account_json IS NOT NULL').all();
+    if (!rows.length) {
+      return;
+    }
+
+    const insertScore = this.prepareInsertAccountScore();
+    const updateUser = this.db.prepare('UPDATE users SET account_json = ? WHERE user_id = ?');
+    const backfill = this.db.transaction((items) => {
+      for (const row of items) {
+        let account = null;
+        try {
+          account = JSON.parse(row.account_json);
+        } catch {
+          continue;
+        }
+        if (shouldBackfillScores) {
+          this.writeAccountScores(row.user_id, account?.allScores, account?.updatedAt || new Date().toISOString(), insertScore);
+        }
+        if (Array.isArray(account?.allScores)) {
+          updateUser.run(accountJsonForSqlite(account), row.user_id);
+        }
+      }
+    });
+    backfill(rows);
   }
 
   isEmpty() {
@@ -333,6 +483,111 @@ class SqliteStoreBackend {
       }
     }
     return true;
+  }
+
+  prepareInsertAccountScore() {
+    return this.db.prepare(
+      `INSERT INTO account_score_charts (
+         user_id, title, difficulty, chart_type, level, achievement, dx_score, max_dx_score,
+         fc, fs, play_count, played_at, rating, internal_level_value, version, favorite_id,
+         song_id, artist, score_unavailable, score_order, note_counts_json, data_json, synced_at
+       )
+       VALUES (
+         @userId, @title, @difficulty, @type, @level, @achievement, @dxScore, @maxDxScore,
+         @fc, @fs, @playCount, @playedAt, @rating, @internalLevelValue, @version, @favoriteId,
+         @songId, @artist, @scoreUnavailable, @scoreOrder, @noteCountsJson, @dataJson, @syncedAt
+       )
+       ON CONFLICT(user_id, title, difficulty, chart_type) DO UPDATE SET
+         level = excluded.level,
+         achievement = excluded.achievement,
+         dx_score = excluded.dx_score,
+         max_dx_score = excluded.max_dx_score,
+         fc = excluded.fc,
+         fs = excluded.fs,
+         play_count = excluded.play_count,
+         played_at = excluded.played_at,
+         rating = excluded.rating,
+         internal_level_value = excluded.internal_level_value,
+         version = excluded.version,
+         favorite_id = excluded.favorite_id,
+         song_id = excluded.song_id,
+         artist = excluded.artist,
+         score_unavailable = excluded.score_unavailable,
+         score_order = excluded.score_order,
+         note_counts_json = excluded.note_counts_json,
+         data_json = excluded.data_json,
+         synced_at = excluded.synced_at`
+    );
+  }
+
+  writeAccountScores(userId, scores, syncedAt = new Date().toISOString(), insertScore = this.prepareInsertAccountScore()) {
+    if (!Array.isArray(scores)) {
+      return 0;
+    }
+
+    let written = 0;
+    for (const [scoreOrder, rawScore] of scores.entries()) {
+      const score = normalizeAccountScoreEntry(rawScore);
+      if (!score) {
+        continue;
+      }
+
+      insertScore.run({
+        userId,
+        title: score.title,
+        difficulty: score.difficulty,
+        type: score.type,
+        level: score.level ?? null,
+        achievement: score.achievement ?? null,
+        dxScore: score.dxScore ?? null,
+        maxDxScore: score.maxDxScore ?? null,
+        fc: score.fc ?? null,
+        fs: score.fs ?? null,
+        playCount: score.playCount ?? null,
+        playedAt: score.playedAt ?? null,
+        rating: score.rating ?? null,
+        internalLevelValue: score.internalLevelValue ?? null,
+        version: score.version ?? null,
+        favoriteId: score.favoriteId ?? null,
+        songId: score.songId ?? null,
+        artist: score.artist ?? null,
+        scoreUnavailable: score.scoreUnavailable ? 1 : 0,
+        scoreOrder,
+        noteCountsJson: serializeNullableJson(score.noteCounts),
+        dataJson: JSON.stringify(score),
+        syncedAt
+      });
+      written += 1;
+    }
+
+    return written;
+  }
+
+  readAccountScores(userId) {
+    return this.db
+      .prepare(
+        `SELECT *
+         FROM account_score_charts
+         WHERE user_id = ?
+         ORDER BY score_order ASC, title COLLATE NOCASE, difficulty, chart_type`
+      )
+      .all(userId)
+      .map(accountScoreFromRow);
+  }
+
+  listTopPlayCountScores(userId, count = 10) {
+    return this.db
+      .prepare(
+        `SELECT *
+         FROM account_score_charts
+         WHERE user_id = ?
+           AND play_count IS NOT NULL
+           AND play_count > 0
+         ORDER BY play_count DESC, title COLLATE NOCASE ASC, difficulty ASC, chart_type ASC
+         LIMIT ?`
+      )
+      .all(userId, Math.max(1, Math.min(50, Number(count) || 10)))
+      .map(accountScoreFromRow);
   }
 
   async maybeImportLegacyJson() {
@@ -456,9 +711,20 @@ class SqliteStoreBackend {
   async saveState(state) {
     await this.ensureReady();
     const normalized = normalizeLoadedState(state);
+    const accountScoresByUser = new Map();
+    for (const [userId, user] of Object.entries(normalized.users || {})) {
+      if (!user?.account) {
+        accountScoresByUser.set(userId, []);
+      } else if (Object.prototype.hasOwnProperty.call(user.account, 'allScores')) {
+        accountScoresByUser.set(userId, user.account.allScores);
+      } else {
+        accountScoresByUser.set(userId, this.readAccountScores(userId));
+      }
+    }
 
     const insertMetadata = this.db.prepare('INSERT INTO metadata (key, value) VALUES (?, ?)');
     const insertUser = this.db.prepare('INSERT INTO users (user_id, account_json) VALUES (?, ?)');
+    const insertScore = this.prepareInsertAccountScore();
     const insertLoadout = this.db.prepare(
       'INSERT INTO loadouts (user_id, loadout_key, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
     );
@@ -477,6 +743,7 @@ class SqliteStoreBackend {
         DELETE FROM playlist_targets;
         DELETE FROM playlist_songs;
         DELETE FROM loadouts;
+        DELETE FROM account_score_charts;
         DELETE FROM users;
         DELETE FROM account_link_sessions;
         DELETE FROM metadata;
@@ -487,7 +754,8 @@ class SqliteStoreBackend {
       }
 
       for (const [userId, user] of Object.entries(snapshot.users || {})) {
-        insertUser.run(userId, user?.account ? JSON.stringify(user.account) : null);
+        insertUser.run(userId, accountJsonForSqlite(user?.account));
+        this.writeAccountScores(userId, accountScoresByUser.get(userId), user?.account?.updatedAt, insertScore);
 
         const loadouts = user?.loadouts || {};
         for (const [loadoutKey, loadout] of Object.entries(loadouts)) {
@@ -551,25 +819,36 @@ class SqliteStoreBackend {
 
   async saveUser(userId, user) {
     await this.ensureReady();
-    this.db
-      .prepare(
-        `INSERT INTO users (user_id, account_json)
-         VALUES (?, ?)
-         ON CONFLICT(user_id) DO UPDATE SET account_json = excluded.account_json`
-      )
-      .run(userId, user?.account ? JSON.stringify(user.account) : null);
-  }
-
-  async saveLoadout(userId, loadoutKey, loadout, user) {
-    await this.ensureReady();
-    const persist = this.db.transaction((accountJson, payload) => {
+    const persist = this.db.transaction((account) => {
       this.db
         .prepare(
           `INSERT INTO users (user_id, account_json)
            VALUES (?, ?)
            ON CONFLICT(user_id) DO UPDATE SET account_json = excluded.account_json`
         )
-        .run(userId, accountJson);
+        .run(userId, accountJsonForSqlite(account));
+      if (!account) {
+        this.db.prepare('DELETE FROM account_score_charts WHERE user_id = ?').run(userId);
+        return;
+      }
+      if (Object.prototype.hasOwnProperty.call(account, 'allScores')) {
+        this.db.prepare('DELETE FROM account_score_charts WHERE user_id = ?').run(userId);
+        this.writeAccountScores(userId, account.allScores, account.updatedAt);
+      }
+    });
+    persist(user?.account || null);
+  }
+
+  async saveLoadout(userId, loadoutKey, loadout, user) {
+    await this.ensureReady();
+    const persist = this.db.transaction((account, payload) => {
+      this.db
+        .prepare(
+          `INSERT INTO users (user_id, account_json)
+           VALUES (?, ?)
+           ON CONFLICT(user_id) DO UPDATE SET account_json = excluded.account_json`
+        )
+        .run(userId, accountJsonForSqlite(account));
 
       this.db
         .prepare(
@@ -612,25 +891,25 @@ class SqliteStoreBackend {
       }
     });
 
-    persist(user?.account ? JSON.stringify(user.account) : null, loadout);
+    persist(user?.account || null, loadout);
   }
 
   async deleteLoadout(userId, loadoutKey, user) {
     await this.ensureReady();
-    const persist = this.db.transaction((accountJson) => {
+    const persist = this.db.transaction((account) => {
       this.db
         .prepare(
           `INSERT INTO users (user_id, account_json)
            VALUES (?, ?)
            ON CONFLICT(user_id) DO UPDATE SET account_json = excluded.account_json`
         )
-        .run(userId, accountJson);
+        .run(userId, accountJsonForSqlite(account));
       this.db
         .prepare('DELETE FROM loadouts WHERE user_id = ? AND loadout_key = ?')
         .run(userId, loadoutKey);
     });
 
-    persist(user?.account ? JSON.stringify(user.account) : null);
+    persist(user?.account || null);
   }
 
   async saveSession(token, session) {
@@ -962,6 +1241,30 @@ export class LoadoutStore {
     return user.account || null;
   }
 
+  getAccountScores(userId) {
+    if (this.backendName === 'sqlite' && typeof this.backend.readAccountScores === 'function') {
+      return this.backend.readAccountScores(userId);
+    }
+    const account = this.getAccount(userId);
+    return Array.isArray(account?.allScores) ? account.allScores : [];
+  }
+
+  getTopPlayCountScores(userId, count = 10) {
+    if (this.backendName === 'sqlite' && typeof this.backend.listTopPlayCountScores === 'function') {
+      return this.backend.listTopPlayCountScores(userId, count);
+    }
+    return this.getAccountScores(userId)
+      .filter((score) => score?.playCount != null && Number(score.playCount) > 0)
+      .sort((a, b) => {
+        const playDelta = Number(b.playCount) - Number(a.playCount);
+        if (playDelta !== 0) {
+          return playDelta;
+        }
+        return String(a.title || '').localeCompare(String(b.title || ''));
+      })
+      .slice(0, Math.max(1, Math.min(50, Number(count) || 10)));
+  }
+
   hasAccount(userId) {
     return Boolean(this.getAccount(userId));
   }
@@ -980,6 +1283,9 @@ export class LoadoutStore {
     user.account = nextAccount;
 
     await this.saveUser(userId);
+    if (this.backendName === 'sqlite' && user.account) {
+      delete user.account.allScores;
+    }
     return user.account;
   }
 
