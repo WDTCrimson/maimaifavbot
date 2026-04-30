@@ -1185,7 +1185,7 @@ async function handleAccountCommand(interaction) {
       return;
     }
 
-    case 'level': {
+    case 'summary': {
       await interaction.deferReply();
       const account = store.getAccount(userId);
       if (!account) {

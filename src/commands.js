@@ -470,7 +470,7 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
-      .setName('level')
+      .setName('summary')
       .setDescription('Generate a level summary graphic grouped by rank tier')
       .addStringOption((option) =>
         option
