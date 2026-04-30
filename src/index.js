@@ -17,6 +17,7 @@ import { prepareLinkedAuthForStorage, restoreLinkedAuthFromStorage } from './acc
 import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
+import { renderLevelSummaryGraphic } from './level-summary-graphic.js';
 import { applyIntlFavoritesFromClal, calculateChartRating, computeGapSuggestions, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
@@ -1179,6 +1180,36 @@ async function handleAccountCommand(interaction) {
 
       await replyPayload(interaction, {
         content: `Top ${withCounts.length} songs by play count for **${account.player?.name || 'linked account'}**.`,
+        files: [attachment]
+      });
+      return;
+    }
+
+    case 'level': {
+      await interaction.deferReply();
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+
+      const levelBracket = interaction.options.getString('level', true);
+      const difficulty   = interaction.options.getString('difficulty', true);
+
+      const allScores  = store.getAccountScores(userId);
+      const b50Entries = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
+      const scores = allScores.length > 0 ? allScores : b50Entries;
+
+      if (scores.length === 0) {
+        await replySafely(interaction, 'No score data available. Run `/account sync` first.');
+        return;
+      }
+
+      const graphic = await renderLevelSummaryGraphic({ account, scores, difficulty, levelBracket, songCatalog });
+      const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
+
+      await replyPayload(interaction, {
+        content: `Level **${levelBracket}** summary (${difficulty.toUpperCase()}) for **${account.player?.name || 'linked account'}**.`,
         files: [attachment]
       });
       return;

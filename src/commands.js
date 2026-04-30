@@ -467,6 +467,44 @@ export const accountCommand = new SlashCommandBuilder()
           .setMinValue(3)
           .setMaxValue(20)
       )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('level')
+      .setDescription('Generate a level summary graphic grouped by rank tier')
+      .addStringOption((option) =>
+        option
+          .setName('level')
+          .setDescription('Level bracket to display')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Lv 10',  value: '10'  },
+            { name: 'Lv 10+', value: '10+' },
+            { name: 'Lv 11',  value: '11'  },
+            { name: 'Lv 11+', value: '11+' },
+            { name: 'Lv 12',  value: '12'  },
+            { name: 'Lv 12+', value: '12+' },
+            { name: 'Lv 13',  value: '13'  },
+            { name: 'Lv 13+', value: '13+' },
+            { name: 'Lv 14',  value: '14'  },
+            { name: 'Lv 14+', value: '14+' },
+            { name: 'Lv 15',  value: '15'  },
+            { name: 'Lv 15+', value: '15+' }
+          )
+      )
+      .addStringOption((option) =>
+        option
+          .setName('difficulty')
+          .setDescription('Chart difficulty')
+          .setRequired(true)
+          .addChoices(
+            { name: 'BASIC',     value: 'basic'    },
+            { name: 'ADVANCED',  value: 'advanced' },
+            { name: 'EXPERT',    value: 'expert'   },
+            { name: 'MASTER',    value: 'master'   },
+            { name: 'Re:MASTER', value: 'remaster' }
+          )
+      )
   );
 
 export const commands = [playlistCommand.toJSON(), songCommand.toJSON(), accountCommand.toJSON()];
