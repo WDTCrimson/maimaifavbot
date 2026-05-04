@@ -49,18 +49,19 @@ export function createAccountLinkToken() {
   return randomBytes(24).toString('base64url');
 }
 
-function buildSigningPayload({ token, expiresAt }) {
-  return `${token}:${expiresAt}`;
+function buildSigningPayload({ clientId, token, expiresAt }) {
+  const normalizedClientId = String(clientId || '').trim();
+  return normalizedClientId ? `${normalizedClientId}:${token}:${expiresAt}` : `${token}:${expiresAt}`;
 }
 
-export function createAccountLinkSignature({ token, expiresAt, signingSecret }) {
+export function createAccountLinkSignature({ clientId = null, token, expiresAt, signingSecret }) {
   return createHmac('sha256', signingSecret)
-    .update(buildSigningPayload({ token, expiresAt }))
+    .update(buildSigningPayload({ clientId, token, expiresAt }))
     .digest('base64url');
 }
 
-export function verifyAccountLinkSignature({ token, expiresAt, signature, signingSecret }) {
-  const expected = createAccountLinkSignature({ token, expiresAt, signingSecret });
+export function verifyAccountLinkSignature({ clientId = null, token, expiresAt, signature, signingSecret }) {
+  const expected = createAccountLinkSignature({ clientId, token, expiresAt, signingSecret });
   const actualBuffer = Buffer.from(String(signature || ''), 'utf8');
   const expectedBuffer = Buffer.from(expected, 'utf8');
   if (actualBuffer.length !== expectedBuffer.length) {
@@ -69,8 +70,11 @@ export function verifyAccountLinkSignature({ token, expiresAt, signature, signin
   return timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
-export function buildAccountLinkUrl({ baseUrl, token, expiresAt, signature }) {
+export function buildAccountLinkUrl({ baseUrl, clientId = null, token, expiresAt, signature }) {
   const url = new URL(baseUrl);
+  if (clientId) {
+    url.searchParams.set('client_id', clientId);
+  }
   url.searchParams.set('token', token);
   url.searchParams.set('expires_at', expiresAt);
   url.searchParams.set('sig', signature);

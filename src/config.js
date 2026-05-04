@@ -63,6 +63,7 @@ export const config = {
     process.env.RECOMMENDATION_FILE?.trim() || './data/recommendations/community.json',
   graphicThemeDir: process.env.GRAPHIC_THEME_DIR?.trim() || resolveDefaultGraphicThemeDir(),
   accountLinkBaseUrl: optionalEnv('ACCOUNT_LINK_BASE_URL'),
+  accountLinkClientId: optionalEnv('ACCOUNT_LINK_CLIENT_ID'),
   accountLinkCallbackPublicUrl: optionalEnv('ACCOUNT_LINK_CALLBACK_PUBLIC_URL'),
   accountLinkCallbackBind: optionalEnv('ACCOUNT_LINK_CALLBACK_BIND') || '127.0.0.1',
   accountLinkCallbackPort: parseOptionalInteger('ACCOUNT_LINK_CALLBACK_PORT'),

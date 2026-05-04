@@ -1556,12 +1556,14 @@ async function createPendingAccountLinkSession(userId) {
   ).toISOString();
   const token = createAccountLinkToken();
   const signature = createAccountLinkSignature({
+    clientId: config.accountLinkClientId,
     token,
     expiresAt,
     signingSecret: config.accountLinkSigningSecret
   });
   const linkUrl = buildAccountLinkUrl({
     baseUrl: config.accountLinkBaseUrl,
+    clientId: config.accountLinkClientId,
     token,
     expiresAt,
     signature
@@ -1586,6 +1588,7 @@ function buildAccountLinkUrlForSession(session) {
   }
 
   const signature = createAccountLinkSignature({
+    clientId: config.accountLinkClientId,
     token,
     expiresAt,
     signingSecret: config.accountLinkSigningSecret
@@ -1593,6 +1596,7 @@ function buildAccountLinkUrlForSession(session) {
 
   return buildAccountLinkUrl({
     baseUrl: config.accountLinkBaseUrl,
+    clientId: config.accountLinkClientId,
     token,
     expiresAt,
     signature
