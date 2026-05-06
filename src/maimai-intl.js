@@ -50,6 +50,10 @@ const ACCOUNT_SYNC_DETAIL_DELAY_MS = parsePositiveIntegerEnv('MAIMAI_SYNC_DETAIL
   min: 0,
   max: 1000
 });
+const ACCOUNT_SYNC_DETAIL_RETRY_DELAY_MS = parsePositiveIntegerEnv('MAIMAI_SYNC_DETAIL_RETRY_DELAY_MS', 150, {
+  min: 0,
+  max: 2000
+});
 
 async function loadCheerio() {
   const mod = await import('cheerio');
@@ -1339,14 +1343,19 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
       continue;
     }
 
-    // The detail idx values are tied to the current music-list page state. Use
-    // them before loading another difficulty page.
-    await mapWithConcurrency(detailLookups, ACCOUNT_SYNC_DETAIL_CONCURRENCY, async ({ index, detailParams }) => {
+    const retryLookups = [];
+
+    async function applyDetailLookup({ index, detailParams }, { forceRefresh = false, retry = false } = {}) {
       const absoluteIndex = offset + index;
       const score = allScores[absoluteIndex] || {};
       const cacheKey = scoreSongPlayCountKey(score);
       try {
         let metadataByDifficulty = cacheKey ? detailMetadataCache.get(cacheKey) : null;
+        if (forceRefresh && cacheKey) {
+          detailMetadataCache.delete(cacheKey);
+          metadataByDifficulty = null;
+        }
+
         if (metadataByDifficulty) {
           if (playCountSyncStats) {
             playCountSyncStats.scoreDetailCacheHits = (playCountSyncStats.scoreDetailCacheHits || 0) + 1;
@@ -1365,33 +1374,68 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
         if (metadata?.playCount != null) {
           allScores[absoluteIndex] = { ...allScores[absoluteIndex], playCount: metadata.playCount };
           if (playCountSyncStats) {
-            playCountSyncStats.scoreDetailSuccesses = (playCountSyncStats.scoreDetailSuccesses || 0) + 1;
+            if (retry) {
+              playCountSyncStats.scoreDetailRetrySuccesses = (playCountSyncStats.scoreDetailRetrySuccesses || 0) + 1;
+            } else {
+              playCountSyncStats.scoreDetailSuccesses = (playCountSyncStats.scoreDetailSuccesses || 0) + 1;
+            }
           }
-        } else if (playCountSyncStats) {
-          playCountSyncStats.scoreDetailMisses = (playCountSyncStats.scoreDetailMisses || 0) + 1;
-          if (!Array.isArray(playCountSyncStats.scoreDetailMissSamples)) {
-            playCountSyncStats.scoreDetailMissSamples = [];
-          }
-          if (playCountSyncStats.scoreDetailMissSamples.length < 12) {
-            playCountSyncStats.scoreDetailMissSamples.push({
-              title: score.title,
-              difficulty: score.difficulty,
-              type: score.type,
-              level: score.level,
-              detailTitle: metadata?.detailTitle ?? null,
-              hasDifficultyBlock: metadata?.hasDifficultyBlock ?? null,
-              bodyHasPlayCountLabel: metadata?.bodyHasPlayCountLabel ?? null,
-              playedAt: metadata?.playedAt ?? null
-            });
+          return true;
+        }
+
+        if (playCountSyncStats) {
+          if (retry) {
+            playCountSyncStats.scoreDetailRetryMisses = (playCountSyncStats.scoreDetailRetryMisses || 0) + 1;
+          } else {
+            playCountSyncStats.scoreDetailMisses = (playCountSyncStats.scoreDetailMisses || 0) + 1;
+            if (!Array.isArray(playCountSyncStats.scoreDetailMissSamples)) {
+              playCountSyncStats.scoreDetailMissSamples = [];
+            }
+            if (playCountSyncStats.scoreDetailMissSamples.length < 12) {
+              playCountSyncStats.scoreDetailMissSamples.push({
+                title: score.title,
+                difficulty: score.difficulty,
+                type: score.type,
+                level: score.level,
+                detailTitle: metadata?.detailTitle ?? null,
+                hasDifficultyBlock: metadata?.hasDifficultyBlock ?? null,
+                bodyHasPlayCountLabel: metadata?.bodyHasPlayCountLabel ?? null,
+                playedAt: metadata?.playedAt ?? null
+              });
+            }
           }
         }
       } catch {
         // ignore individual failures — play count is best-effort
         if (playCountSyncStats) {
-          playCountSyncStats.scoreDetailFailures = (playCountSyncStats.scoreDetailFailures || 0) + 1;
+          if (retry) {
+            playCountSyncStats.scoreDetailRetryFailures = (playCountSyncStats.scoreDetailRetryFailures || 0) + 1;
+          } else {
+            playCountSyncStats.scoreDetailFailures = (playCountSyncStats.scoreDetailFailures || 0) + 1;
+          }
         }
       }
+      return false;
+    }
+
+    // The detail idx values are tied to the current music-list page state. Use
+    // them before loading another difficulty page.
+    await mapWithConcurrency(detailLookups, ACCOUNT_SYNC_DETAIL_CONCURRENCY, async (lookup) => {
+      const found = await applyDetailLookup(lookup);
+      const absoluteIndex = offset + lookup.index;
+      if (!found && allScores[absoluteIndex]?.playCount == null) {
+        retryLookups.push(lookup);
+      }
     }, { delayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS });
+
+    if (retryLookups.length > 0) {
+      if (playCountSyncStats) {
+        playCountSyncStats.scoreDetailRetryLookups = (playCountSyncStats.scoreDetailRetryLookups || 0) + retryLookups.length;
+      }
+      await mapWithConcurrency(retryLookups, 1, async (lookup) => {
+        await applyDetailLookup(lookup, { forceRefresh: true, retry: true });
+      }, { delayMs: ACCOUNT_SYNC_DETAIL_RETRY_DELAY_MS });
+    }
   }
 
   return allScores;
@@ -2003,6 +2047,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
     version: 6,
     detailConcurrency: ACCOUNT_SYNC_DETAIL_CONCURRENCY,
     detailDelayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS,
+    detailRetryDelayMs: ACCOUNT_SYNC_DETAIL_RETRY_DELAY_MS,
     scoreRows: 0,
     scoreDetailLookups: 0,
     scoreDetailPageFetches: 0,
@@ -2010,6 +2055,10 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
     scoreDetailSuccesses: 0,
     scoreDetailMisses: 0,
     scoreDetailFailures: 0,
+    scoreDetailRetryLookups: 0,
+    scoreDetailRetrySuccesses: 0,
+    scoreDetailRetryMisses: 0,
+    scoreDetailRetryFailures: 0,
     playCountRows: 0,
     rowDetailLookups: 0,
     rowDetailSuccesses: 0,
