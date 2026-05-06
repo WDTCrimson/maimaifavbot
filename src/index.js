@@ -1509,7 +1509,8 @@ async function handleSongCommand(interaction) {
         DIFF_ORDER.indexOf(String(b.difficulty || '').toLowerCase())
       );
 
-      // Fetch per-difficulty play counts on-demand using the stored token
+      // Fetch per-difficulty play counts on-demand using the stored token, then
+      // write any fresher values back so /account plays and /song score agree.
       let finalScores = enriched;
       const linkedAuthForScore = account.linkedAuth
         ? restoreLinkedAuthFromStorage(account.linkedAuth, config.accountLinkDataSecret)
@@ -1518,22 +1519,55 @@ async function handleSongCommand(interaction) {
       if (linkedToken) {
         try {
           const queries = enriched
-            .filter(e => e.playCount == null)
             .map(e => ({
-            difficulty: String(e.difficulty || '').toLowerCase(),
-            type:       String(e.type       || 'std').toLowerCase(),
-            title:      e.title || song.title
-          }));
+              difficulty: String(e.difficulty || '').toLowerCase(),
+              type:       String(e.type       || 'std').toLowerCase(),
+              title:      e.title || song.title
+            }));
           const playCounts = queries.length ? await fetchSongPlayCounts(linkedToken, queries) : new Map();
           if (playCounts.size > 0) {
+            const updatedScoreByKey = new Map();
             finalScores = enriched.map(e => {
-              if (e.playCount != null) {
-                return e;
-              }
               const key = `${String(e.difficulty || '').toLowerCase()}:${String(e.type || 'std').toLowerCase()}`;
               const pc = playCounts.get(key);
-              return pc != null ? { ...e, playCount: pc } : e;
+              if (pc == null) {
+                return e;
+              }
+              const updated = { ...e, playCount: pc };
+              updatedScoreByKey.set(key, updated);
+              return updated;
             });
+            if (updatedScoreByKey.size > 0) {
+              let changed = false;
+              const seenUpdatedKeys = new Set();
+              const refreshedAllScores = rawAllScores.map((entry) => {
+                if (!matchesSong(entry)) {
+                  return entry;
+                }
+                const key = `${String(entry.difficulty || '').toLowerCase()}:${String(entry.type || 'std').toLowerCase()}`;
+                const updated = updatedScoreByKey.get(key);
+                if (!updated || Number(entry.playCount) === Number(updated.playCount)) {
+                  return entry;
+                }
+                seenUpdatedKeys.add(key);
+                changed = true;
+                return {
+                  ...entry,
+                  playCount: updated.playCount,
+                  playedAt: entry.playedAt ?? updated.playedAt ?? null
+                };
+              });
+              for (const [key, updated] of updatedScoreByKey.entries()) {
+                if (seenUpdatedKeys.has(key) || !updated || Number(updated.playCount) <= 0) {
+                  continue;
+                }
+                changed = true;
+                refreshedAllScores.push(updated);
+              }
+              if (changed) {
+                await store.setAccountScores(interaction.user.id, refreshedAllScores);
+              }
+            }
           }
         } catch { /* play count is non-fatal — render without it */ }
       }

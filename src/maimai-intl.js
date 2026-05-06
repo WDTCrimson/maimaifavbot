@@ -2037,6 +2037,64 @@ export async function fetchBulkPlayCounts(rawToken, queries) {
   return fetchBulkPlayCountsWithCookies(cookies, queries);
 }
 
+async function repairMissingScorePlayCounts(cookies, scoreEntries, playCountSyncStats = null) {
+  const missing = (Array.isArray(scoreEntries) ? scoreEntries : [])
+    .filter((score) =>
+      score?.playCount == null &&
+      score?.title &&
+      score?.difficulty &&
+      score?.type &&
+      Number.isFinite(Number(score.achievement))
+    );
+  if (!missing.length) {
+    return scoreEntries;
+  }
+
+  if (playCountSyncStats) {
+    playCountSyncStats.missingPlayCountsBeforeRepair = missing.length;
+    playCountSyncStats.repairQueries = missing.length;
+  }
+
+  const playCounts = await fetchBulkPlayCountsWithCookies(
+    cookies,
+    missing.map((score) => ({
+      title: score.title,
+      difficulty: String(score.difficulty || '').toLowerCase(),
+      type: String(score.type || 'std').toLowerCase()
+    })),
+    { detailMode: 'all' }
+  );
+  if (!playCounts.size) {
+    if (playCountSyncStats) {
+      playCountSyncStats.repairSuccesses = 0;
+      playCountSyncStats.missingPlayCountsAfterRepair = missing.length;
+    }
+    return scoreEntries;
+  }
+
+  let repairSuccesses = 0;
+  const repaired = scoreEntries.map((score) => {
+    if (score?.playCount != null) {
+      return score;
+    }
+    const playCount = playCounts.get(scorePlayCountKey(score));
+    if (playCount == null) {
+      return score;
+    }
+    repairSuccesses += 1;
+    return {
+      ...score,
+      playCount
+    };
+  });
+
+  if (playCountSyncStats) {
+    playCountSyncStats.repairSuccesses = repairSuccesses;
+    playCountSyncStats.missingPlayCountsAfterRepair = repaired.filter((score) => score?.playCount == null).length;
+  }
+  return repaired;
+}
+
 export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null) {
   const clalToken = normalizeIntlClalToken(rawToken);
   const validation = await validateInternationalCookie(clalToken);
@@ -2066,7 +2124,11 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
     rowDetailFailures: 0,
     playCountRowsWithCounts: 0,
     mergedExistingRows: 0,
-    addedCountOnlyRows: 0
+    addedCountOnlyRows: 0,
+    missingPlayCountsBeforeRepair: 0,
+    repairQueries: 0,
+    repairSuccesses: 0,
+    missingPlayCountsAfterRepair: 0
   };
   const recentPlaysPromise = fetchRecentPlays(cookies);
   let [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
@@ -2075,6 +2137,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
     recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
   const recentPlays = await recentPlaysPromise;
+  scoreEntries = await repairMissingScorePlayCounts(cookies, scoreEntries, playCountSync);
 
   const profile = await extractPlayerSnapshot(playerDataHtml);
   const best50 = buildBest50(scoreEntries, songCatalog);

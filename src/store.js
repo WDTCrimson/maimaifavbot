@@ -1497,6 +1497,19 @@ export class LoadoutStore {
       .slice(0, Math.max(1, Math.min(50, Number(count) || 10)));
   }
 
+  async setAccountScores(userId, scores) {
+    const user = this.getUser(userId);
+    if (!user.account) {
+      return [];
+    }
+    user.account.allScores = Array.isArray(scores) ? scores : [];
+    await this.saveUser(userId);
+    if (this.backendName === 'sqlite' && user.account) {
+      delete user.account.allScores;
+    }
+    return this.getAccountScores(userId);
+  }
+
   hasAccount(userId) {
     return Boolean(this.getAccount(userId));
   }
