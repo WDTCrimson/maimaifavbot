@@ -30,6 +30,27 @@ const difficultySelectors = [
   '.music_remaster_score_back'
 ];
 
+function parsePositiveIntegerEnv(name, fallback, { min = 1, max = 32 } = {}) {
+  const raw = process.env[name];
+  if (raw == null || String(raw).trim() === '') {
+    return fallback;
+  }
+  const parsed = Number.parseInt(String(raw).trim(), 10);
+  if (!Number.isInteger(parsed)) {
+    return fallback;
+  }
+  return Math.max(min, Math.min(max, parsed));
+}
+
+const ACCOUNT_SYNC_DETAIL_CONCURRENCY = parsePositiveIntegerEnv('MAIMAI_SYNC_DETAIL_CONCURRENCY', 4, {
+  min: 1,
+  max: 8
+});
+const ACCOUNT_SYNC_DETAIL_DELAY_MS = parsePositiveIntegerEnv('MAIMAI_SYNC_DETAIL_DELAY_MS', 40, {
+  min: 0,
+  max: 1000
+});
+
 async function loadCheerio() {
   const mod = await import('cheerio');
   return mod.load;
@@ -1320,7 +1341,7 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
 
     // The detail idx values are tied to the current music-list page state. Use
     // them before loading another difficulty page.
-    await mapWithConcurrency(detailLookups, 1, async ({ index, detailParams }) => {
+    await mapWithConcurrency(detailLookups, ACCOUNT_SYNC_DETAIL_CONCURRENCY, async ({ index, detailParams }) => {
       const absoluteIndex = offset + index;
       const score = allScores[absoluteIndex] || {};
       const cacheKey = scoreSongPlayCountKey(score);
@@ -1370,7 +1391,7 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
           playCountSyncStats.scoreDetailFailures = (playCountSyncStats.scoreDetailFailures || 0) + 1;
         }
       }
-    }, { delayMs: 150 });
+    }, { delayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS });
   }
 
   return allScores;
@@ -1445,7 +1466,7 @@ async function fetchAllPlayCountRows(cookies, playCountSyncStats = null) {
       playCountSyncStats.rowDetailLookups = (playCountSyncStats.rowDetailLookups || 0) + detailLookups.length;
     }
 
-    await mapWithConcurrency(detailLookups, 1, async ({ index, detailParams }) => {
+    await mapWithConcurrency(detailLookups, ACCOUNT_SYNC_DETAIL_CONCURRENCY, async ({ index, detailParams }) => {
       const absoluteIndex = offset + index;
       try {
         const metadata = await fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber);
@@ -1467,7 +1488,7 @@ async function fetchAllPlayCountRows(cookies, playCountSyncStats = null) {
           playCountSyncStats.rowDetailFailures = (playCountSyncStats.rowDetailFailures || 0) + 1;
         }
       }
-    }, { delayMs: 150 });
+    }, { delayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS });
   }
 
   const rowsWithCounts = rows.filter((row) => row.playCount != null);
@@ -1979,7 +2000,9 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
 
   const playCountSync = {
     strategy: 'score-detail',
-    version: 5,
+    version: 6,
+    detailConcurrency: ACCOUNT_SYNC_DETAIL_CONCURRENCY,
+    detailDelayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS,
     scoreRows: 0,
     scoreDetailLookups: 0,
     scoreDetailPageFetches: 0,
