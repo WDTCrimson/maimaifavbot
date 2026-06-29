@@ -1265,6 +1265,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   const blocks = $(selector);
   const pageTitle = $('title').text().trim();
   console.debug(`[sync] diff=${difficultyNumber}(${difficultyName}) blocks=${blocks.length} title="${pageTitle}"`);
+  const totalBlocks = blocks.length;
   const scores = [];
   const detailLookups = []; // {index, detailParams} — for entries needing a detail-page play count fetch
 
@@ -1340,7 +1341,7 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
     }
   });
 
-  return { scores, detailLookups, difficultyNumber };
+  return { scores, detailLookups, difficultyNumber, totalBlocks };
 }
 
 async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCountSyncStats = null, clalToken = null } = {}) {
@@ -1348,16 +1349,23 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
   const detailMetadataCache = new Map();
 
   for (let difficultyNumber = 0; difficultyNumber < difficultyNames.length; difficultyNumber += 1) {
-    if (difficultyNumber > 0 && clalToken) {
+    let { scores, detailLookups, totalBlocks } = await fetchScoresForDifficulty(cookies, difficultyNumber);
+
+    // If the page returned an error (0 blocks = error/login page), reauth once and retry
+    if (totalBlocks === 0 && clalToken) {
       try {
+        await sleep(5000);
         const reauth = await validateInternationalCookie(clalToken);
         cookies = await getCookiesFromRedirect(reauth.redirectUrl, clalToken);
-        console.debug(`[sync] reauth ok before diff=${difficultyNumber}`);
+        console.debug(`[sync] reauth after error page for diff=${difficultyNumber}`);
+        const retry = await fetchScoresForDifficulty(cookies, difficultyNumber);
+        scores = retry.scores;
+        detailLookups = retry.detailLookups;
+        totalBlocks = retry.totalBlocks;
       } catch (err) {
-        console.debug(`[sync] reauth failed before diff=${difficultyNumber}: ${err.message}`);
+        console.debug(`[sync] reauth failed for diff=${difficultyNumber}: ${err.message}`);
       }
     }
-    const { scores, detailLookups } = await fetchScoresForDifficulty(cookies, difficultyNumber);
     const offset = allScores.length;
     allScores.push(...scores);
 
@@ -1433,9 +1441,6 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
       await applyDetailLookup(lookup);
     }, { delayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS });
 
-    if (detailLookups.length > 0 && difficultyNumber < difficultyNames.length - 1) {
-      await sleep(3000);
-    }
   }
 
   return allScores;
