@@ -1331,11 +1331,18 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   return { scores, detailLookups, difficultyNumber };
 }
 
-async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCountSyncStats = null } = {}) {
+async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCountSyncStats = null, clalToken = null, redirectUrl = null } = {}) {
   const allScores = [];
   const detailMetadataCache = new Map();
 
   for (let difficultyNumber = 0; difficultyNumber < difficultyNames.length; difficultyNumber += 1) {
+    if (difficultyNumber > 0 && clalToken && redirectUrl) {
+      try {
+        cookies = await getCookiesFromRedirect(redirectUrl, clalToken);
+      } catch {
+        // best-effort refresh — continue with existing cookies if it fails
+      }
+    }
     const { scores, detailLookups } = await fetchScoresForDifficulty(cookies, difficultyNumber);
     const offset = allScores.length;
     allScores.push(...scores);
@@ -2139,7 +2146,7 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const recentPlaysPromise = fetchRecentPlays(cookies);
   let [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
     fetchPlayerDataHtml(cookies, validation.redirectUrl),
-    fetchAllScores(cookies, { playCountSyncStats: playCountSync }),
+    fetchAllScores(cookies, { playCountSyncStats: playCountSync, clalToken, redirectUrl: validation.redirectUrl }),
     recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
   const recentPlays = await recentPlaysPromise;
