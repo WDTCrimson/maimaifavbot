@@ -1342,12 +1342,16 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   return { scores, detailLookups, difficultyNumber, totalBlocks };
 }
 
-async function fetchAllScores(cookies, { playCountSyncStats = null, clalToken = null } = {}) {
+async function fetchAllScores(cookies, { playCountSyncStats = null, clalToken = null, onDifficultyComplete = null } = {}) {
   // Fetch all difficulty listing pages in parallel — same approach as tomomai.
   // Play counts missing from listing pages are filled in by repairMissingScorePlayCounts
   // afterwards with a fresh session, so there's no need for per-difficulty detail fetches here.
   const difficultyResults = await Promise.all(
-    difficultyNames.map((_, i) => fetchScoresForDifficulty(cookies, i))
+    difficultyNames.map(async (_, i) => {
+      const result = await fetchScoresForDifficulty(cookies, i);
+      onDifficultyComplete?.(i);
+      return result;
+    })
   );
 
   // Collect failures (0 blocks = error/expired page), reauth once, retry only the failed ones.
@@ -2046,7 +2050,7 @@ async function repairMissingScorePlayCounts(cookies, scoreEntries, playCountSync
   return repaired;
 }
 
-export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null) {
+export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null, { onProgress } = {}) {
   const clalToken = normalizeIntlClalToken(rawToken);
   const validation = await validateInternationalCookie(clalToken);
   const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
@@ -2084,10 +2088,11 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   const recentPlaysPromise = fetchRecentPlays(cookies);
   let [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
     fetchPlayerDataHtml(cookies, validation.redirectUrl),
-    fetchAllScores(cookies, { playCountSyncStats: playCountSync, clalToken }),
+    fetchAllScores(cookies, { playCountSyncStats: playCountSync, clalToken, onDifficultyComplete: (i) => onProgress?.({ phase: 'difficulty', index: i }) }),
     recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
   const recentPlays = await recentPlaysPromise;
+  onProgress?.({ phase: 'repair' });
   scoreEntries = await repairMissingScorePlayCounts(cookies, scoreEntries, playCountSync, clalToken);
 
   const profile = await extractPlayerSnapshot(playerDataHtml);
@@ -2120,8 +2125,8 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null)
   };
 }
 
-export async function fetchIntlAccountSnapshotFromClal(rawToken, songCatalog = null) {
-  const result = await fetchIntlAccountDataFromClal(rawToken, songCatalog);
+export async function fetchIntlAccountSnapshotFromClal(rawToken, songCatalog = null, { onProgress } = {}) {
+  const result = await fetchIntlAccountDataFromClal(rawToken, songCatalog, { onProgress });
   return {
     token: result.token,
     snapshot: result.snapshot

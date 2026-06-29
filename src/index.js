@@ -989,20 +989,45 @@ async function handleAccountCommand(interaction) {
             };
           }
 
+          const SYNC_DIFF_LABELS = ['BASIC', 'ADVANCED', 'EXPERT', 'MASTER', 'RE:MASTER'];
+          const doneDiffs = new Set();
+          let syncPhase = 'scores';
+
+          const buildSyncContent = () => {
+            const lines = SYNC_DIFF_LABELS.map((label, i) =>
+              `${doneDiffs.has(i) ? '✅' : '⏳'} ${label}`
+            );
+            if (syncPhase === 'playcounts') lines.push('⏳ Fetching play counts…');
+            else if (syncPhase === 'storing') lines.push('💾 Saving data…');
+            return `**Syncing from maimai DX NET…**\n${lines.join('\n')}`;
+          };
+
+          await interaction.editReply({ content: buildSyncContent() });
+
+          const onProgress = ({ phase, index }) => {
+            if (phase === 'difficulty') doneDiffs.add(index);
+            else if (phase === 'repair') syncPhase = 'playcounts';
+            interaction.editReply({ content: buildSyncContent() }).catch(() => {});
+          };
+
           let refreshed;
           try {
-            refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog);
+            refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog, { onProgress });
           } catch (err) {
             if (String(err?.message).includes('expired or invalid')) {
-              await replySafely(interaction, 'Your maimai login has expired. Please re-link your account with `/account link`.');
+              await interaction.editReply({ content: 'Your maimai login has expired. Please re-link your account with `/account link`.' });
               return { provider: account.provider || null, region: 'intl', hasBest50: Boolean(account.best50?.top50?.length) };
             }
             if (String(err?.message).includes('HTTP 503') || String(err?.message).includes('HTTP 502')) {
-              await replySafely(interaction, 'maimai DX NET is temporarily unavailable (server error). Please try again in a few minutes.');
+              await interaction.editReply({ content: 'maimai DX NET is temporarily unavailable (server error). Please try again in a few minutes.' });
               return { provider: account.provider || null, region: 'intl', hasBest50: Boolean(account.best50?.top50?.length) };
             }
             throw err;
           }
+
+          syncPhase = 'storing';
+          await interaction.editReply({ content: buildSyncContent() });
+
           const stored = await store.setAccount(userId, {
             ...account,
             ...refreshed.snapshot,
@@ -1011,7 +1036,7 @@ async function handleAccountCommand(interaction) {
             linkedAuth: account.linkedAuth
           });
 
-          await replyPayload(interaction, {
+          await interaction.editReply({
             content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.`,
             embeds: [buildAccountStatusEmbed(stored, store.getAccountRecentSessions(userId))]
           });
