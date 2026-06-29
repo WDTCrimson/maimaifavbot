@@ -1247,6 +1247,12 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   const load = await loadCheerio();
   const $ = load(html);
   const blocks = $(selector);
+  const scoredBlocks = blocks.filter((_, el) => $(el).find('.music_score_block').length >= 2);
+  console.debug(`[sync-debug] diff=${difficultyNumber}(${difficultyName}) total_blocks=${blocks.length} scored_blocks=${scoredBlocks.length} page_title="${$('title').text().trim()}"`);
+  if (scoredBlocks.length > 0) {
+    const samples = scoredBlocks.slice(0, 3).map((_, el) => $(el).find('.music_name_block').text().trim()).get();
+    console.debug(`[sync-debug]   sample scored songs: ${samples.join(', ')}`);
+  }
   const scores = [];
   const detailLookups = []; // {index, detailParams} — for entries needing a detail-page play count fetch
 
