@@ -637,15 +637,23 @@ async function getCookiesFromRedirect(redirectUrl, clalToken) {
   return cookies;
 }
 
-async function fetchText(url, { cookies, referer }) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      Cookie: cookies,
-      Referer: referer,
-      'User-Agent': USER_AGENT
-    }
-  });
+async function fetchText(url, { cookies, referer, timeoutMs = 15000 }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      signal: controller.signal,
+      headers: {
+        Cookie: cookies,
+        Referer: referer,
+        'User-Agent': USER_AGENT
+      }
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (response.status !== 200) {
     throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
@@ -654,17 +662,25 @@ async function fetchText(url, { cookies, referer }) {
   return response.text();
 }
 
-async function postForm(url, { cookies, referer, body }) {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Cookie: cookies,
-      Referer: referer,
-      'User-Agent': USER_AGENT,
-      'Content-Type': 'application/x-www-form-urlencoded'
-    },
-    body
-  });
+async function postForm(url, { cookies, referer, body, timeoutMs = 15000 }) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Cookie: cookies,
+        Referer: referer,
+        'User-Agent': USER_AGENT,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body
+    });
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (response.status < 200 || response.status >= 400) {
     throw new Error(`Failed to submit ${url}: HTTP ${response.status}`);
