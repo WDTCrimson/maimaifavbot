@@ -1263,6 +1263,8 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   const load = await loadCheerio();
   const $ = load(html);
   const blocks = $(selector);
+  const pageTitle = $('title').text().trim();
+  console.debug(`[sync] diff=${difficultyNumber}(${difficultyName}) blocks=${blocks.length} title="${pageTitle}"`);
   const scores = [];
   const detailLookups = []; // {index, detailParams} — for entries needing a detail-page play count fetch
 
@@ -1350,8 +1352,9 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
       try {
         const reauth = await validateInternationalCookie(clalToken);
         cookies = await getCookiesFromRedirect(reauth.redirectUrl, clalToken);
-      } catch {
-        // best-effort — continue with existing cookies
+        console.debug(`[sync] reauth ok before diff=${difficultyNumber}`);
+      } catch (err) {
+        console.debug(`[sync] reauth failed before diff=${difficultyNumber}: ${err.message}`);
       }
     }
     const { scores, detailLookups } = await fetchScoresForDifficulty(cookies, difficultyNumber);
