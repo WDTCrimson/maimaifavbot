@@ -1432,6 +1432,10 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
     await mapWithConcurrency(detailLookups, ACCOUNT_SYNC_DETAIL_CONCURRENCY, async (lookup) => {
       await applyDetailLookup(lookup);
     }, { delayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS });
+
+    if (detailLookups.length > 0 && difficultyNumber < difficultyNames.length - 1) {
+      await sleep(3000);
+    }
   }
 
   return allScores;
