@@ -647,6 +647,10 @@ async function fetchText(url, { cookies, referer }) {
     }
   });
 
+  if (url.includes('musicGenre/search')) {
+    console.debug(`[sync-debug] fetchText ${url} → status=${response.status} finalUrl=${response.url}`);
+  }
+
   if (response.status !== 200) {
     throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`);
   }
@@ -1339,9 +1343,11 @@ async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCount
     if (difficultyNumber > 0 && clalToken) {
       try {
         const reauth = await validateInternationalCookie(clalToken);
+        console.debug(`[sync-debug] reauth for diff=${difficultyNumber}: redirectUrl=${reauth.redirectUrl}`);
         cookies = await getCookiesFromRedirect(reauth.redirectUrl, clalToken);
-      } catch {
-        // best-effort refresh — continue with existing cookies if it fails
+        console.debug(`[sync-debug] reauth cookies obtained: ${cookies?.slice(0, 60)}...`);
+      } catch (err) {
+        console.debug(`[sync-debug] reauth failed for diff=${difficultyNumber}: ${err.message}`);
       }
     }
     const { scores, detailLookups } = await fetchScoresForDifficulty(cookies, difficultyNumber);
