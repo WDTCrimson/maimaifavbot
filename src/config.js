@@ -77,5 +77,7 @@ export const config = {
 
 export const limits = {
   maxSongsPerLoadout: 30,
-  maxNameLength: 32
+  maxNameLength: 32,
+  maxProfilesPerUser: 5,
+  maxProfileNameLength: 16
 };

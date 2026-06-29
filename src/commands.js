@@ -448,7 +448,31 @@ export const accountCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('unlink')
-      .setDescription('Remove your linked account snapshot')
+      .setDescription('Remove a linked account snapshot or delete a profile')
+      .addStringOption((option) =>
+        option
+          .setName('profile')
+          .setDescription('Profile to remove (defaults to your active profile)')
+          .setRequired(false)
+          .setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('profiles')
+      .setDescription('List your account profiles')
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('switch')
+      .setDescription('Switch your active account profile (creates it if it does not exist)')
+      .addStringOption((option) =>
+        option
+          .setName('name')
+          .setDescription('Profile name')
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
   )
   .addSubcommand((subcommand) =>
     subcommand

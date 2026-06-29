@@ -250,8 +250,45 @@ async function handleAutocomplete(interaction) {
     return;
   }
 
+  if (interaction.commandName === 'account') {
+    await handleAccountAutocomplete(interaction);
+    return;
+  }
+
   if (interaction.commandName === 'song') {
     await handleSongAutocomplete(interaction);
+    return;
+  }
+
+  await interaction.respond([]);
+}
+
+function getProfileNameChoices(userId, query) {
+  const normalizedQuery = String(query || '').trim().toLowerCase();
+  return store
+    .listUserProfiles(userId)
+    .filter((p) => !normalizedQuery || p.name.includes(normalizedQuery))
+    .slice(0, 25)
+    .map((p) => {
+      const label = p.hasAccount
+        ? `${p.name}${p.isActive ? ' ★' : ''} — ${p.playerName || 'linked'}`
+        : `${p.name}${p.isActive ? ' ★' : ''} — (empty)`;
+      return { name: truncateChoiceName(label), value: p.name };
+    });
+}
+
+async function handleAccountAutocomplete(interaction) {
+  const subcommand = interaction.options.getSubcommand(false);
+  const focused = interaction.options.getFocused(true);
+  const userId = interaction.user.id;
+
+  if (subcommand === 'switch' && focused.name === 'name') {
+    await interaction.respond(getProfileNameChoices(userId, focused.value));
+    return;
+  }
+
+  if (subcommand === 'unlink' && focused.name === 'profile') {
+    await interaction.respond(getProfileNameChoices(userId, focused.value));
     return;
   }
 
@@ -857,20 +894,24 @@ async function handleAccountCommand(interaction) {
       await store.cleanupExpiredAccountLinkSessions();
       const account = store.getAccount(userId);
       const pendingSession = store.getPendingAccountLinkSessionForUser(userId);
+      const activeProfileName = store.getActiveProfileName(userId);
+      const allProfiles = store.listUserProfiles(userId);
+      const profileNote = allProfiles.length > 1 ? `Active profile: **${activeProfileName}**` : null;
 
       if (!account) {
         if (pendingSession) {
           const pendingLinkUrl = buildAccountLinkUrlForSession(pendingSession);
           await replyPayload(interaction, {
-            content: pendingLinkUrl || undefined,
+            content: [profileNote, pendingLinkUrl].filter(Boolean).join('\n') || undefined,
             embeds: [buildPendingAccountLinkEmbed(pendingSession)]
           });
           return;
         }
 
+        const noAccountMsg = 'No linked account snapshot found. Use `/account link` to start a web link session or `/account import` to import a snapshot.';
         await replySafely(
           interaction,
-          'No linked account snapshot found. Use `/account link` to start a web link session or `/account import` to import a snapshot.'
+          profileNote ? `${profileNote}\n${noAccountMsg}` : noAccountMsg
         );
         return;
       }
@@ -880,7 +921,10 @@ async function handleAccountCommand(interaction) {
         embeds.push(buildPendingAccountLinkEmbed(pendingSession));
       }
 
-      await replyPayload(interaction, { embeds });
+      await replyPayload(interaction, {
+        content: profileNote || undefined,
+        embeds
+      });
       return;
     }
 
@@ -1106,16 +1150,72 @@ async function handleAccountCommand(interaction) {
     }
 
     case 'unlink': {
-      const account = await store.clearAccount(userId);
-      if (!account) {
-        await replySafely(interaction, 'No linked account snapshot was found.');
+      const targetProfileRaw = interaction.options.getString('profile');
+      const targetProfile = targetProfileRaw
+        ? String(targetProfileRaw).trim().toLowerCase()
+        : store.getActiveProfileName(userId);
+
+      const allProfiles = store.listUserProfiles(userId);
+      const profileExists = allProfiles.some((p) => p.name === targetProfile);
+      if (!profileExists) {
+        await replySafely(interaction, `Profile **${targetProfile}** was not found.`);
         return;
       }
 
-      await replySafely(
-        interaction,
-        `Removed linked **${formatAccountProvider(account.provider)}** account snapshot.`
-      );
+      const result = await store.deleteProfile(userId, targetProfile);
+      const providerLabel = result.clearedAccount
+        ? formatAccountProvider(result.clearedAccount.provider)
+        : null;
+
+      if (result.deletedSlot) {
+        const switchedNote = result.wasActive ? ' Switched back to **default** profile.' : '';
+        await replySafely(
+          interaction,
+          providerLabel
+            ? `Removed **${targetProfile}** profile (${providerLabel} account).${switchedNote}`
+            : `Removed **${targetProfile}** profile.${switchedNote}`
+        );
+      } else {
+        await replySafely(
+          interaction,
+          providerLabel
+            ? `Cleared **${formatAccountProvider(result.clearedAccount.provider)}** account from **${targetProfile}** profile. Profile slot kept.`
+            : `No linked account was found in **${targetProfile}** profile.`
+        );
+      }
+      return;
+    }
+
+    case 'profiles': {
+      const profiles = store.listUserProfiles(userId);
+      const activeProfileName = store.getActiveProfileName(userId);
+      await replyPayload(interaction, {
+        embeds: [buildProfileListEmbed(profiles, activeProfileName)]
+      });
+      return;
+    }
+
+    case 'switch': {
+      const rawName = interaction.options.getString('name', true);
+      let switched;
+      try {
+        switched = await store.switchActiveProfile(userId, rawName);
+      } catch (error) {
+        await replySafely(interaction, error.message);
+        return;
+      }
+
+      const finalName = String(rawName).trim().toLowerCase().replace(/\s+/g, ' ');
+      if (switched.created) {
+        await replySafely(
+          interaction,
+          `Created and switched to new profile **${finalName}**. Use \`/account link\` or \`/account import\` to link an account to it.`
+        );
+      } else {
+        const account = store.getAccount(userId);
+        const playerLabel = account?.player?.name ? ` — **${account.player.name}**` : '';
+        await replySafely(interaction, `Switched to profile **${finalName}**${playerLabel}.`);
+      }
       return;
     }
 
@@ -1806,6 +1906,32 @@ function formatAccountProvider(provider) {
     mimixd: 'mimixd'
   };
   return labels[normalized] || provider || 'Unknown';
+}
+
+function buildProfileListEmbed(profiles, activeProfileName) {
+  const fields = profiles.map((p) => {
+    const activeMarker = p.name === activeProfileName ? ' ★' : '';
+    const accountInfo = p.hasAccount
+      ? [
+          p.playerName ? `Player: **${p.playerName}**` : 'Player: unknown',
+          p.linkedAt ? `Linked: ${formatDateTime(p.linkedAt)}` : null,
+          p.updatedAt ? `Updated: ${formatDateTime(p.updatedAt)}` : null
+        ]
+          .filter(Boolean)
+          .join('\n')
+      : '*(no linked account)*';
+    return {
+      name: `${p.name}${activeMarker}`,
+      value: accountInfo,
+      inline: false
+    };
+  });
+
+  return new EmbedBuilder()
+    .setColor(0x6366f1)
+    .setTitle('Account Profiles')
+    .setDescription(`Active profile: **${activeProfileName}**\nUse \`/account switch\` to change profiles.`)
+    .addFields(fields);
 }
 
 function formatDateTime(value) {
