@@ -1344,103 +1344,43 @@ async function fetchScoresForDifficulty(cookies, difficultyNumber) {
   return { scores, detailLookups, difficultyNumber, totalBlocks };
 }
 
-async function fetchAllScores(cookies, { fetchDetailPlayCounts = true, playCountSyncStats = null, clalToken = null } = {}) {
-  const allScores = [];
-  const detailMetadataCache = new Map();
+async function fetchAllScores(cookies, { playCountSyncStats = null, clalToken = null } = {}) {
+  // Fetch all difficulty listing pages in parallel — same approach as tomomai.
+  // Play counts missing from listing pages are filled in by repairMissingScorePlayCounts
+  // afterwards with a fresh session, so there's no need for per-difficulty detail fetches here.
+  const difficultyResults = await Promise.all(
+    difficultyNames.map((_, i) => fetchScoresForDifficulty(cookies, i))
+  );
 
-  for (let difficultyNumber = 0; difficultyNumber < difficultyNames.length; difficultyNumber += 1) {
-    let { scores, detailLookups, totalBlocks } = await fetchScoresForDifficulty(cookies, difficultyNumber);
+  // Collect failures (0 blocks = error/expired page), reauth once, retry only the failed ones.
+  const failedIndices = difficultyResults
+    .map((r, i) => (r.totalBlocks === 0 ? i : -1))
+    .filter((i) => i >= 0);
 
-    // If the page returned an error (0 blocks = error/login page), reauth once and retry
-    if (totalBlocks === 0 && clalToken) {
-      try {
-        await sleep(5000);
-        const reauth = await validateInternationalCookie(clalToken);
-        cookies = await getCookiesFromRedirect(reauth.redirectUrl, clalToken);
-        console.debug(`[sync] reauth after error page for diff=${difficultyNumber}`);
-        const retry = await fetchScoresForDifficulty(cookies, difficultyNumber);
-        scores = retry.scores;
-        detailLookups = retry.detailLookups;
-        totalBlocks = retry.totalBlocks;
-      } catch (err) {
-        console.debug(`[sync] reauth failed for diff=${difficultyNumber}: ${err.message}`);
+  if (failedIndices.length > 0 && clalToken) {
+    try {
+      await sleep(5000);
+      const reauth = await validateInternationalCookie(clalToken);
+      const newCookies = await getCookiesFromRedirect(reauth.redirectUrl, clalToken);
+      console.debug(`[sync] reauth for ${failedIndices.length} failed diff(s): ${failedIndices.join(',')}`);
+      for (const i of failedIndices) {
+        try {
+          difficultyResults[i] = await fetchScoresForDifficulty(newCookies, i);
+        } catch (err) {
+          console.debug(`[sync] reauth retry failed for diff=${i}: ${err.message}`);
+        }
       }
+    } catch (err) {
+      console.debug(`[sync] reauth failed: ${err.message}`);
     }
-    const offset = allScores.length;
-    allScores.push(...scores);
+  }
 
+  const allScores = [];
+  for (const { scores } of difficultyResults) {
     if (playCountSyncStats) {
       playCountSyncStats.scoreRows = (playCountSyncStats.scoreRows || 0) + scores.length;
-      playCountSyncStats.scoreDetailLookups = (playCountSyncStats.scoreDetailLookups || 0) + detailLookups.length;
     }
-
-    if (!fetchDetailPlayCounts) {
-      continue;
-    }
-
-    async function applyDetailLookup({ index, detailParams }) {
-      const absoluteIndex = offset + index;
-      const score = allScores[absoluteIndex] || {};
-      const cacheKey = scoreSongPlayCountKey(score);
-      try {
-        let metadataByDifficulty = cacheKey ? detailMetadataCache.get(cacheKey) : null;
-
-        if (metadataByDifficulty) {
-          if (playCountSyncStats) {
-            playCountSyncStats.scoreDetailCacheHits = (playCountSyncStats.scoreDetailCacheHits || 0) + 1;
-          }
-        } else {
-          metadataByDifficulty = await fetchMusicDetailAllMetadata(cookies, detailParams, difficultyNumber);
-          if (cacheKey) {
-            detailMetadataCache.set(cacheKey, metadataByDifficulty);
-          }
-          if (playCountSyncStats) {
-            playCountSyncStats.scoreDetailPageFetches = (playCountSyncStats.scoreDetailPageFetches || 0) + 1;
-          }
-        }
-
-        const metadata = metadataByDifficulty?.get(difficultyNumber) || null;
-        if (metadata?.playCount != null) {
-          allScores[absoluteIndex] = { ...allScores[absoluteIndex], playCount: metadata.playCount };
-          if (playCountSyncStats) {
-            playCountSyncStats.scoreDetailSuccesses = (playCountSyncStats.scoreDetailSuccesses || 0) + 1;
-          }
-          return true;
-        }
-
-        if (playCountSyncStats) {
-          playCountSyncStats.scoreDetailMisses = (playCountSyncStats.scoreDetailMisses || 0) + 1;
-          if (!Array.isArray(playCountSyncStats.scoreDetailMissSamples)) {
-            playCountSyncStats.scoreDetailMissSamples = [];
-          }
-          if (playCountSyncStats.scoreDetailMissSamples.length < 12) {
-            playCountSyncStats.scoreDetailMissSamples.push({
-              title: score.title,
-              difficulty: score.difficulty,
-              type: score.type,
-              level: score.level,
-              detailTitle: metadata?.detailTitle ?? null,
-              hasDifficultyBlock: metadata?.hasDifficultyBlock ?? null,
-              bodyHasPlayCountLabel: metadata?.bodyHasPlayCountLabel ?? null,
-              playedAt: metadata?.playedAt ?? null
-            });
-          }
-        }
-      } catch {
-        // ignore individual failures — play count is best-effort
-        if (playCountSyncStats) {
-          playCountSyncStats.scoreDetailFailures = (playCountSyncStats.scoreDetailFailures || 0) + 1;
-        }
-      }
-      return false;
-    }
-
-    // The detail idx values are tied to the current music-list page state. Use
-    // them before loading another difficulty page.
-    await mapWithConcurrency(detailLookups, ACCOUNT_SYNC_DETAIL_CONCURRENCY, async (lookup) => {
-      await applyDetailLookup(lookup);
-    }, { delayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS });
-
+    allScores.push(...scores);
   }
 
   return allScores;
