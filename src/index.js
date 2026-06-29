@@ -997,6 +997,10 @@ async function handleAccountCommand(interaction) {
               await replySafely(interaction, 'Your maimai login has expired. Please re-link your account with `/account link`.');
               return { provider: account.provider || null, region: 'intl', hasBest50: Boolean(account.best50?.top50?.length) };
             }
+            if (String(err?.message).includes('HTTP 503') || String(err?.message).includes('HTTP 502')) {
+              await replySafely(interaction, 'maimai DX NET is temporarily unavailable (server error). Please try again in a few minutes.');
+              return { provider: account.provider || null, region: 'intl', hasBest50: Boolean(account.best50?.top50?.length) };
+            }
             throw err;
           }
           const stored = await store.setAccount(userId, {
