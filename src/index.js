@@ -989,7 +989,16 @@ async function handleAccountCommand(interaction) {
             };
           }
 
-          const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog);
+          let refreshed;
+          try {
+            refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog);
+          } catch (err) {
+            if (String(err?.message).includes('expired or invalid')) {
+              await replySafely(interaction, 'Your maimai login has expired. Please re-link your account with `/account link`.');
+              return { provider: account.provider || null, region: 'intl', hasBest50: Boolean(account.best50?.top50?.length) };
+            }
+            throw err;
+          }
           const stored = await store.setAccount(userId, {
             ...account,
             ...refreshed.snapshot,
