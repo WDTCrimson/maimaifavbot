@@ -1784,11 +1784,8 @@ export async function fetchSongPlayCounts(rawToken, queries) {
       });
     } catch { /* ignore per-difficulty fetch failures */ }
 
-    for (const [key, lookup] of detailLookups.entries()) {
-      if (results.has(key)) {
-        continue;
-      }
-
+    const pendingLookups = [...detailLookups.entries()].filter(([key]) => !results.has(key));
+    await mapWithConcurrency(pendingLookups, ACCOUNT_SYNC_DETAIL_CONCURRENCY, async ([key, lookup]) => {
       try {
         const metadata = await fetchMusicDetailMetadata(cookies, lookup.detailParams, lookup.difficultyNumber);
         if (metadata?.playCount != null) {
@@ -1797,7 +1794,7 @@ export async function fetchSongPlayCounts(rawToken, queries) {
       } catch {
         // ignore per-song detail failures
       }
-    }
+    }, { delayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS });
   }
 
   return results;
