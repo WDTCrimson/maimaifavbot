@@ -22,6 +22,7 @@ const SONG_H     = 290;
 const ROW_H      = 182;
 const ROW_HDR_H  = 54;
 const GAP        = 14;
+const BOTTOM_PAD = 36; // clears space below the last row so the watermark doesn't sit on top of it
 
 const FONT      = 'Inter, Murecho, "Noto Sans JP", sans-serif';
 const FONT_MONO = '"Geist Mono", monospace';
@@ -664,7 +665,7 @@ export async function renderSongScoreGraphic({ account, song, scores }) {
   const badgeVer    = Math.min(Math.max(Math.floor(gameVersion), 10), 13);
 
   const n      = scores.length;
-  const totalH = PLAYER_H + GAP + SONG_H + GAP + n * ROW_H + (n - 1) * GAP + GAP;
+  const totalH = PLAYER_H + GAP + SONG_H + GAP + n * ROW_H + (n - 1) * GAP + BOTTOM_PAD;
 
   const canvas = new Canvas(W, totalH);
   const ctx    = canvas.getContext('2d');
