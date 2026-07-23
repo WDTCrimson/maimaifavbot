@@ -11,6 +11,8 @@ data/assets/
 data/recommendations/community.json
 data/recommendations/import-report.json
 data/recommendations/sources.json
+data/reference/song-aliases.json
+data/reference/song-aliases-report.json
 # Keep tomomai preset images trackable for server deploy via git pull
 data/theme/tomomai/*
 !data/theme/tomomai/*.png
