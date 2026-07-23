@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-04-16T02:55:28.851Z",
+  "generatedAt": "2026-07-23T07:47:54.791Z",
   "source": "combined",
   "sources": [
     "https://www.yuzuchan.moe/api/maimaidx/maimaidxalias",
@@ -123,6 +123,26 @@
     },
     {
       "aliases": [
+        "[助]メズマライザー"
+      ],
+      "favoriteId": "111838",
+      "title": "[助]メズマライザー",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "[匿]匿名m"
+      ],
+      "favoriteId": "111714",
+      "title": "[匿]匿名M",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "[協]hand in hand",
         "协hih",
         "多人运动",
@@ -149,6 +169,16 @@
       ],
       "favoriteId": "100018",
       "title": "[協]Love You",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "[協]ultimate taste"
+      ],
+      "favoriteId": "111770",
+      "title": "[協]Ultimate taste",
       "sources": [
         "yuzu"
       ]
@@ -260,6 +290,16 @@
     },
     {
       "aliases": [
+        "[即]チューリングの跡"
+      ],
+      "favoriteId": "111388",
+      "title": "[即]チューリングの跡",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "[右]the wheel to the right"
       ],
       "favoriteId": "110606",
@@ -284,6 +324,16 @@
       ],
       "favoriteId": "110281",
       "title": "[回]ダブルラリアット",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "[回]ハム太郎とっとこうた"
+      ],
+      "favoriteId": "111113",
+      "title": "[回]ハム太郎とっとこうた",
       "sources": [
         "yuzu"
       ]
@@ -429,6 +479,16 @@
     },
     {
       "aliases": [
+        "[幸]犬日和。(はっぴー歌唱ver)"
+      ],
+      "favoriteId": "100851",
+      "title": "[幸]犬日和。(はっぴー歌唱Ver)",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "[息]ノンブレス・オブリージュ"
       ],
       "favoriteId": "111597",
@@ -445,6 +505,16 @@
       ],
       "favoriteId": "100206",
       "title": "[星]しゅわスパ大作戦☆",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "[星]ほしぞらスペクタクル"
+      ],
+      "favoriteId": "111234",
+      "title": "[星]ほしぞらスペクタクル",
       "sources": [
         "yuzu"
       ]
@@ -471,6 +541,16 @@
     },
     {
       "aliases": [
+        "[片]神々が恋した幻想郷"
+      ],
+      "favoriteId": "111363",
+      "title": "[片]神々が恋した幻想郷",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "[狂]タカハせ！名人マン",
         "狂高桥",
         "手汗快乐歌",
@@ -489,6 +569,16 @@
       ],
       "favoriteId": "130227",
       "title": "[玉]Garakuta Doll Play",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "[甘]スイートマジック"
+      ],
+      "favoriteId": "110121",
+      "title": "[甘]スイートマジック",
       "sources": [
         "yuzu"
       ]
@@ -853,7 +943,8 @@
       "aliases": [
         "184億回のマルチトニック",
         "184亿",
-        "184"
+        "184",
+        "184亿回"
       ],
       "favoriteId": "11739",
       "title": "184億回のマルチトニック",
@@ -942,7 +1033,8 @@
       "aliases": [
         "abstruse dilemma",
         "ad",
-        "鸟屎2"
+        "鸟屎2",
+        "摩耶"
       ],
       "favoriteId": "11789",
       "title": "Abstruse Dilemma",
@@ -1188,6 +1280,7 @@
         "电线",
         "漏电电线",
         "天线",
+        "阿勒泰",
         "알테일"
       ],
       "favoriteId": "837",
@@ -1253,12 +1346,16 @@
     },
     {
       "aliases": [
+        "åntinomiε",
+        "太空熊2",
+        "二律背反",
+        "太空熊二",
         "antinomie"
       ],
-      "favoriteId": null,
+      "favoriteId": "11809",
       "title": "Åntinomiε",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -1366,6 +1463,19 @@
       ],
       "favoriteId": "11213",
       "title": "Arty Party",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "atlas rush",
+        "rice",
+        "🍚",
+        "米饭"
+      ],
+      "favoriteId": "11810",
+      "title": "ATLAS RUSH",
       "sources": [
         "yuzu"
       ]
@@ -2539,6 +2649,7 @@
         "ymn",
         "东方年柄年中",
         "小bbb",
+        "绝赞俱乐部",
         "club ibuki",
         "ibuki",
         "브레이크 올",
@@ -2609,6 +2720,17 @@
       ],
       "favoriteId": "9",
       "title": "Color My World",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "colorfull:encounter",
+        "绿黑姬"
+      ],
+      "favoriteId": "11751",
+      "title": "Colorfull:Encounter",
       "sources": [
         "yuzu"
       ]
@@ -3058,12 +3180,14 @@
     },
     {
       "aliases": [
-        "Dataerror"
+        "dataerr0r",
+        "dataerror",
+        "数据错误"
       ],
-      "favoriteId": null,
+      "favoriteId": "11849",
       "title": "DATAERR0R",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -3132,6 +3256,17 @@
       ],
       "favoriteId": "11174",
       "title": "Desperado Waltz",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "destined marionette",
+        "提线木偶"
+      ],
+      "favoriteId": "11855",
+      "title": "Destined Marionette",
       "sources": [
         "yuzu"
       ]
@@ -3460,7 +3595,8 @@
       "aliases": [
         "elemental ethnic",
         "狗叫机关枪",
-        "机枪肌肉男"
+        "机枪肌肉男",
+        "机关枪"
       ],
       "favoriteId": "11754",
       "title": "Elemental Ethnic",
@@ -3488,7 +3624,8 @@
     },
     {
       "aliases": [
-        "empire of winter"
+        "empire of winter",
+        "冬国"
       ],
       "favoriteId": "11786",
       "title": "Empire of Winter",
@@ -3805,6 +3942,7 @@
         "圣剑2",
         "圣剑二",
         "福瑞2",
+        "生煎二",
         "excalibur",
         "excal",
         "exca",
@@ -3956,6 +4094,16 @@
     },
     {
       "aliases": [
+        "feel the luv"
+      ],
+      "favoriteId": "11808",
+      "title": "Feel The Luv",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "felys -final remix-",
         "风流韵事",
         "飞叶子",
@@ -4035,7 +4183,8 @@
         "天天酷跑",
         "fs",
         "终步",
-        "最后一步"
+        "最后一步",
+        "final step"
       ],
       "favoriteId": "11573",
       "title": "Final Step!",
@@ -4075,6 +4224,17 @@
       ],
       "favoriteId": "733",
       "title": "Fist Bump",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "flashback",
+        "闪回"
+      ],
+      "favoriteId": "11750",
+      "title": "Flashback",
       "sources": [
         "yuzu"
       ]
@@ -4173,6 +4333,17 @@
       ],
       "favoriteId": "143",
       "title": "Fragrance",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "fraq",
+        "fq"
+      ],
+      "favoriteId": "11806",
+      "title": "Fraq",
       "sources": [
         "yuzu"
       ]
@@ -4982,12 +5153,16 @@
     },
     {
       "aliases": [
+        "how to make 音ゲ～曲！",
+        "预制菜",
+        "怎么做音游曲",
+        "音游曲",
         "how to make otoge"
       ],
-      "favoriteId": null,
+      "favoriteId": "11804",
       "title": "How To Make 音ゲ～曲！",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -5072,6 +5247,16 @@
       ],
       "favoriteId": "11567",
       "title": "I’m Here (feat. Merry Kirk-Holmes)",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "idoratrize world"
+      ],
+      "favoriteId": "11841",
+      "title": "Idoratrize World",
       "sources": [
         "yuzu"
       ]
@@ -5294,7 +5479,8 @@
         "互联网太棒了",
         "躁郁症",
         "†升天†",
-        "马赛克2"
+        "马赛克2",
+        "yamero"
       ],
       "favoriteId": "11692",
       "title": "INTERNET YAMERO",
@@ -5882,6 +6068,8 @@
         "＝⚡️★",
         "萨菲",
         "青泥石",
+        "区",
+        "蛆",
         "라바"
       ],
       "favoriteId": "746",
@@ -6508,12 +6696,14 @@
     },
     {
       "aliases": [
+        "m@gical☆cure! love ♥ shot!",
+        "miku射线",
         "magical cure love shot"
       ],
-      "favoriteId": null,
+      "favoriteId": "11847",
       "title": "M@GICAL☆CURE! LOVE ♥ SHOT!",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -7056,6 +7246,16 @@
       ],
       "favoriteId": "664",
       "title": "Moon of Noon",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "morningloom"
+      ],
+      "favoriteId": "11803",
+      "title": "MORNINGLOOM",
       "sources": [
         "yuzu"
       ]
@@ -7623,6 +7823,7 @@
     {
       "aliases": [
         "on your mark (104期 ver.)",
+        "莲之空",
         "on your mark"
       ],
       "favoriteId": "11791",
@@ -7821,6 +8022,17 @@
     },
     {
       "aliases": [
+        "overjoy ★ overdose!!",
+        "ojod"
+      ],
+      "favoriteId": "11848",
+      "title": "Overjoy ★ OVERDOSE!!",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "ozma",
         "哦在吗"
       ],
@@ -7870,6 +8082,7 @@
         "潘多拉悖论",
         "xxx",
         "pp",
+        "特朗普和黄仁勋拼机",
         "pandora",
         "pandora paradox",
         "판도라",
@@ -8307,6 +8520,7 @@
         "猫中毒",
         "哪吒大战敖丙",
         "两只猫打架",
+        "茄",
         "qzkago",
         "qz",
         "qzingo",
@@ -8320,6 +8534,17 @@
       ],
       "favoriteId": "799",
       "title": "QZKago Requiem",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "r'n'r monsta",
+        "rnr"
+      ],
+      "favoriteId": "11759",
+      "title": "R'N'R Monsta",
       "sources": [
         "yuzu"
       ]
@@ -8346,6 +8571,17 @@
       ],
       "favoriteId": "11665",
       "title": "RAD DOGS",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "radiance",
+        "江江比耶2"
+      ],
+      "favoriteId": "11758",
+      "title": "Radiance",
       "sources": [
         "yuzu"
       ]
@@ -8600,6 +8836,16 @@
       ],
       "favoriteId": "11165",
       "title": "Regulus",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "resolution"
+      ],
+      "favoriteId": "11756",
+      "title": "Resolution",
       "sources": [
         "yuzu"
       ]
@@ -9161,7 +9407,8 @@
     },
     {
       "aliases": [
-        "shining ray ～僕らの絆～"
+        "shining ray ～僕らの絆～",
+        "shining ray"
       ],
       "favoriteId": "11680",
       "title": "Shining Ray ～僕らの絆～",
@@ -9902,6 +10149,16 @@
     },
     {
       "aliases": [
+        "supersonic generation"
+      ],
+      "favoriteId": "11822",
+      "title": "Supersonic Generation",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "Sushi Tabetai"
       ],
       "favoriteId": null,
@@ -10005,6 +10262,21 @@
       ],
       "favoriteId": "11386",
       "title": "Swift Swing",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "synthesis.",
+        "生椰拿铁",
+        "合成法",
+        "合成",
+        "合成天下",
+        "感性合成法"
+      ],
+      "favoriteId": "11842",
+      "title": "Synthesis.",
       "sources": [
         "yuzu"
       ]
@@ -10184,7 +10456,8 @@
         "the cursed doll",
         "诅咒人偶",
         "诅咒玩偶",
-        "诅咒娃娃"
+        "诅咒娃娃",
+        "被诅咒的人偶"
       ],
       "favoriteId": "11683",
       "title": "The Cursed Doll",
@@ -10346,6 +10619,16 @@
       ],
       "favoriteId": "722",
       "title": "Tic Tac DREAMIN’",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
+        "tidal wave"
+      ],
+      "favoriteId": "11830",
+      "title": "Tidal Wave",
       "sources": [
         "yuzu"
       ]
@@ -11605,6 +11888,19 @@
     },
     {
       "aliases": [
+        "zitronectar",
+        "柠檬",
+        "柠檬花蜜",
+        "柠檬蜜"
+      ],
+      "favoriteId": "11823",
+      "title": "Zitronectar",
+      "sources": [
+        "yuzu"
+      ]
+    },
+    {
+      "aliases": [
         "λzure vixen",
         "av",
         "凯南",
@@ -11680,13 +11976,14 @@
     },
     {
       "aliases": [
+        "あいたい星人",
         "Aitai-lians",
         "Aitai Seijin"
       ],
-      "favoriteId": null,
+      "favoriteId": "11850",
       "title": "あいたい星人",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -12416,12 +12713,16 @@
     },
     {
       "aliases": [
+        "いちげき！のテーマ",
+        "音击愚人节",
+        "吃我一击吧",
+        "一击",
         "ichigeki"
       ],
-      "favoriteId": null,
+      "favoriteId": "11757",
       "title": "いちげき！のテーマ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -12470,12 +12771,13 @@
     },
     {
       "aliases": [
+        "いっぱい食べる君が好きだよ",
         "I love you eat a lot."
       ],
-      "favoriteId": null,
+      "favoriteId": "11799",
       "title": "いっぱい食べる君が好きだよ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -12708,13 +13010,14 @@
     },
     {
       "aliases": [
+        "ウタヒメナイトストーム",
         "utahime nightstorm",
         "utahime"
       ],
-      "favoriteId": null,
+      "favoriteId": "11807",
       "title": "ウタヒメナイトストーム",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -12823,7 +13126,8 @@
         "ウルトラトレーラー",
         "ultra trailer",
         "超预告篇",
-        "超预告片"
+        "超预告片",
+        "超予告编"
       ],
       "favoriteId": "11796",
       "title": "ウルトラトレーラー",
@@ -12840,6 +13144,7 @@
         "蓝原椿",
         "赫拉二",
         "工一夕八一夕人一夕",
+        "工一夕",
         "Eta Beta Eater",
         "Eta Beta Eta",
         "EBE",
@@ -13081,6 +13386,7 @@
     {
       "aliases": [
         "オーバーライド",
+        "覆写",
         "override"
       ],
       "favoriteId": "11794",
@@ -13106,6 +13412,7 @@
         "吃完药就睡觉",
         "吃完药就睡觉吧",
         "吃完药睡觉",
+        "吃药睡觉",
         "Okusuri nonde neyo"
       ],
       "favoriteId": "11711",
@@ -13430,14 +13737,18 @@
     },
     {
       "aliases": [
+        "お願い！コンコンお稲荷さま",
+        "拜托了！狐仙大人",
+        "拜托啦！狐仙大人",
+        "拜托了狐仙大人",
         "Onegai!Kon kon Oinarisama",
         "konkon",
         "oinarisama"
       ],
-      "favoriteId": null,
+      "favoriteId": "11798",
       "title": "お願い！コンコンお稲荷さま",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -13742,6 +14053,7 @@
         "爱猫tv",
         "cat loving",
         "爱猫",
+        "猫耳摩擦",
         "Cat Rubbing",
         "캣러빙"
       ],
@@ -13806,22 +14118,28 @@
     },
     {
       "aliases": [
+        "きゅびずむ",
+        "立体主义",
+        "地雷女自孽",
         "cubism"
       ],
-      "favoriteId": null,
+      "favoriteId": "11831",
       "title": "きゅびずむ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
       "aliases": [
+        "きゅびびびびずむ",
+        "立体体体体主义",
+        "立体主义2",
         "cubibibibism"
       ],
-      "favoriteId": null,
+      "favoriteId": "11832",
       "title": "きゅびびびびずむ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -14116,6 +14434,7 @@
         "幽灵船",
         "gogo幽灵船",
         "憋憋憋",
+        "dx幽灵船",
         "Go Go Yureisen",
         "Go Go Yuureisen",
         "고고 유령선"
@@ -14659,19 +14978,22 @@
     },
     {
       "aliases": [
+        "シカ色デイズ",
+        "鹿乃子",
         "shikairo days",
         "shikairo"
       ],
-      "favoriteId": null,
+      "favoriteId": "11837",
       "title": "シカ色デイズ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
       "aliases": [
         "シスターシスター",
-        "sister sister"
+        "sister sister",
+        "姐妹姐妹"
       ],
       "favoriteId": "11748",
       "title": "シスターシスター",
@@ -14710,6 +15032,7 @@
         "要是死了就好了",
         "西内",
         "去死死算了",
+        "剁椒鱼头",
         "Shinebaiinoni",
         "시네바 이이노니",
         "죽으면 좋겠는데",
@@ -15276,6 +15599,7 @@
         "俊达萌叫起床",
         "毛豆喊起床",
         "起床战争",
+        "俊达萌起床",
         "Zundamon's Breakfast",
         "Okite"
       ],
@@ -16826,6 +17150,7 @@
       "aliases": [
         "にっこり^^調査隊のテーマ",
         "微笑调查队",
+        "调查队",
         "Niccori Survey Team",
         "Theme",
         "Theme of Niccori Survey Team"
@@ -17054,12 +17379,13 @@
     },
     {
       "aliases": [
+        "のだ",
         "noda"
       ],
-      "favoriteId": null,
+      "favoriteId": "11840",
       "title": "のだ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -17205,12 +17531,15 @@
     },
     {
       "aliases": [
+        "はいよろこんで",
+        "乐意效劳",
+        "滋嘣",
         "hai yorokonde"
       ],
-      "favoriteId": null,
+      "favoriteId": "11835",
       "title": "はいよろこんで",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -17231,12 +17560,15 @@
     },
     {
       "aliases": [
+        "ハオ",
+        "八才",
+        "好",
         "hao"
       ],
-      "favoriteId": null,
+      "favoriteId": "11851",
       "title": "ハオ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -17839,14 +18171,17 @@
     },
     {
       "aliases": [
+        "ビビデバ",
+        "星街彗星",
+        "星彗闪耀",
         "bibideba",
         "bibidiba",
         "bibbidiba"
       ],
-      "favoriteId": null,
+      "favoriteId": "11836",
       "title": "ビビデバ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -17865,13 +18200,14 @@
     },
     {
       "aliases": [
+        "ピポピポ -people people- feat. ななひら",
         "people people",
         "pipopipo"
       ],
-      "favoriteId": null,
+      "favoriteId": "11800",
       "title": "ピポピポ -People People- feat. ななひら",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -18217,6 +18553,7 @@
     {
       "aliases": [
         "プリズム△▽リズム",
+        "棱镜节奏",
         "prism rhythm"
       ],
       "favoriteId": "11736",
@@ -18559,6 +18896,7 @@
         "剧场",
         "powawan theater",
         "波弯弯剧场",
+        "泡泡剧场",
         "powawan gekijo"
       ],
       "favoriteId": "11615",
@@ -18960,12 +19298,14 @@
     },
     {
       "aliases": [
+        "メズマライザー",
+        "催眠术",
         "mesmerizer"
       ],
-      "favoriteId": null,
+      "favoriteId": "11838",
       "title": "メズマライザー",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -19062,12 +19402,14 @@
     },
     {
       "aliases": [
+        "もういいよ",
+        "已经够了",
         "mou iiyo"
       ],
-      "favoriteId": null,
+      "favoriteId": "11843",
       "title": "もういいよ",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -19100,13 +19442,19 @@
     },
     {
       "aliases": [
+        "モエチャッカファイア",
+        "绝区零",
+        "萌萌点火",
+        "艾莲",
+        "鲨鱼娘",
+        "艾莲乔",
         "moe chaka fire",
         "MoeChakkaFire"
       ],
-      "favoriteId": null,
+      "favoriteId": "11844",
       "title": "モエチャッカファイア",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -19176,24 +19524,27 @@
     },
     {
       "aliases": [
+        "ももいろの鍵",
+        "桃键",
         "the peachy key",
         "momoiro",
         "momoiro no kagi"
       ],
-      "favoriteId": null,
+      "favoriteId": "11839",
       "title": "ももいろの鍵",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
       "aliases": [
+        "モンスターカミング",
         "monster coming"
       ],
-      "favoriteId": null,
+      "favoriteId": "11775",
       "title": "モンスターカミング",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -19328,13 +19679,15 @@
     },
     {
       "aliases": [
+        "ゆりかご",
+        "摇篮",
         "yurikago",
         "cradle"
       ],
-      "favoriteId": null,
+      "favoriteId": "11833",
       "title": "ゆりかご",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -20016,12 +20369,15 @@
     },
     {
       "aliases": [
+        "ワールドワイドワンダー",
+        "checkmate",
+        "世界漫游",
         "worldwide wonder"
       ],
-      "favoriteId": null,
+      "favoriteId": "11802",
       "title": "ワールドワイドワンダー",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -20264,6 +20620,7 @@
         "人マニア",
         "人狂",
         "人狂热症",
+        "人狂热者",
         "hitomania"
       ],
       "favoriteId": "11772",
@@ -20320,6 +20677,7 @@
     {
       "aliases": [
         "人間が大好きなこわれた妖怪の唄",
+        "人间大好",
         "Ningen ga daisuki na kowareta youkai no uta"
       ],
       "favoriteId": "11777",
@@ -20600,6 +20958,7 @@
     {
       "aliases": [
         "最っ高のエンタメだ!!",
+        "最高",
         "saikou no entameda"
       ],
       "favoriteId": "11689",
@@ -21349,6 +21708,7 @@
     {
       "aliases": [
         "地獄",
+        "地狱",
         "jigoku",
         "hell"
       ],
@@ -21807,12 +22167,14 @@
     },
     {
       "aliases": [
+        "宙天",
+        "肘天",
         "chuten"
       ],
-      "favoriteId": null,
+      "favoriteId": "11753",
       "title": "宙天",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -23041,13 +23403,14 @@
     },
     {
       "aliases": [
+        "月光",
         "moonlight",
         "gekkou"
       ],
-      "favoriteId": null,
+      "favoriteId": "11834",
       "title": "月光",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -24783,6 +25146,7 @@
         "绝对",
         "巧克力冰淇淋",
         "绝对食",
+        "超级小喵",
         "chocomint",
         "Mint choco",
         "Aoi",
@@ -25142,6 +25506,7 @@
         "华落",
         "菲谢尔",
         "皇女",
+        "蛋糕店里卖蛋糕",
         "Town of flowers",
         "Town of Flowers, Autumn Delivery",
         "hana village",
@@ -25403,12 +25768,13 @@
     },
     {
       "aliases": [
+        "超最終鬼畜妹フランドール・s",
         "cho flandre s"
       ],
-      "favoriteId": null,
+      "favoriteId": "11854",
       "title": "超最終鬼畜妹フランドール・S",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
@@ -25437,6 +25803,7 @@
         "超熊猫的周游记",
         "超熊猫",
         "四川禁曲",
+        "超能猫",
         "wonder panda",
         "wonder panda traveller",
         "wonder panda traveler"
@@ -25773,12 +26140,15 @@
     },
     {
       "aliases": [
+        "雨露霜雪",
+        "四个雨",
+        "雨雨雨雨",
         "urosousetsu"
       ],
-      "favoriteId": null,
+      "favoriteId": "11752",
       "title": "雨露霜雪",
       "sources": [
-        "gcm:en"
+        "yuzu"
       ]
     },
     {
