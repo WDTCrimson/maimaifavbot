@@ -428,7 +428,8 @@ const INTL_VERSION_RELEASES = [
   { id: 9, releaseDate: '2024/07/25' },
   { id: 10, releaseDate: '2025/01/16' },
   { id: 11, releaseDate: '2025/07/24' },
-  { id: 12, releaseDate: '2026/01/22' }
+  { id: 12, releaseDate: '2026/01/22' },
+  { id: 13, releaseDate: '2026/07/23' }
 ];
 
 function normalizeVersionName(version) {

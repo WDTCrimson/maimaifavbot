@@ -1,13 +1,13 @@
 {
-  "generatedAt": "2026-04-16T02:55:28.851Z",
+  "generatedAt": "2026-07-23T07:34:45.634Z",
   "source": "combined",
   "sources": [
     "https://www.yuzuchan.moe/api/maimaidx/maimaidxalias",
     "https://raw.githubusercontent.com/lomotos10/GCM-bot/main/data/aliases/en/maimai.tsv",
     "https://raw.githubusercontent.com/lomotos10/GCM-bot/main/data/aliases/ko/maimai.tsv"
   ],
-  "entries": 1557,
-  "aliases": 12184,
+  "entries": 1582,
+  "aliases": 12329,
   "preservedExistingAliases": 1,
   "unresolvedWithoutTitleOrFavoriteId": 0
 }

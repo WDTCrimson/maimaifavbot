@@ -155,7 +155,7 @@ function getRankIconFile(achievement) {
 }
 
 function rankIconPath(achievement) {
-  return join(RANK_ASSET, 'prism-plus', getRankIconFile(achievement));
+  return join(RANK_ASSET, 'circle-plus', getRankIconFile(achievement));
 }
 
 // Badge file for FC (from badge/13/ directory)
