@@ -18,7 +18,7 @@ import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
 import { renderLevelSummaryGraphic } from './level-summary-graphic.js';
-import { applyIntlFavoritesFromClal, calculateChartRating, computeGapSuggestions, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, buildBest50, calculateChartRating, computeGapSuggestions, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -1084,8 +1084,11 @@ async function handleAccountCommand(interaction) {
             };
           }
 
+          const freshScores = store.getAccountScores(userId);
+          const freshBest50 = freshScores.length ? buildBest50(freshScores, songCatalog) : null;
+
           const graphic = await renderAccountB50Graphic({
-            account,
+            account: freshBest50 ? { ...account, best50: freshBest50 } : account,
             songCatalog,
             themeDir: config.graphicThemeDir
           });

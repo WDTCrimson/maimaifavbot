@@ -1551,7 +1551,7 @@ async function fetchMusicDetailMetadata(cookies, detailParams, difficultyNumber)
   return metadataByDifficulty.get(difficultyNumber) || null;
 }
 
-function buildBest50(scores, songCatalog) {
+export function buildBest50(scores, songCatalog) {
   if (!songCatalog?.available) {
     return null;
   }
