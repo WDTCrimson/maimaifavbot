@@ -371,7 +371,7 @@ async function drawPlayCountRow(ctx, entry, rank, y, badgeVersion) {
   ctx.restore();
 
   // ── Rank icon — centered within RANK_COL (514→596)
-  const rankImg = await loadCached(join(RANK_ASSET, 'prism-plus', getRankIconFile(score.achievement)));
+  const rankImg = await loadCached(join(RANK_ASSET, 'circle-plus', getRankIconFile(score.achievement)));
   if (rankImg) {
     const rh = 40, rw2 = Math.min(rankImg.width * (rh / rankImg.height), 82);
     const rx2 = RANK_COL_X + (82 - rw2) / 2;
