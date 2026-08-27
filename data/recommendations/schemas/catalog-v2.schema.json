@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maideck.local/schemas/recommendation-catalog-v2.json",
+  "title": "Recommendation catalog v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "entries"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "entries": { "type": "array", "items": { "$ref": "#/$defs/entry" } }
+  },
+  "$defs": {
+    "nullableString": { "type": ["string", "null"] },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "songId", "chart", "summary", "tags", "evidenceWeight", "firstSeenAt", "lastSeenAt", "evidence"],
+      "properties": {
+        "key": { "type": "string" },
+        "songId": { "type": "string", "pattern": "^song:[a-f0-9]{16}$" },
+        "chart": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "difficulty"],
+          "properties": {
+            "type": { "enum": ["std", "dx"] },
+            "difficulty": { "enum": ["basic", "advanced", "expert", "master", "remaster"] }
+          }
+        },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 180 },
+        "tags": { "type": "array", "uniqueItems": true, "items": { "enum": ["entry", "tech", "stamina", "accuracy", "speed"] } },
+        "evidenceWeight": { "type": "number", "minimum": 0, "maximum": 1 },
+        "manualWeightOverride": { "type": "number", "minimum": 0, "maximum": 1 },
+        "firstSeenAt": { "type": "string", "format": "date-time" },
+        "lastSeenAt": { "type": "string", "format": "date-time" },
+        "evidence": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/evidence" } }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "sourceId", "status", "lastCheckedAt"],
+      "properties": {
+        "source": { "enum": ["manual", "reddit"] },
+        "sourceId": { "type": "string", "minLength": 1 },
+        "candidateId": { "$ref": "#/$defs/nullableString" },
+        "threadId": { "$ref": "#/$defs/nullableString" },
+        "url": { "$ref": "#/$defs/nullableString" },
+        "createdAt": { "type": ["string", "null"], "format": "date-time" },
+        "observedScore": { "type": ["integer", "null"] },
+        "status": { "enum": ["active", "deleted", "edited_out"] },
+        "lastCheckedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}

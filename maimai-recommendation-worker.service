@@ -1,0 +1,24 @@
+[Unit]
+Description=maimai reviewed recommendation worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=crimson
+Group=crimson
+WorkingDirectory=/srv/maimai-fav-bot-recommendation-worker
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/maimai-fav-bot/recommendation-worker.env
+ExecStart=/usr/bin/flock -n /var/lib/maimai-fav-bot/recommendation-worker.lock /home/crimson/.nvm/versions/node/v24.10.0/bin/node scripts/import-recommendations.js
+TimeoutStartSec=60min
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/srv/maimai-fav-bot-recommendation-worker /var/lib/maimai-fav-bot /home/crimson/maimaifavbot/data/recommendations
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

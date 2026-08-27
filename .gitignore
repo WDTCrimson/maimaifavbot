@@ -8,9 +8,9 @@ data/*.sqlite
 data/*.sqlite-*
 data/import/
 data/assets/
-data/recommendations/community.json
 data/recommendations/import-report.json
 data/recommendations/sources.json
+data/recommendation-worker-reports/
 data/reference/song-aliases.json
 data/reference/song-aliases-report.json
 # Keep tomomai preset images trackable for server deploy via git pull
@@ -31,9 +31,10 @@ coverage/
 backups/
 logs/
 .DS_Store
-*.service
 package-lock.json
 *.tar.gz
 COMMANDS_REVIEW.local.md
 PLANNING.local.md
+*.service
+!maimai-recommendation-worker.service
 list.html

@@ -1,0 +1,7 @@
+{
+  "mappings": {
+    "KING": [
+      { "type": "dx", "difficulty": "master" }
+    ]
+  }
+}

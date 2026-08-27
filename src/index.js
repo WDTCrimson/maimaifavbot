@@ -20,6 +20,7 @@ import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
 import { renderLevelSummaryGraphic } from './level-summary-graphic.js';
 import { applyIntlFavoritesFromClal, buildBest50, calculateChartRating, computeGapSuggestions, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
+import { accountSnapshotAge, inferSuggestionRange, recommendCharts, resolveSuggestionAccess } from './recommendation-engine.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
 
@@ -1404,17 +1405,47 @@ async function handleSongCommand(interaction) {
     }
 
     case 'suggest': {
-      recommendationCatalog.requireAvailable();
-
-      const rawRange = interaction.options.getString('range', true);
+      await recommendationCatalog.reloadIfChanged();
+      const rawRange = interaction.options.getString('range') || '';
       const focus = interaction.options.getString('focus') || '';
       const count = interaction.options.getInteger('count') || 5;
-      const range = parseSuggestionRange(rawRange);
+      const requestedMode = interaction.options.getString('mode') || 'balanced';
+      const account = store.getAccount(interaction.user.id);
+      const linked = Boolean(account);
+      const snapshotAge = linked ? accountSnapshotAge(account) : null;
+      const access = resolveSuggestionAccess({ linked, mode: requestedMode, hasExplicitRange: Boolean(rawRange), snapshotAge });
+      if (access.reason === 'link_required') {
+        await replySafely(interaction, 'Improvement suggestions require a linked account. Use `/account link`, or choose discovery with an explicit range.');
+        return;
+      }
+      if (access.reason === 'range_or_link_required') {
+        await replySafely(interaction, 'Provide `range` (for example `12.3-12.8`) or link an account so I can infer one.');
+        return;
+      }
+      if (access.reason === 'snapshot_expired') {
+        await replySafely(interaction, 'Your linked score snapshot is over 90 days old. Sync it again or provide `range` explicitly.');
+        return;
+      }
 
-      const suggestions = recommendationCatalog.suggest({
-        minConstant: range.minConstant,
-        maxConstant: range.maxConstant,
+      const storedScores = linked ? store.getAccountScores(interaction.user.id) : [];
+      const fallbackScores = storedScores.length
+        ? storedScores
+        : [...(account?.best50?.b15 || []), ...(account?.best50?.b35 || []), ...(account?.best50?.top50 || [])];
+      let range;
+      if (rawRange) {
+        range = parseSuggestionRange(rawRange);
+      } else {
+        range = inferSuggestionRange(fallbackScores, songCatalog);
+      }
+
+      const effectiveMode = access.effectiveMode;
+      const suggestions = recommendCharts({
+        catalog: recommendationCatalog.available ? recommendationCatalog : null,
+        songCatalog,
+        scores: fallbackScores,
+        range,
         focus,
+        mode: effectiveMode,
         limit: count
       });
 
@@ -1422,17 +1453,18 @@ async function handleSongCommand(interaction) {
         const focusSuffix = focus ? ` with focus "${focus}"` : '';
         await replySafely(
           interaction,
-          `No community suggestions found for ${formatSuggestionRange(range)}${focusSuffix}.`
+          `No ${effectiveMode} suggestions found for ${formatSuggestionRange(range)}${focusSuffix}.`
         );
         return;
       }
 
       const embed = buildSongSuggestionEmbed({
-        rawRange,
         range,
         focus,
+        mode: effectiveMode,
         suggestions,
-        unresolvedCount: recommendationCatalog.unresolvedEntries.length
+        catalogAvailable: recommendationCatalog.available,
+        stale: Boolean(snapshotAge?.stale)
       });
 
       await replyPayload(interaction, { embeds: [embed] });
@@ -3791,25 +3823,23 @@ function formatSuggestionChartList(charts, limit = 3) {
   return rows.join(', ');
 }
 
-function buildSongSuggestionEmbed({ range, focus, suggestions, unresolvedCount }) {
+function buildSongSuggestionEmbed({ range, focus, mode, suggestions, catalogAvailable, stale }) {
   const description = suggestions
     .map((entry, index) => {
-      const tags = entry.tags.length ? `Tags: ${entry.tags.join(', ')}` : 'Tags: none';
-      const note = entry.note
-        ? `Reason: ${truncateText(entry.note, 160)}`
-        : 'Reason: community-curated recommendation';
-      const charts = `Matching charts: ${formatSuggestionChartList(entry.matchingCharts)}`;
-      const sources =
-        entry.sources.length > 0
-          ? `Sources: ${truncateText(entry.sources.slice(0, 2).join(', '), 120)}`
-          : null;
+      const type = String(entry.type || 'UNK').toUpperCase();
+      const difficulty = formatDifficultyShort(entry.difficulty);
+      const chart = `${type} ${difficulty} ${entry.chart?.level || '?'} [${formatInternalLevel(entry.constant)}]`;
+      const tags = entry.evidence?.tags?.length ? `Tags: ${entry.evidence.tags.join(', ')}` : null;
+      const provenance = entry.evidence
+        ? `Evidence: ${entry.evidence.evidence.filter((item) => item.status === 'active').map((item) => item.source).join(', ')}`
+        : 'Evidence: score-only';
 
       return [
-        `**${index + 1}. ${entry.song.title}** - ${entry.song.artist}`,
-        charts,
+        `**${index + 1}. ${entry.song.title}** - ${entry.song.artist} · ${entry.lane}`,
+        chart,
         tags,
-        note,
-        sources
+        `Reason: ${truncateText(entry.reason, 180)}`,
+        provenance
       ]
         .filter(Boolean)
         .join('\n');
@@ -3818,14 +3848,17 @@ function buildSongSuggestionEmbed({ range, focus, suggestions, unresolvedCount }
 
   const embed = new EmbedBuilder()
     .setColor(0x16a34a)
-    .setTitle(`Song Suggestions - ${formatSuggestionRange(range)}`)
+    .setTitle(`Song Suggestions · ${formatSuggestionRange(range)}`)
     .setDescription(truncateText(description, 4000));
 
   const summary = [
     `Returned: ${suggestions.length}`,
+    `Mode: ${mode}`,
+    range.inferred ? `Range: inferred from ${range.sampleSize} top charts (median ${formatInternalLevel(range.median)})` : 'Range: explicit',
     focus ? `Focus: ${focus}` : 'Focus: any',
-    unresolvedCount > 0 ? `Unresolved dataset rows: ${unresolvedCount}` : 'Unresolved dataset rows: 0'
-  ];
+    catalogAvailable ? 'Community catalog: active' : 'Community catalog: unavailable; score-only fallback',
+    stale ? 'Score snapshot: over 30 days old; sync recommended' : null
+  ].filter(Boolean);
 
   embed.addFields({
     name: 'Summary',

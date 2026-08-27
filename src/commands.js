@@ -215,12 +215,23 @@ export const songCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('suggest')
-      .setDescription('Suggest community-recommended songs for a constant range')
+      .setDescription('Suggest personalized discovery and improvement charts')
       .addStringOption((option) =>
         option
           .setName('range')
-          .setDescription('Exact constant or range like 12.7 or 12.3-12.8')
-          .setRequired(true)
+          .setDescription('Optional exact constant or range like 12.7 or 12.3-12.8')
+          .setRequired(false)
+      )
+      .addStringOption((option) =>
+        option
+          .setName('mode')
+          .setDescription('Mix discoveries and improvements, or select one lane')
+          .setRequired(false)
+          .addChoices(
+            { name: 'Balanced', value: 'balanced' },
+            { name: 'Discovery', value: 'discovery' },
+            { name: 'Improvement', value: 'improvement' }
+          )
       )
       .addStringOption((option) =>
         option

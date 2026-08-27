@@ -1,21 +1,14 @@
-name: Import Recommendations
+name: Validate Recommendation Pipeline
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 3 * * *'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   import-recommendations:
     runs-on: ubuntu-latest
-    env:
-      REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
-      REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-      REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,20 +23,5 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build transient song catalog
-        run: npm run import:data -- --skip-jackets --skip-logos
-
-      - name: Import recommendation dataset
-        run: npm run import:recommendations
-
-      - name: Commit generated recommendation files
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f data/recommendations/community.json data/recommendations/import-report.json
-          if git diff --cached --quiet; then
-            echo "No recommendation dataset changes detected."
-            exit 0
-          fi
-          git commit -m "chore: refresh recommendation dataset"
-          git push
+      - name: Validate syntax and offline tests
+        run: npm run check && npm test

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maideck.local/schemas/recommendation-rejections-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "candidateIds"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "candidateIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }
+  }
+}

@@ -1,79 +1,75 @@
-# Community Recommendation Dataset
+# Personalized recommendation pipeline
 
-This directory holds the offline recommendation dataset used by `/song suggest`.
+`/song suggest` reads the reviewed chart-level catalog at `community.json`. Live Discord requests never contact Reddit or QwenCloud. If the catalog is absent or invalid, linked players can still receive deterministic score-improvement suggestions from the last score snapshot.
 
-Why this exists:
-- live forum scraping is brittle
-- title matching across communities is messy
-- curated notes are easier to review and trust
+## Catalog workflow
 
-Recommended workflow:
+- `community.json` is schema v2 and is reviewed in git.
+- Entries identify one exact chart with `songId`, `type`, and `difficulty`.
+- Runtime loading validates every field and canonical chart, compares a SHA-256 content hash, and preserves the last good in-memory catalog after a failed reload.
+- `rejections.json` permanently excludes candidate IDs from later proposals.
+- JSON Schemas live in `schemas/`.
+
+Legacy v1 song rows are never expanded across every chart. Create explicit mappings from `chart-mappings.example.json`, then run:
 
 ```bash
-cp data/recommendations/sources.example.json data/recommendations/sources.json
-npm run import:recommendations
+npm run migrate:recommendations -- \
+  --source ./path/to/community-v1.json \
+  --mappings ./data/recommendations/chart-mappings.json
 ```
 
-That generates:
-- `data/recommendations/community.json`
-- `data/recommendations/import-report.json`
+Unmapped rows are written to `migration-report.json` with `needs_chart_mapping` and are not published.
 
-GitHub Actions workflow:
-- `.github/workflows/import-recommendations.yml`
-- runs manually or on a daily schedule
-- uses the tracked source config when `sources.json` is not present
-- commits updated recommendation outputs back into the repository
-- can use Reddit OAuth via GitHub secrets `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, and `REDDIT_USER_AGENT`
+## Worker safety model
 
-Expected runtime file:
+The worker is `scripts/import-recommendations.js`. Its defaults are shadow mode and network-denied unless all of the following are deliberately configured:
 
-```json
-data/recommendations/community.json
+```dotenv
+REDDIT_ACCESS_APPROVED=true
+REDDIT_CLIENT_ID=...
+REDDIT_CLIENT_SECRET=...
+REDDIT_USER_AGENT=...
+DASHSCOPE_API_KEY=...
+PUBLISH_PROPOSALS=false
 ```
 
-Tracked example files:
+`REDDIT_ACCESS_APPROVED` is an operator assertion, not a substitute for approval. Do not set it until Reddit approves daily automated `r/maimai` access and third-party QwenCloud processing.
 
-```json
-data/recommendations/community.example.json
-data/recommendations/sources.example.json
+The worker:
+
+- reads only approved OAuth routes for `r/maimai`;
+- holds Reddit titles, bodies, comments, and usernames only in process memory;
+- persists source IDs, hashes, timestamps, derived candidates, token counts, and request IDs in a separate SQLite database;
+- treats Reddit text as hostile, gives Qwen no tools, disables thinking, asks for strict JSON Schema, and validates output locally;
+- quarantines ambiguous, chartless, negative, mixed, unclear, or lexically unsupported candidates;
+- requires two distinct active Reddit threads before an automatic catalog addition;
+- continues ingestion while an open proposal PR remains frozen;
+- never merges a PR or pushes protected `main`.
+
+For offline testing, set `RECOMMENDATION_FIXTURE_FILE` to a JSON fixture containing `items`; an item may contain a precomputed `extraction` object, so neither Reddit nor QwenCloud is contacted.
+
+## Deployment
+
+1. Create a dedicated worktree at `/srv/maimai-fav-bot-recommendation-worker` and a state directory at `/var/lib/maimai-fav-bot` owned by the non-root bot user.
+2. Install `maimai-recommendation-worker.service` and `.timer` into `/etc/systemd/system/`.
+3. Put secrets in `/etc/maimai-fav-bot/recommendation-worker.env`, owned by root and mode `0600`.
+4. Leave the timer disabled while exercising fixtures.
+5. After Reddit approval and the Qwen account-data terms check, enable the timer with `PUBLISH_PROPOSALS=false` for 14 daily shadow runs.
+6. Require zero invalid canonical chart references, verify the fine-grained PAT cannot push or merge `main`, then set `PUBLISH_PROPOSALS=true` without changing cadence.
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl start maimai-recommendation-worker.service
+# Only at the approved 14-day shadow phase:
+sudo systemctl enable --now maimai-recommendation-worker.timer
 ```
 
-Minimal entry shape:
+The PAT needs repository-scoped Contents and Pull requests write access. Branch protection must require PR merges on `main`. `RECOMMENDATION_LIVE_CATALOG_FILE` should point to the bot's external runtime catalog; it is installed atomically only after the merged `origin/main` catalog validates.
 
-```json
-{
-  "entries": [
-    {
-      "songId": "12345",
-      "tags": ["entry", "tech"],
-      "note": "Comfortable 12.7 pick with readable patterns.",
-      "sources": ["Reddit thread 2026-04", "Friend notes"],
-      "weight": 2
-    }
-  ]
-}
-```
+## External launch gates
 
-Supported fields per entry:
-- `songId`: preferred, exact favorite ID from the local catalog
-- `title`: fallback if you do not have a `songId`
-- `artist`: optional helper for title matching
-- `query`: fallback fuzzy query if needed
-- `tags`: freeform labels like `entry`, `tech`, `stamina`, `accuracy`, `speed`
-- `note`: short reason shown in the suggestion output
-- `sources`: array of source labels or source objects
-- `weight`: optional numeric rank multiplier, default `1`
+The Reddit access request should disclose: non-commercial Discord feature, daily incremental reads limited to `r/maimai`, a 48-hour overlap, derived chart recommendations, no raw text or usernames retained, and QwenCloud as a third-party processor. Denial leaves the access-independent personalized command as the supported product.
 
-Matching advice:
-- prefer `songId` whenever possible
-- keep tags normalized and short
-- keep notes concise, one sentence is enough
+Before activation, make one live QwenCloud probe and confirm strict schema behavior for the selected account/model, current pricing, and data handling. Keep the documented run ceilings and set the token-price environment variables so the USD 1 estimated-cost stop is meaningful.
 
-Automatic importer:
-- current implementation supports `reddit-search` sources
-- it searches configured subreddit queries, optionally reads comments, detects song title mentions against the local catalog, infers coarse tags, and writes weighted recommendation entries
-- use the import report to see how many discussion items were matched
-
-Future direction:
-- user-linked profiles from Tomomai or mimixd-style data can later supply the target range automatically
-- this dataset can remain the recommendation layer even after profile linking is added
+Agent-Reach is optional for interactive maintainer research only. It is not imported by the bot or worker.

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://maideck.local/schemas/recommendation-report-v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "runId", "startedAt", "finishedAt", "mode", "counts", "tokens", "estimatedCostUsd", "durationMs", "lastSuccessWatermark", "failures"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string" },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "mode": { "enum": ["fixtures", "shadow", "proposal"] },
+    "counts": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+    "tokens": { "type": "object", "additionalProperties": false, "required": ["input", "output"], "properties": { "input": { "type": "integer", "minimum": 0 }, "output": { "type": "integer", "minimum": 0 } } },
+    "estimatedCostUsd": { "type": "number", "minimum": 0 },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "lastSuccessWatermark": { "type": ["string", "null"], "format": "date-time" },
+    "failures": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["category", "message"], "properties": { "category": { "type": "string" }, "message": { "type": "string" } } } },
+    "proposal": { "type": "object" }
+  }
+}
