@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import { readFile, rename, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { config } from '../src/config.js';
 import { canonicalChartKey, validateCatalogV2 } from '../src/recommendation-schema.js';
 import { SongCatalog } from '../src/song-catalog.js';
 
@@ -24,8 +23,8 @@ const source = JSON.parse(await readFile(sourceFile, 'utf8'));
 let mappings = {};
 try { mappings = JSON.parse(await readFile(mappingFile, 'utf8')).mappings || {}; } catch (error) { if (error.code !== 'ENOENT') throw error; }
 
-const songCatalog = new SongCatalog(config.songCatalogFile);
-songCatalog.aliasFile = config.songAliasFile;
+const songCatalog = new SongCatalog(resolve(process.env.SONG_CATALOG_FILE || './data/import/songs.normalized.json'));
+songCatalog.aliasFile = resolve(process.env.SONG_ALIAS_FILE || './data/reference/song-aliases.json');
 await songCatalog.ensureReady();
 songCatalog.requireAvailable();
 

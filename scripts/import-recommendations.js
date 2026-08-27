@@ -1,11 +1,11 @@
 import 'dotenv/config';
-import { config as botConfig } from '../src/config.js';
+import { resolve } from 'node:path';
 import { loadWorkerConfig, runRecommendationWorker } from '../src/recommendation-worker.js';
 import { SongCatalog } from '../src/song-catalog.js';
 
 const workerConfig = loadWorkerConfig();
-const songCatalog = new SongCatalog(botConfig.songCatalogFile);
-songCatalog.aliasFile = botConfig.songAliasFile;
+const songCatalog = new SongCatalog(resolve(process.env.SONG_CATALOG_FILE || './data/import/songs.normalized.json'));
+songCatalog.aliasFile = resolve(process.env.SONG_ALIAS_FILE || './data/reference/song-aliases.json');
 await songCatalog.ensureReady();
 songCatalog.requireAvailable();
 

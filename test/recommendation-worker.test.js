@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
+import { promisify } from 'node:util';
 import { RecommendationWorkerState, buildCatalogProposal, groundExtractedCandidates, loadWorkerConfig, redditContribution, runRecommendationWorker, WORKER_DEFAULTS } from '../src/recommendation-worker.js';
+
+const execFileAsync = promisify(execFile);
 
 const song = {
   songId: 'song:0000000000000001', title: 'KING', artist: 'Kanaria', aliases: ['King song'],
@@ -131,6 +135,45 @@ test('fixture worker is idempotent and never needs live credentials', async () =
     assert.equal(first.counts.extracted, 1);
     assert.equal(second.counts.cached, 1);
     assert.equal(first.mode, 'fixtures');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('worker CLI runs fixtures without Discord bot credentials', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'recommendation-cli-'));
+  try {
+    const recommendationDirectory = join(directory, 'data', 'recommendations');
+    const reportDirectory = join(directory, 'reports');
+    await mkdir(recommendationDirectory, { recursive: true });
+    const catalogFile = join(directory, 'songs.json');
+    const aliasFile = join(directory, 'aliases.json');
+    const fixtureFile = join(directory, 'fixture.json');
+    const dotenvFile = join(directory, '.env');
+    await writeFile(catalogFile, JSON.stringify({ songs: [{ playlistId: '1', title: 'KING', artist: 'Kanaria', difficultyLevels: [] }] }));
+    await writeFile(aliasFile, JSON.stringify({ entries: [] }));
+    await writeFile(fixtureFile, JSON.stringify({ watermark: '2026-08-27T00:00:00.000Z', items: [] }));
+    await writeFile(dotenvFile, '');
+    await writeFile(join(recommendationDirectory, 'community.json'), JSON.stringify({ schemaVersion: 2, generatedAt: '2026-08-27T00:00:00.000Z', entries: [] }));
+    await writeFile(join(recommendationDirectory, 'rejections.json'), JSON.stringify({ schemaVersion: 1, candidateIds: [] }));
+
+    const { stdout } = await execFileAsync(process.execPath, [resolve('scripts/import-recommendations.js')], {
+      cwd: resolve('.'),
+      env: {
+        ...process.env,
+        DISCORD_TOKEN: '',
+        DISCORD_CLIENT_ID: '',
+        DOTENV_CONFIG_PATH: dotenvFile,
+        SONG_CATALOG_FILE: catalogFile,
+        SONG_ALIAS_FILE: aliasFile,
+        RECOMMENDATION_FIXTURE_FILE: fixtureFile,
+        RECOMMENDATION_WORKER_DB: join(directory, 'state.sqlite'),
+        RECOMMENDATION_REPORT_DIR: reportDirectory,
+        RECOMMENDATION_WORKTREE: directory,
+        PUBLISH_PROPOSALS: 'false'
+      }
+    });
+    assert.match(stdout, /"mode": "fixtures"/);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
