@@ -115,6 +115,16 @@ The Yuzu source defaults to `https://www.yuzuchan.moe/api/maimaidx/maimaidxalias
    npm start
    ```
 
+## Tests
+
+Run the bot's unit, persistence-parity, rendering-smoke, callback, and worker fixture tests:
+
+```bash
+npm test
+npm run test:coverage
+npm run check
+```
+
 ### Environment variables
 
 - `DISCORD_TOKEN` (required)

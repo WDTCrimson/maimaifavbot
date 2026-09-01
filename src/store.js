@@ -1547,12 +1547,14 @@ export class LoadoutStore {
         let loadoutChanged = false;
         const nextSongs = [];
         const seen = new Set();
+        const migratedSongIds = new Map();
 
         for (const rawId of loadout.songs) {
           const normalized = normalizeSongId(rawId);
           totalSongs += 1;
           if (/^song:[a-f0-9]{16}$/.test(normalized)) {
             canonicalSongs += 1;
+            migratedSongIds.set(normalized, normalized);
             if (!seen.has(normalized)) {
               seen.add(normalized);
               nextSongs.push(normalized);
@@ -1563,6 +1565,7 @@ export class LoadoutStore {
           legacySongs += 1;
           const song = typeof resolveSongByStoredId === 'function' ? resolveSongByStoredId(normalized) : null;
           const migratedId = song?.songId || normalized;
+          migratedSongIds.set(normalized, migratedId);
           if (!song) {
             unresolved.push({
               userId,
@@ -1584,7 +1587,10 @@ export class LoadoutStore {
           loadoutChanged = true;
         }
 
-        const normalizedTargets = normalizeLoadoutTargets(loadout.targets, nextSongs);
+        const remappedTargets = Object.fromEntries(
+          Object.entries(loadout.targets).map(([songId, target]) => [migratedSongIds.get(songId) || songId, target])
+        );
+        const normalizedTargets = normalizeLoadoutTargets(remappedTargets, nextSongs);
         if (JSON.stringify(normalizedTargets) !== JSON.stringify(loadout.targets)) {
           loadout.targets = normalizedTargets;
           loadoutChanged = true;
@@ -1887,8 +1893,7 @@ export class LoadoutStore {
 
   // ── Account access (profile-aware) ───────────────────────────────────────
 
-  getAccount(userId) {
-    const profileName = this.getActiveProfileName(userId);
+  getAccount(userId, profileName = this.getActiveProfileName(userId)) {
     if (this.backendName === 'sqlite') {
       return this.backend.readProfileAccount(userId, profileName);
     }
@@ -1896,8 +1901,7 @@ export class LoadoutStore {
     return user.profiles?.[profileName]?.account || null;
   }
 
-  getAccountScores(userId) {
-    const profileName = this.getActiveProfileName(userId);
+  getAccountScores(userId, profileName = this.getActiveProfileName(userId)) {
     if (this.backendName === 'sqlite' && typeof this.backend.readAccountScores === 'function') {
       return this.backend.readAccountScores(userId, profileName);
     }
@@ -1906,8 +1910,7 @@ export class LoadoutStore {
     return Array.isArray(account?.allScores) ? account.allScores : [];
   }
 
-  getAccountRecentSessions(userId) {
-    const profileName = this.getActiveProfileName(userId);
+  getAccountRecentSessions(userId, profileName = this.getActiveProfileName(userId)) {
     if (this.backendName === 'sqlite' && typeof this.backend.readAccountRecentSessions === 'function') {
       return this.backend.readAccountRecentSessions(userId, profileName);
     }
@@ -1923,12 +1926,12 @@ export class LoadoutStore {
       for (const [profileName, profile] of Object.entries(profiles)) {
         if (!profile?.account) continue;
 
-        const scores = this.getAccountScores(userId);
+        const scores = this.getAccountScores(userId, profileName);
         if (scores.length) {
           profile.account.allScores = scores;
         }
 
-        const recentSessions = this.getAccountRecentSessions(userId);
+        const recentSessions = this.getAccountRecentSessions(userId, profileName);
         if (recentSessions.length) {
           profile.account.recentSessions = recentSessions;
         }

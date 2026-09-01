@@ -4,7 +4,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { RecommendationCatalog } from '../src/recommendation-catalog.js';
-import { canonicalChartKey, validateCatalogV2 } from '../src/recommendation-schema.js';
+import { canonicalChartKey, sha256, stableJson, validateCandidateV1, validateCatalogV2 } from '../src/recommendation-schema.js';
 
 const song = {
   songId: 'song:0000000000000001', title: 'Test', artist: 'Artist',
@@ -56,4 +56,26 @@ test('hash reload swaps valid data and preserves last good data after failure', 
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test('stable JSON and SHA helpers are deterministic across object key order', () => {
+  assert.equal(stableJson({ b: 2, a: [1, { d: 4, c: 3 }] }), stableJson({ a: [1, { c: 3, d: 4 }], b: 2 }));
+  assert.equal(sha256('same'), sha256('same'));
+  assert.notEqual(sha256('same'), sha256('different'));
+});
+
+test('candidate v1 validates strict Reddit provenance and rejects unsafe variants', () => {
+  const hash = sha256('fixture');
+  const candidate = {
+    schemaVersion: 1, candidateId: hash, supersedes: null, source: 'reddit', sourceId: 't3_test',
+    threadId: 't3_test', url: 'https://www.reddit.com/r/maimai/comments/test/example/',
+    titleHint: 'KING', artistHint: null, chartType: 'dx', difficulty: 'master', stance: 'positive',
+    rationale: 'A technical recommendation.', tags: ['tech'], confidence: 0.9,
+    promptVersion: 'v1', model: 'qwen', contentHash: hash
+  };
+  assert.equal(validateCandidateV1(candidate).candidateId, hash);
+  assert.throws(() => validateCandidateV1({ ...candidate, extra: true }), /not allowed/);
+  assert.throws(() => validateCandidateV1({ ...candidate, url: 'https://evil.example/r/maimai/' }), /must belong/);
+  assert.throws(() => validateCandidateV1({ ...candidate, confidence: Number.NaN }), /finite number/);
+  assert.throws(() => validateCandidateV1({ ...candidate, tags: ['tech', 'tech'] }), /unique/);
 });
