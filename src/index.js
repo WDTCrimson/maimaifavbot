@@ -1013,7 +1013,11 @@ async function handleAccountCommand(interaction) {
 
           let refreshed;
           try {
-            refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog, { onProgress });
+            refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog, {
+              onProgress,
+              previousSnapshot: account,
+              previousScores: store.getAccountScores(userId)
+            });
           } catch (err) {
             if (String(err?.message).includes('expired or invalid')) {
               await interaction.editReply({ content: 'Your maimai login has expired. Please re-link your account with `/account link`.' });

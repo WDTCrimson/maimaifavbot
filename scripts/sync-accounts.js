@@ -110,7 +110,10 @@ async function main() {
       if (args.dryRun) {
         synced += 1;
       } else {
-        const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog);
+        const refreshed = await fetchIntlAccountSnapshotFromClal(linkedAuth.token, songCatalog, {
+          previousSnapshot: account,
+          previousScores: store.getAccountScores(userId)
+        });
         const stored = await store.setAccount(userId, {
           ...account,
           ...refreshed.snapshot,

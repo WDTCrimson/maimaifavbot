@@ -78,6 +78,12 @@ async function mapWithConcurrency(items, limit, worker, { delayMs = 0 } = {}) {
   await Promise.all(workers);
 }
 
+function incrementSyncStat(stats, key, amount = 1) {
+  if (stats) {
+    stats[key] = (stats[key] || 0) + amount;
+  }
+}
+
 function foldConfusableChars(value) {
   return Array.from(String(value || ''), (char) => CONFUSABLE_CHAR_MAP.get(char) || char).join('');
 }
@@ -1819,6 +1825,106 @@ function scorePlayCountKey(score) {
   return bulkPlayCountKey({ title: score?.title, difficulty, type });
 }
 
+function normalizedScorePlayCountKey(score) {
+  const title = normalizeTitle(score?.title);
+  const type = String(score?.type || 'std').toLowerCase();
+  const difficulty = String(score?.difficulty || '').toLowerCase();
+  return title && difficulty ? `${title}::${difficulty}::${type}` : null;
+}
+
+function snapshotTotalPlayCount(snapshot) {
+  const candidates = [snapshot?.metrics?.playCount, snapshot?.extra?.totalPlayCount];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isSafeInteger(value) && value >= 0) {
+      return value;
+    }
+  }
+  return null;
+}
+
+export function reusePreviousPlayCounts(
+  scoreEntries,
+  { previousSnapshot = null, previousScores = null, recentPlays = null, currentSnapshot = null } = {},
+  playCountSyncStats = null
+) {
+  const scores = Array.isArray(scoreEntries) ? scoreEntries : [];
+  const priorScores = Array.isArray(previousScores)
+    ? previousScores
+    : Array.isArray(previousSnapshot?.allScores)
+      ? previousSnapshot.allScores
+      : [];
+  const previousTotal = snapshotTotalPlayCount(previousSnapshot);
+  const currentTotal = snapshotTotalPlayCount(currentSnapshot);
+  const totalDelta = previousTotal != null && currentTotal != null ? currentTotal - previousTotal : null;
+
+  if (playCountSyncStats) {
+    playCountSyncStats.previousScoreRows = priorScores.length;
+    playCountSyncStats.previousTotalPlayCount = previousTotal;
+    playCountSyncStats.currentTotalPlayCount = currentTotal;
+    playCountSyncStats.totalPlayCountDelta = totalDelta;
+    playCountSyncStats.reusedPlayCounts = 0;
+    playCountSyncStats.playCountReuseStrategy = 'none';
+  }
+
+  if (priorScores.length === 0) {
+    if (playCountSyncStats) playCountSyncStats.playCountReuseStrategy = 'full-repair-no-previous-counts';
+    return scores;
+  }
+  if (totalDelta == null) {
+    if (playCountSyncStats) playCountSyncStats.playCountReuseStrategy = 'full-repair-unverified-total';
+    return scores;
+  }
+  if (totalDelta < 0) {
+    if (playCountSyncStats) playCountSyncStats.playCountReuseStrategy = 'full-repair-total-regressed';
+    return scores;
+  }
+
+  let changedKeys = new Set();
+  let strategy = 'unchanged-total';
+  if (totalDelta > 0) {
+    const recent = Array.isArray(recentPlays) ? recentPlays : [];
+    if (totalDelta > recent.length) {
+      if (playCountSyncStats) playCountSyncStats.playCountReuseStrategy = 'full-repair-recent-overflow';
+      return scores;
+    }
+    const changed = recent.slice(0, totalDelta).map(normalizedScorePlayCountKey);
+    if (changed.some((key) => !key)) {
+      if (playCountSyncStats) playCountSyncStats.playCountReuseStrategy = 'full-repair-recent-incomplete';
+      return scores;
+    }
+    changedKeys = new Set(changed);
+    strategy = 'recent-play-delta';
+  }
+
+  const previousCounts = new Map();
+  for (const score of priorScores) {
+    const key = normalizedScorePlayCountKey(score);
+    if (key && score?.playCount != null) {
+      previousCounts.set(key, score.playCount);
+    }
+  }
+
+  let reused = 0;
+  const enriched = scores.map((score) => {
+    if (score?.playCount != null) {
+      return score;
+    }
+    const key = normalizedScorePlayCountKey(score);
+    if (!key || changedKeys.has(key) || !previousCounts.has(key)) {
+      return score;
+    }
+    reused += 1;
+    return { ...score, playCount: previousCounts.get(key) };
+  });
+
+  if (playCountSyncStats) {
+    playCountSyncStats.reusedPlayCounts = reused;
+    playCountSyncStats.playCountReuseStrategy = strategy;
+  }
+  return enriched;
+}
+
 function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog, playCountSyncStats = null) {
   if (!Array.isArray(playCountRows) || playCountRows.length === 0) {
     return scoreEntries;
@@ -1895,7 +2001,54 @@ function mergePlayCountRowsIntoScores(scoreEntries, playCountRows, songCatalog, 
 // queries: array of { title, difficulty, type }
 // Returns a Map keyed by `${title}::${difficulty}::${type}` → playCount
 // (title-aware keying avoids collisions when songs share difficulty+type)
-async function fetchBulkPlayCountsWithCookies(cookies, queries, { detailMode = 'all' } = {}) {
+export async function resolvePlayCountDetailLookups(detailLookups, {
+  fetchMetadata,
+  results = new Map(),
+  detailCache = new Map(),
+  stats = null
+} = {}) {
+  if (typeof fetchMetadata !== 'function') {
+    throw new TypeError('fetchMetadata must be a function.');
+  }
+
+  const pendingLookups = [...(detailLookups || [])].filter(({ mapKey }) => !results.has(mapKey));
+  await mapWithConcurrency(pendingLookups, 1, async (lookup) => {
+    const cacheKey = String(lookup.detailParams || '');
+    let metadataPromise = detailCache.get(cacheKey);
+    if (!metadataPromise) {
+      incrementSyncStat(stats, 'scoreDetailPageFetches');
+      metadataPromise = Promise.resolve().then(() => fetchMetadata(
+        lookup.detailParams,
+        lookup.difficultyNumber
+      ));
+      detailCache.set(cacheKey, metadataPromise);
+    } else {
+      incrementSyncStat(stats, 'scoreDetailCacheHits');
+    }
+
+    try {
+      const metadataByDifficulty = await metadataPromise;
+      const metadata = metadataByDifficulty instanceof Map
+        ? metadataByDifficulty.get(lookup.difficultyNumber)
+        : metadataByDifficulty;
+      if (metadata?.playCount != null) {
+        results.set(lookup.mapKey, metadata.playCount);
+        incrementSyncStat(stats, 'scoreDetailSuccesses');
+      } else {
+        incrementSyncStat(stats, 'scoreDetailMisses');
+      }
+    } catch {
+      incrementSyncStat(stats, 'scoreDetailFailures');
+    }
+  });
+
+  return results;
+}
+
+async function fetchBulkPlayCountsWithCookies(cookies, queries, {
+  detailMode = 'all',
+  playCountSyncStats = null
+} = {}) {
   if (!queries?.length) return new Map();
 
   const byDiffNum = new Map();
@@ -1907,8 +2060,21 @@ async function fetchBulkPlayCountsWithCookies(cookies, queries, { detailMode = '
   }
 
   const results = new Map();
+  const detailCache = new Map();
   for (const [diffNum, qs] of [...byDiffNum.entries()].sort(([a], [b]) => a - b)) {
     const detailLookups = new Map();
+    const queriesByTitleAndType = new Map();
+    for (const q of qs) {
+      const type = String(q.type || 'std').toLowerCase();
+      const titleVariants = q.titleVariants?.length ? q.titleVariants : [q.title];
+      for (const title of titleVariants) {
+        const normalizedTitle = normalizeTitle(title);
+        if (normalizedTitle) {
+          queriesByTitleAndType.set(`${normalizedTitle}::${type}`, q);
+        }
+      }
+    }
+
     try {
       const html = await fetchText(`${INTL_SCORE_SEARCH_URL}${diffNum}`, {
         cookies, referer: 'https://maimaidx-eng.com/maimai-mobile/'
@@ -1927,13 +2093,7 @@ async function fetchBulkPlayCountsWithCookies(cookies, queries, { detailMode = '
         const iconSrc     = block.find('img.music_kind_icon').attr('src') || parent.find('img.music_kind_icon').attr('src') || '';
         const blockType   = mapMusicTypeFromIcon(iconSrc) || 'std';
 
-        const q = qs.find((q) => {
-          if (String(q.type || 'std').toLowerCase() !== blockType) {
-            return false;
-          }
-          const titleVariants = q.titleVariants?.length ? q.titleVariants : [q.title];
-          return titleVariants.some((title) => normalizeTitle(title) === blockNorm);
-        });
+        const q = queriesByTitleAndType.get(`${blockNorm}::${blockType}`);
         if (!q) return;
 
         const mapKey = bulkPlayCountKey(q);
@@ -1957,17 +2117,19 @@ async function fetchBulkPlayCountsWithCookies(cookies, queries, { detailMode = '
       });
     } catch { /* ignore per-difficulty fetch failures */ }
 
-    for (const [mapKey, lookup] of detailLookups.entries()) {
-      if (results.has(mapKey)) {
-        continue;
+    incrementSyncStat(playCountSyncStats, 'scoreDetailLookups', detailLookups.size);
+    await resolvePlayCountDetailLookups(
+      [...detailLookups.entries()].map(([mapKey, lookup]) => ({ mapKey, ...lookup })),
+      {
+        fetchMetadata: (detailParams, difficultyNumber) =>
+          fetchMusicDetailAllMetadata(cookies, detailParams, difficultyNumber),
+        results,
+        detailCache,
+        // musicDetail is backed by mutable server-side session state. Parallel
+        // requests return HTTP 200 pages for the wrong/empty selection.
+        stats: playCountSyncStats
       }
-      try {
-        const metadata = await fetchMusicDetailMetadata(cookies, lookup.detailParams, lookup.difficultyNumber);
-        if (metadata?.playCount != null) {
-          results.set(mapKey, metadata.playCount);
-        }
-      } catch { /* ignore per-song detail failures */ }
-    }
+    );
   }
 
   return results;
@@ -2015,7 +2177,7 @@ async function repairMissingScorePlayCounts(cookies, scoreEntries, playCountSync
       difficulty: String(score.difficulty || '').toLowerCase(),
       type: String(score.type || 'std').toLowerCase()
     })),
-    { detailMode: 'all' }
+    { detailMode: 'all', playCountSyncStats }
   );
   if (!playCounts.size) {
     if (playCountSyncStats) {
@@ -2048,16 +2210,25 @@ async function repairMissingScorePlayCounts(cookies, scoreEntries, playCountSync
   return repaired;
 }
 
-export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null, { onProgress } = {}) {
+export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null, {
+  onProgress,
+  previousSnapshot = null,
+  previousScores = null
+} = {}) {
+  const syncStartedAt = Date.now();
   const clalToken = normalizeIntlClalToken(rawToken);
+  const authenticationStartedAt = Date.now();
   const validation = await validateInternationalCookie(clalToken);
   const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
+  const authenticationDurationMs = Date.now() - authenticationStartedAt;
 
   const playCountSync = {
     strategy: 'score-detail',
-    version: 6,
-    detailConcurrency: ACCOUNT_SYNC_DETAIL_CONCURRENCY,
-    detailDelayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS,
+    version: 7,
+    detailConcurrency: 1,
+    configuredDetailConcurrency: ACCOUNT_SYNC_DETAIL_CONCURRENCY,
+    detailDelayMs: 0,
+    configuredDetailDelayMs: ACCOUNT_SYNC_DETAIL_DELAY_MS,
     detailRetryDelayMs: ACCOUNT_SYNC_DETAIL_RETRY_DELAY_MS,
     scoreRows: 0,
     scoreDetailLookups: 0,
@@ -2081,8 +2252,22 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null,
     missingPlayCountsBeforeRepair: 0,
     repairQueries: 0,
     repairSuccesses: 0,
-    missingPlayCountsAfterRepair: 0
+    missingPlayCountsAfterRepair: 0,
+    previousScoreRows: 0,
+    previousTotalPlayCount: null,
+    currentTotalPlayCount: null,
+    totalPlayCountDelta: null,
+    reusedPlayCounts: 0,
+    playCountReuseStrategy: 'none',
+    phaseDurationsMs: {
+      authentication: authenticationDurationMs,
+      primaryFetch: 0,
+      playCountRepair: 0,
+      finalization: 0,
+      total: 0
+    }
   };
+  const primaryFetchStartedAt = Date.now();
   const recentPlaysPromise = fetchRecentPlays(cookies);
   let [playerDataHtml, scoreEntries, detailedRecentPlays] = await Promise.all([
     fetchPlayerDataHtml(cookies, validation.redirectUrl),
@@ -2090,15 +2275,31 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null,
     recentPlaysPromise.then((plays) => fetchRecentPlayDetails(cookies, plays, 8))
   ]);
   const recentPlays = await recentPlaysPromise;
-  onProgress?.({ phase: 'repair' });
-  scoreEntries = await repairMissingScorePlayCounts(cookies, scoreEntries, playCountSync, clalToken);
-
   const profile = await extractPlayerSnapshot(playerDataHtml);
+  playCountSync.phaseDurationsMs.primaryFetch = Date.now() - primaryFetchStartedAt;
+  onProgress?.({ phase: 'repair' });
+  const repairStartedAt = Date.now();
+  scoreEntries = reusePreviousPlayCounts(
+    scoreEntries,
+    {
+      previousSnapshot,
+      previousScores,
+      recentPlays,
+      currentSnapshot: profile
+    },
+    playCountSync
+  );
+  scoreEntries = await repairMissingScorePlayCounts(cookies, scoreEntries, playCountSync, clalToken);
+  playCountSync.phaseDurationsMs.playCountRepair = Date.now() - repairStartedAt;
+
+  const finalizationStartedAt = Date.now();
   const best50 = buildBest50(scoreEntries, songCatalog);
   const recentSessions = enrichRecentPlays(detailedRecentPlays, songCatalog);
 
   playCountSync.finalScores = scoreEntries.length;
   playCountSync.finalScoresWithPlayCount = scoreEntries.filter((score) => score?.playCount != null).length;
+  playCountSync.phaseDurationsMs.finalization = Date.now() - finalizationStartedAt;
+  playCountSync.phaseDurationsMs.total = Date.now() - syncStartedAt;
   playCountSync.completedAt = new Date().toISOString();
 
   return {
@@ -2123,8 +2324,8 @@ export async function fetchIntlAccountDataFromClal(rawToken, songCatalog = null,
   };
 }
 
-export async function fetchIntlAccountSnapshotFromClal(rawToken, songCatalog = null, { onProgress } = {}) {
-  const result = await fetchIntlAccountDataFromClal(rawToken, songCatalog, { onProgress });
+export async function fetchIntlAccountSnapshotFromClal(rawToken, songCatalog = null, options = {}) {
+  const result = await fetchIntlAccountDataFromClal(rawToken, songCatalog, options);
   return {
     token: result.token,
     snapshot: result.snapshot
