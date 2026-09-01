@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   buildBest50,
   calculateChartRating,
-  computeGapSuggestions,
+  computeRatingRecommendations,
   getCurrentIntlVersionId,
   resolvePlayCountDetailLookups,
   resolveChartVersionId,
@@ -23,6 +23,26 @@ function catalogFixture() {
         difficultyLevels: [{ type: 'std', difficulty: 'expert', level: '12', internalLevelValue: 12, version: 'PRiSM PLUS' }]
       }
     ]
+  };
+}
+
+function recommendationFixture(specs) {
+  return {
+    available: true,
+    songs: specs.map((spec, index) => ({
+      songId: `song:${String(index + 1).padStart(16, '0')}`,
+      favoriteId: String(index + 1),
+      title: spec.title,
+      artist: 'Artist',
+      aliases: [],
+      difficultyLevels: [{
+        type: spec.type || 'dx',
+        difficulty: spec.difficulty || 'master',
+        level: spec.level || String(spec.constant),
+        internalLevelValue: spec.constant,
+        version: spec.version || 'CIRCLE'
+      }]
+    }))
   };
 }
 
@@ -57,19 +77,86 @@ test('best-50 construction resolves charts and separates current/new and old buc
   assert.equal(buildBest50([], { available: false }), null);
 });
 
-test('gap suggestions keep reachable next ranks, calculate deltas, and sort deterministically', () => {
-  const suggestions = computeGapSuggestions([
-    { title: 'New Song', type: 'dx', difficulty: 'master', level: '13', achievement: 999000, fc: 'none' },
-    { title: 'Old Song', type: 'std', difficulty: 'expert', level: '12', achievement: 960000, fc: 'none' },
-    { title: 'Missing', type: 'dx', difficulty: 'master', level: '13', achievement: 999000, fc: 'none' },
-    { title: 'Done', type: 'dx', difficulty: 'master', internalLevelValue: 13, achievement: 1005000, fc: 'ap' }
-  ], catalogFixture());
+test('rating recommendations report the actual gain for a chart already in B15', () => {
+  const recommendations = computeRatingRecommendations([
+    { title: 'New Song', type: 'dx', difficulty: 'master', level: '13', achievement: 1000000, fc: 'none' }
+  ], catalogFixture(), { gameVersion: 13 });
 
-  assert.equal(suggestions.length, 1);
-  assert.equal(suggestions[0].title, 'New Song');
-  assert.equal(suggestions[0].nextThreshold, 'SSS');
-  assert.equal(suggestions[0].gap, 1000);
-  assert.ok(suggestions[0].delta > 0);
+  assert.equal(recommendations.length, 1);
+  assert.equal(recommendations[0].title, 'New Song');
+  assert.equal(recommendations[0].categoryTag, 'B15');
+  assert.equal(recommendations[0].targetLabel, '100.50%');
+  assert.equal(
+    recommendations[0].ratingGain,
+    recommendations[0].targetRating - recommendations[0].rating
+  );
+});
+
+test('rating recommendations use the matching B15 floor and reject targets with no account gain', () => {
+  const newBest = Array.from({ length: 15 }, (_, index) => ({
+    title: `New Best ${index + 1}`,
+    constant: 10,
+    version: 'CIRCLE'
+  }));
+  const oldBest = Array.from({ length: 35 }, (_, index) => ({
+    title: `Old Best ${index + 1}`,
+    constant: 13,
+    version: 'PRiSM PLUS'
+  }));
+  const specs = [
+    ...newBest,
+    ...oldBest,
+    { title: 'New Outside', constant: 12, version: 'CIRCLE' },
+    { title: 'Old Outside', constant: 14, version: 'PRiSM PLUS' },
+    { title: 'Impossible Outside', constant: 8, version: 'CIRCLE' }
+  ];
+  const scores = specs.map((spec) => ({
+    title: spec.title,
+    type: 'dx',
+    difficulty: 'master',
+    level: String(spec.constant),
+    achievement: spec.title.endsWith('Outside') ? 969000 : 1000000,
+    fc: 'none'
+  }));
+  const recommendations = computeRatingRecommendations(scores, recommendationFixture(specs), { gameVersion: 13 });
+  const newOutside = recommendations.find((entry) => entry.title === 'New Outside');
+  const oldOutside = recommendations.find((entry) => entry.title === 'Old Outside');
+
+  assert.ok(newOutside);
+  assert.equal(newOutside.categoryTag, 'NEW');
+  assert.equal(newOutside.targetLabel, '97.00%');
+  assert.equal(newOutside.ratingGain, newOutside.targetRating - 216);
+  assert.ok(oldOutside);
+  assert.equal(oldOutside.categoryTag, 'OLD');
+  assert.equal(oldOutside.targetLabel, '99.00%');
+  assert.equal(oldOutside.ratingGain, oldOutside.targetRating - 280);
+  assert.equal(recommendations.some((entry) => entry.title === 'Impossible Outside'), false);
+});
+
+test('rating recommendations deduplicate charts, offer modern AP, and exclude utage', () => {
+  const specs = [
+    { title: 'AP Candidate', constant: 12, version: 'CIRCLE' },
+    { title: 'Party Chart', constant: 12, version: 'CIRCLE', difficulty: 'utage' }
+  ];
+  const recommendations = computeRatingRecommendations([
+    { title: 'AP Candidate', type: 'dx', difficulty: 'master', level: '12', achievement: 1000000, fc: 'none' },
+    { title: 'AP Candidate', type: 'dx', difficulty: 'master', level: '12', achievement: 1005000, fc: 'none' },
+    { title: 'Party Chart', type: 'dx', difficulty: 'utage', level: '12', achievement: 1000000, fc: 'none' }
+  ], recommendationFixture(specs), { gameVersion: 13 });
+
+  assert.equal(recommendations.length, 1);
+  assert.equal(recommendations[0].title, 'AP Candidate');
+  assert.equal(recommendations[0].targetLabel, 'AP');
+  assert.equal(recommendations[0].ratingGain, 1);
+});
+
+test('rating recommendations do not offer AP before the modern AP rating bonus', () => {
+  const specs = [{ title: 'Old AP Candidate', constant: 12, version: 'PRiSM PLUS' }];
+  const recommendations = computeRatingRecommendations([
+    { title: 'Old AP Candidate', type: 'dx', difficulty: 'master', level: '12', achievement: 1005000, fc: 'none' }
+  ], recommendationFixture(specs), { gameVersion: 11 });
+
+  assert.deepEqual(recommendations, []);
 });
 
 test('play-count detail repair reuses duplicate detail pages', async () => {

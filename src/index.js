@@ -18,7 +18,7 @@ import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
 import { renderLevelSummaryGraphic } from './level-summary-graphic.js';
-import { applyIntlFavoritesFromClal, buildBest50, calculateChartRating, computeGapSuggestions, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
+import { applyIntlFavoritesFromClal, buildBest50, calculateChartRating, computeRatingRecommendations, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { accountSnapshotAge, inferSuggestionRange, recommendCharts, resolveSuggestionAccess } from './recommendation-engine.js';
 import { SongCatalog } from './song-catalog.js';
@@ -1281,10 +1281,10 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const suggestions = computeGapSuggestions(scores, songCatalog);
+      const suggestions = computeRatingRecommendations(scores, songCatalog);
 
       if (suggestions.length === 0) {
-        await replySafely(interaction, 'No scores found within 0.5% of the next rank threshold.');
+        await replySafely(interaction, 'No played charts currently have an achievable target that would increase your B15/B35 rating.');
         return;
       }
 
@@ -3969,21 +3969,24 @@ function buildAccountGapEmbed(account, suggestions) {
   const shown = suggestions.slice(0, 20);
 
   const lines = shown.map((s, i) => {
-    const diff   = formatDifficultyShort(s.difficulty);
-    const level  = formatInternalLevel(s.internalLevelValue);
-    const pct    = (s.achievement / 10000).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-    const gapPct = (s.gap / 10000).toFixed(2);
-    const title  = truncateText(s.title, 24);
-    return `\`#${String(i + 1).padStart(2, '0')}\` **+${s.delta}** | ${title} (${diff} ${level}) — ${pct}% → **${s.nextThreshold}** | ${gapPct}% away`;
+    const diff = formatDifficultyShort(s.difficulty);
+    const level = formatInternalLevel(s.internalLevelValue);
+    const pct = (s.achievement / 10000).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+    const title = truncateText(s.title, 24);
+    return [
+      `\`#${String(i + 1).padStart(2, '0')}\` **+${s.ratingGain}** [${s.categoryTag}] ${title} (${diff} ${level})`,
+      `　${pct}% → **${s.targetLabel}** | chart ${s.rating} → ${s.targetRating}`
+    ].join('\n');
   });
 
   const embed = new EmbedBuilder()
-    .setColor(0xf59e0b)
-    .setTitle(`Achievement Gap — ${playerName}`)
+    .setColor(0x5865f2)
+    .setTitle(`Rating Recommendations — ${playerName}`)
     .setDescription(lines.join('\n'));
 
   const summary = [`Found: ${suggestions.length} chart${suggestions.length === 1 ? '' : 's'}`];
-  if (suggestions.length > 20) summary.push('Showing top 20 by rating gain');
+  if (suggestions.length > 20) summary.push('Showing the top 20 efficient targets');
+  summary.push('Each +N is the estimated net B15/B35 rating gain.');
   embed.addFields({ name: 'Summary', value: summary.join('\n') });
 
   return embed;

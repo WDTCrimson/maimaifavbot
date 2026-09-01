@@ -1673,60 +1673,133 @@ function enrichRecentPlays(recentPlays, songCatalog) {
   });
 }
 
-const RANK_THRESHOLDS = [
-  { name: 'S',    value: 970000 },
-  { name: 'S+',   value: 980000 },
-  { name: 'SS',   value: 990000 },
-  { name: 'SS+',  value: 995000 },
-  { name: 'SSS',  value: 1000000 },
-  { name: 'SSS+', value: 1005000 },
+const RATING_RECOMMENDATION_TARGETS = [
+  { label: '94.00%', achievement: 940000 },
+  { label: '97.00%', achievement: 970000 },
+  { label: '98.00%', achievement: 980000 },
+  { label: '99.00%', achievement: 990000 },
+  { label: '99.50%', achievement: 995000 },
+  { label: '100.00%', achievement: 1000000 },
+  { label: '100.50%', achievement: 1005000 },
+  { label: 'AP', achievement: 1005000, ap: true }
 ];
 
-export function computeGapSuggestions(scores, songCatalog) {
-  const gameVersion = getCurrentIntlVersionId() ?? 0;
+function ratingRecommendationChartKey(song, score) {
+  const songId = song.songId || song.favoriteId || song.title;
+  const type = String(score.type || '').trim().toLowerCase();
+  const difficulty = String(score.difficulty || '').trim().toLowerCase();
+  return `${songId}::${type}::${difficulty}`;
+}
+
+export function computeRatingRecommendations(scores, songCatalog, options = {}) {
+  if (!songCatalog?.available) return [];
+
+  const gameVersion = Number.isFinite(Number(options.gameVersion))
+    ? Number(options.gameVersion)
+    : (getCurrentIntlVersionId() ?? 0);
+  const versionAboveIsNew = gameVersion >= 12 ? gameVersion - 1 : gameVersion;
   const matcher = buildChartMatcher(songCatalog);
-  const suggestions = [];
+  const byChart = new Map();
 
-  for (const score of scores) {
-    const a = score.achievement;
-    const threshold = RANK_THRESHOLDS.find(t => t.value > a);
-    if (!threshold) continue;
+  for (const score of Array.isArray(scores) ? scores : []) {
+    const achievement = Number(score?.achievement);
+    if (!Number.isFinite(achievement)) continue;
 
-    const gap = threshold.value - a;
-    if (gap > 5000) continue;
+    const matched = matcher.resolve(score.title, score.type, score.difficulty, score.level);
+    if (!matched) continue;
 
-    let internalLevelValue = Number.isFinite(Number(score.internalLevelValue))
-      ? Number(score.internalLevelValue)
-      : null;
+    const difficulty = String(score.difficulty || '').trim().toLowerCase();
+    if (difficulty === 'utage') continue;
 
-    if (internalLevelValue == null) {
-      const matched = matcher.resolve(score.title, score.type, score.difficulty, score.level);
-      if (!matched) continue;
-      internalLevelValue = Number.parseFloat(String(matched.chart.internalLevelValue));
-      if (!Number.isFinite(internalLevelValue)) continue;
-    }
+    const internalLevelValue = Number.parseFloat(String(matched.chart.internalLevelValue));
+    if (!Number.isFinite(internalLevelValue)) continue;
 
-    const currentRating  = calculateChartRating({ achievement: a,               fc: score.fc, internalLevelValue, gameVersion });
-    const thresholdRating = calculateChartRating({ achievement: threshold.value, fc: score.fc, internalLevelValue, gameVersion });
-    const delta = thresholdRating - currentRating;
-    if (delta <= 0) continue;
-
-    suggestions.push({
-      title: score.title,
-      difficulty: score.difficulty,
-      type: score.type,
-      internalLevelValue,
-      achievement: a,
+    const rating = calculateChartRating({
+      achievement,
       fc: score.fc,
-      currentRating,
-      nextThreshold: threshold.name,
-      gap,
-      delta,
+      internalLevelValue,
+      gameVersion
     });
+    const addedVersion = resolveChartVersionId(matched.chart.version);
+    const bucket = addedVersion != null && addedVersion >= versionAboveIsNew ? 'new' : 'old';
+    const key = ratingRecommendationChartKey(matched.song, score);
+    const candidate = {
+      key,
+      title: matched.song.title,
+      favoriteId: matched.song.favoriteId,
+      type: score.type,
+      difficulty: score.difficulty,
+      level: score.level,
+      internalLevelValue,
+      achievement,
+      fc: score.fc,
+      rating,
+      bucket
+    };
+    const existing = byChart.get(key);
+    if (!existing || rating > existing.rating || (rating === existing.rating && achievement > existing.achievement)) {
+      byChart.set(key, candidate);
+    }
   }
 
-  suggestions.sort((a, b) => b.delta - a.delta || a.gap - b.gap);
-  return suggestions;
+  const rated = [...byChart.values()].sort((a, b) =>
+    b.rating - a.rating || b.achievement - a.achievement || a.key.localeCompare(b.key)
+  );
+  const b15 = rated.filter((entry) => entry.bucket === 'new').slice(0, 15);
+  const b35 = rated.filter((entry) => entry.bucket === 'old').slice(0, 35);
+  const bestKeys = new Set([...b15, ...b35].map((entry) => entry.key));
+  const newFloor = b15.length === 15 ? b15[b15.length - 1].rating : 0;
+  const oldFloor = b35.length === 35 ? b35[b35.length - 1].rating : 0;
+  const recommendations = [];
+
+  for (const score of rated) {
+    const isInBest = bestKeys.has(score.key);
+    const floor = score.bucket === 'new' ? newFloor : oldFloor;
+    const currentAccuracy = score.achievement / 10000;
+
+    for (const target of RATING_RECOMMENDATION_TARGETS) {
+      if (target.ap) {
+        const fc = String(score.fc || '').trim().toLowerCase();
+        if (gameVersion < 12 || fc === 'ap' || fc === 'ap+') continue;
+      } else if (target.achievement <= score.achievement) {
+        continue;
+      }
+
+      const targetRating = calculateChartRating({
+        achievement: target.achievement,
+        fc: target.ap ? 'ap' : score.fc,
+        internalLevelValue: score.internalLevelValue,
+        gameVersion
+      });
+      const ratingGain = isInBest ? targetRating - score.rating : targetRating - floor;
+      if (ratingGain <= 0) continue;
+
+      const targetAccuracy = target.achievement / 10000;
+      const accuracyDiff = Math.max(targetAccuracy - currentAccuracy, 0);
+      recommendations.push({
+        ...score,
+        isInBest,
+        categoryTag: isInBest
+          ? (score.bucket === 'new' ? 'B15' : 'B35')
+          : (score.bucket === 'new' ? 'NEW' : 'OLD'),
+        targetLabel: target.label,
+        targetAchievement: target.achievement,
+        targetRating,
+        ratingGain,
+        accuracyDiff,
+        efficiency: target.ap ? 2 : ratingGain / Math.max(accuracyDiff, 0.1)
+      });
+      break;
+    }
+  }
+
+  return recommendations.sort((a, b) =>
+    b.efficiency - a.efficiency ||
+    b.ratingGain - a.ratingGain ||
+    a.accuracyDiff - b.accuracyDiff ||
+    a.title.localeCompare(b.title) ||
+    String(a.difficulty).localeCompare(String(b.difficulty))
+  );
 }
 
 // Fetch per-song play counts for the given list of score queries.

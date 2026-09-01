@@ -488,7 +488,7 @@ export const accountCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('gap')
-      .setDescription('Show songs within 0.5% of the next rank threshold, sorted by rating gain')
+      .setDescription('Recommend achievable score targets that increase your B15/B35 rating')
   )
   .addSubcommand((subcommand) =>
     subcommand
