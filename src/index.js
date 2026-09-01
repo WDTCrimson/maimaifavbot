@@ -18,6 +18,13 @@ import { config, limits } from './config.js';
 import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
 import { renderLevelSummaryGraphic } from './level-summary-graphic.js';
+import {
+  buildAccountHistorySummary,
+  buildAccountProgress,
+  buildAccountRoast,
+  buildDailyPlaySummary,
+  filterRatingRecommendations
+} from './account-insights.js';
 import { applyIntlFavoritesFromClal, buildBest50, calculateChartRating, computeRatingRecommendations, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
 import { accountSnapshotAge, inferSuggestionRange, recommendCharts, resolveSuggestionAccess } from './recommendation-engine.js';
@@ -290,6 +297,31 @@ async function handleAccountAutocomplete(interaction) {
 
   if (subcommand === 'unlink' && focused.name === 'profile') {
     await interaction.respond(getProfileNameChoices(userId, focused.value));
+    return;
+  }
+
+  if (subcommand === 'progress' && focused.name === 'version') {
+    const query = String(focused.value || '').trim().toLowerCase();
+    const versions = [...new Set(songCatalog.songs.flatMap((song) =>
+      (song.difficultyLevels || []).map((chart) => chart.version).filter(Boolean)
+    ))]
+      .filter((version) => !query || version.toLowerCase().includes(query))
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 25)
+      .map((version) => ({ name: version, value: version }));
+    await interaction.respond(versions);
+    return;
+  }
+
+  if (subcommand === 'daily' && focused.name === 'date') {
+    const query = String(focused.value || '').trim();
+    const dates = store.getAccountRecentHistoryDates(userId, 25)
+      .filter((entry) => !query || entry.date.includes(query))
+      .map((entry) => ({
+        name: `${entry.date} — ${entry.playCount} play${entry.playCount === 1 ? '' : 's'}`,
+        value: entry.date
+      }));
+    await interaction.respond(dates);
     return;
   }
 
@@ -1288,7 +1320,109 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const embed = buildAccountGapEmbed(account, suggestions);
+      const filtered = filterRatingRecommendations(suggestions, {
+        bucket: interaction.options.getString('bucket') || 'all',
+        difficulty: interaction.options.getString('difficulty'),
+        level: interaction.options.getString('level'),
+        type: interaction.options.getString('type'),
+        sort: interaction.options.getString('sort') || 'efficiency',
+        count: interaction.options.getInteger('count') || 10
+      });
+      if (filtered.shown.length === 0) {
+        await replySafely(interaction, 'No rating recommendations match those filters.');
+        return;
+      }
+
+      const embed = buildAccountGapEmbed(account, filtered.shown, {
+        total: filtered.total,
+        sort: filtered.sort
+      });
+      await replyPayload(interaction, { embeds: [embed] });
+      return;
+    }
+
+    case 'progress': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+      const scores = store.getAccountScores(userId);
+      if (!scores.length) {
+        await replySafely(interaction, 'No score data available. Run `/account sync` first.');
+        return;
+      }
+      let report;
+      try {
+        report = buildAccountProgress(scores, songCatalog, {
+          version: interaction.options.getString('version'),
+          plate: interaction.options.getString('plate'),
+          difficulty: interaction.options.getString('difficulty')
+        });
+      } catch (error) {
+        await replySafely(interaction, error.message);
+        return;
+      }
+      await replyPayload(interaction, { embeds: [buildAccountProgressEmbed(account, report)] });
+      return;
+    }
+
+    case 'history': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+      const count = interaction.options.getInteger('count') || 10;
+      const history = buildAccountHistorySummary(store.getAccountHistory(userId, count + 1), count);
+      if (history.length < 2) {
+        await replySafely(interaction, 'Only one saved snapshot is available so far. Run `/account sync` again after playing to begin the history view.');
+        return;
+      }
+      await replyPayload(interaction, { embeds: [buildAccountHistoryEmbed(account, history)] });
+      return;
+    }
+
+    case 'daily': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+      const requestedDate = interaction.options.getString('date');
+      if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+        await replySafely(interaction, 'Date must use `YYYY-MM-DD`.');
+        return;
+      }
+      const availableDates = store.getAccountRecentHistoryDates(userId, 100);
+      const date = requestedDate || availableDates[0]?.date;
+      if (!date) {
+        await replySafely(interaction, 'No timestamped play history is saved yet. Run `/account sync` after playing.');
+        return;
+      }
+      const plays = store.getAccountRecentHistory(userId, { date, limit: 5000 });
+      if (!plays.length) {
+        await replySafely(interaction, `No saved plays were found for **${date}**.`);
+        return;
+      }
+      await replyPayload(interaction, {
+        embeds: [buildAccountDailyEmbed(account, buildDailyPlaySummary(plays, date))]
+      });
+      return;
+    }
+
+    case 'roast': {
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+      const roast = buildAccountRoast(account, store.getAccountScores(userId));
+      const embed = new EmbedBuilder()
+        .setColor(0xed4245)
+        .setTitle(`Totally Scientific Analysis — ${account.player?.name || 'Player'}`)
+        .setDescription(roast.text)
+        .setFooter({ text: 'Generated locally from deterministic templates. No AI was harmed.' });
       await replyPayload(interaction, { embeds: [embed] });
       return;
     }
@@ -3964,7 +4098,88 @@ function buildAccountRecentLines(recentSessions) {
   return truncateText(lines.join('\n'), 1024);
 }
 
-function buildAccountGapEmbed(account, suggestions) {
+function buildAccountProgressEmbed(account, report) {
+  const playerName = account?.player?.name || 'Player';
+  const difficulty = report.difficulty ? ` · ${formatDifficultyShort(report.difficulty)}` : '';
+  const title = report.selectedVersion
+    ? `Progress — ${report.selectedVersion}${difficulty}`
+    : `Progress Overview${difficulty}`;
+  const lines = report.rows.map((row) => {
+    if (report.plate) {
+      const complete = row.plates[report.plate];
+      const pct = row.total ? Math.floor((complete / row.total) * 1000) / 10 : 0;
+      return `**${row.version}** · ${report.plateLabel} ${complete}/${row.total} (${pct}%)`;
+    }
+    return `**${row.version}** · 極 ${row.plates.kiwami}/${row.total} · 将 ${row.plates.shou}/${row.total} · 神 ${row.plates.shin}/${row.total} · 舞舞 ${row.plates.maimai}/${row.total}`;
+  });
+  const embed = new EmbedBuilder()
+    .setColor(0x57f287)
+    .setTitle(title)
+    .setDescription(truncateText(lines.join('\n') || 'No matching charts found.', 4096))
+    .setFooter({ text: `${playerName} · Plate totals cover BASIC through MASTER catalog charts.` });
+
+  if (report.selectedVersion && report.plate) {
+    const missingLines = report.missing.slice(0, 20).map((entry) =>
+      `${formatDifficultyShort(entry.difficulty)} ${entry.type.toUpperCase()} ${entry.level || '?'} · ${truncateText(entry.title, 36)}`
+    );
+    embed.addFields({
+      name: report.missing.length ? `Missing charts (${report.missing.length})` : 'Complete',
+      value: report.missing.length
+        ? truncateText(`${missingLines.join('\n')}${report.missing.length > 20 ? `\n+${report.missing.length - 20} more` : ''}`, 1024)
+        : `Every matching chart satisfies the ${report.plateLabel} requirement.`
+    });
+  }
+  return embed;
+}
+
+function signedNumber(value) {
+  if (value == null || !Number.isFinite(Number(value))) return '—';
+  const number = Number(value);
+  return number > 0 ? `+${number}` : String(number);
+}
+
+function buildAccountHistoryEmbed(account, history) {
+  const lines = history.map((entry) => {
+    const date = String(entry.capturedAt || '').slice(0, 10) || 'Unknown';
+    const rating = entry.rating == null ? '?' : Number(entry.rating).toLocaleString();
+    const plays = entry.playCount == null ? '?' : Number(entry.playCount).toLocaleString();
+    const deltas = entry.ratingDelta == null
+      ? ''
+      : ` · rating ${signedNumber(entry.ratingDelta)} · plays ${signedNumber(entry.playCountDelta)}`;
+    return `**${date}** · ${rating} rating · ${plays} plays${deltas}`;
+  });
+  return new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle(`Account History — ${account?.player?.name || 'Player'}`)
+    .setDescription(lines.join('\n'))
+    .setFooter({ text: 'History is recorded from each distinct sync; identical snapshots are deduplicated.' });
+}
+
+function formatRawAchievement(value) {
+  if (value == null || !Number.isFinite(Number(value))) return 'Unknown';
+  return `${(Number(value) / 10000).toFixed(4)}%`;
+}
+
+function buildAccountDailyEmbed(account, summary) {
+  const lines = summary.entries.slice(0, 12).map((play) =>
+    `${formatDifficultyShort(play.difficulty || '?')} ${truncateText(play.title || 'Unknown', 34)} · ${formatRawAchievement(play.achievement)}`
+  );
+  if (summary.entries.length > 12) lines.push(`+${summary.entries.length - 12} more plays`);
+  const stats = [
+    `${summary.plays} play${summary.plays === 1 ? '' : 's'} across ${summary.sessions} session${summary.sessions === 1 ? '' : 's'}`,
+    summary.averageAchievement != null ? `Average: ${formatRawAchievement(summary.averageAchievement)}` : null,
+    summary.best ? `Best: ${truncateText(summary.best.title || 'Unknown', 40)} · ${formatRawAchievement(summary.best.achievement)}` : null,
+    summary.favorite ? `Most played: ${truncateText(summary.favorite.title, 40)} ×${summary.favorite.count}` : null
+  ].filter(Boolean);
+  return new EmbedBuilder()
+    .setColor(0xfee75c)
+    .setTitle(`Daily Plays — ${summary.date}`)
+    .setDescription(lines.join('\n'))
+    .addFields({ name: account?.player?.name || 'Player', value: stats.join('\n') })
+    .setFooter({ text: 'Only plays observed by a sync can appear here.' });
+}
+
+function buildAccountGapEmbed(account, suggestions, metadata = {}) {
   const playerName = account?.player?.name || 'your account';
   const shown = suggestions.slice(0, 20);
 
@@ -3984,8 +4199,9 @@ function buildAccountGapEmbed(account, suggestions) {
     .setTitle(`Rating Recommendations — ${playerName}`)
     .setDescription(lines.join('\n'));
 
-  const summary = [`Found: ${suggestions.length} chart${suggestions.length === 1 ? '' : 's'}`];
-  if (suggestions.length > 20) summary.push('Showing the top 20 efficient targets');
+  const total = metadata.total ?? suggestions.length;
+  const summary = [`Matching: ${total} chart${total === 1 ? '' : 's'} · showing ${shown.length}`];
+  summary.push(`Sorted by ${metadata.sort === 'gain' ? 'largest rating gain' : 'efficiency'}.`);
   summary.push('Each +N is the estimated net B15/B35 rating gain.');
   embed.addFields({ name: 'Summary', value: summary.join('\n') });
 

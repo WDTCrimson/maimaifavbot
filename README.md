@@ -36,6 +36,14 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/account status`
 - `/account sync`
 - `/account top`
+- `/account recent`
+- `/account gap [bucket] [difficulty] [level] [type] [sort] [count]`
+- `/account progress [version] [plate] [difficulty]`
+- `/account history [count]`
+- `/account daily [date]`
+- `/account roast`
+- `/account plays [count]`
+- `/account summary level:<level> difficulty:<difficulty>`
 - `/account unlink`
 
 `/song search` searches internal chart levels only. Examples: `12.3`, `13.7 mas`, `11.8 dx`, `12.3-12.8`, `12.0-12.4 dx`.
@@ -267,6 +275,9 @@ Current supported flows:
 - inspect the current snapshot or pending session with `/account status`
 - refresh a linked International web-linked snapshot with `/account sync`
 - generate a Tomomai-style top-score image with `/account top`
+- inspect plate/completion progress, rating history, and saved daily plays
+- filter B15/B35 rating targets by bucket, chart, level, and expected gain
+- keep distinct sync snapshots and timestamped recent plays in append-only history
 - remove the linked snapshot with `/account unlink`
 
 Recommended import mode:

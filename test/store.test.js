@@ -110,6 +110,54 @@ for (const backend of ['json', 'sqlite']) {
       assert.equal(store.getAccountLinkSession('expired'), null);
     });
   });
+
+  test(`${backend} store keeps deduplicated snapshot and timestamped play history`, async () => {
+    await withStore(backend, async (store, paths) => {
+      const firstPlays = [
+        { title: 'Alpha', difficulty: 'master', type: 'dx', track: 1, achievement: 990000, playedAtIso: '2026-09-01T10:00:00+09:00' },
+        { title: 'Beta', difficulty: 'expert', type: 'std', track: 2, achievement: 995000, playedAtIso: '2026-09-01T10:03:00+09:00' }
+      ];
+      const base = {
+        provider: 'manual',
+        player: { name: 'History Player' },
+        metrics: { rating: 10000, playCount: 10 },
+        sourceFetchedAt: '2026-09-01T10:05:00+09:00',
+        linkedAuth: { encrypted: 'must-not-be-copied' },
+        best50: { totalRating: 10000 },
+        allScores: [{ title: 'Alpha', difficulty: 'master', type: 'dx', achievement: 990000 }],
+        recentSessions: firstPlays
+      };
+      await store.setAccount('user', base);
+      await store.setAccount('user', base);
+      assert.equal(store.getAccountHistory('user').length, 1);
+      assert.equal(store.getAccountHistory('user')[0].snapshot.linkedAuth, undefined);
+      assert.equal(store.getAccountRecentHistory('user', { date: '2026-09-01' }).length, 2);
+
+      await store.setAccount('user', {
+        ...base,
+        metrics: { rating: 10020, playCount: 11 },
+        sourceFetchedAt: '2026-09-01T12:05:00+09:00',
+        recentSessions: [
+          ...firstPlays,
+          { title: 'Alpha', difficulty: 'master', type: 'dx', track: 1, achievement: 1_000_000, playedAtIso: '2026-09-01T12:00:00+09:00' }
+        ]
+      });
+      assert.equal(store.getAccountHistory('user').length, 2);
+      assert.equal(store.getAccountRecentHistory('user', { date: '2026-09-01' }).length, 3);
+      assert.deepEqual(store.getAccountRecentHistoryDates('user'), [{ date: '2026-09-01', playCount: 3 }]);
+
+      const reloaded = new LoadoutStore(
+        { backend, jsonFile: paths.jsonFile, sqliteFile: paths.sqliteFile }, LIMITS
+      );
+      await reloaded.load();
+      assert.equal(reloaded.getAccountHistory('user').length, 2);
+      assert.equal(reloaded.getAccountRecentHistory('user', { date: '2026-09-01' }).length, 3);
+      await reloaded.clearAccount('user');
+      assert.equal(reloaded.getAccountHistory('user').length, 0);
+      assert.equal(reloaded.getAccountRecentHistory('user').length, 0);
+      reloaded.backend?.db?.close();
+    });
+  });
 }
 
 test('legacy JSON state migrates account shape and stored song IDs', async () => {

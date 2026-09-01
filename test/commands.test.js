@@ -27,4 +27,12 @@ test('critical Discord options retain bounds, choices, and autocomplete contract
   const account = commands.find((command) => command.name === 'account');
   assert.ok(account.options.some((option) => option.name === 'link'));
   assert.ok(account.options.some((option) => option.name === 'unlink'));
+  for (const name of ['progress', 'history', 'daily', 'roast']) {
+    assert.ok(account.options.some((option) => option.name === name), `missing /account ${name}`);
+  }
+  const gap = account.options.find((option) => option.name === 'gap');
+  assert.deepEqual(gap.options.find((option) => option.name === 'count').min_value, 1);
+  assert.deepEqual(gap.options.find((option) => option.name === 'count').max_value, 20);
+  assert.equal(account.options.find((option) => option.name === 'progress').options.find((option) => option.name === 'version').autocomplete, true);
+  assert.equal(account.options.find((option) => option.name === 'daily').options.find((option) => option.name === 'date').autocomplete, true);
 });

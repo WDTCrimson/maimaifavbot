@@ -489,6 +489,78 @@ export const accountCommand = new SlashCommandBuilder()
     subcommand
       .setName('gap')
       .setDescription('Recommend achievable score targets that increase your B15/B35 rating')
+      .addStringOption((option) =>
+        option.setName('bucket').setDescription('Limit results to a rating bucket').setRequired(false).addChoices(
+          { name: 'All', value: 'all' },
+          { name: 'Current B15/B35', value: 'best' },
+          { name: 'New charts', value: 'new' },
+          { name: 'Old charts', value: 'old' }
+        )
+      )
+      .addStringOption((option) =>
+        option.setName('difficulty').setDescription('Chart difficulty').setRequired(false).addChoices(
+          { name: 'BASIC', value: 'basic' },
+          { name: 'ADVANCED', value: 'advanced' },
+          { name: 'EXPERT', value: 'expert' },
+          { name: 'MASTER', value: 'master' },
+          { name: 'Re:MASTER', value: 'remaster' }
+        )
+      )
+      .addStringOption((option) =>
+        option.setName('level').setDescription('Displayed or precise level, such as 13+ or 13.7').setRequired(false)
+      )
+      .addStringOption((option) =>
+        option.setName('type').setDescription('Chart type').setRequired(false).addChoices(
+          { name: 'DX', value: 'dx' }, { name: 'STD', value: 'std' }
+        )
+      )
+      .addStringOption((option) =>
+        option.setName('sort').setDescription('How to rank matching targets').setRequired(false).addChoices(
+          { name: 'Efficiency', value: 'efficiency' }, { name: 'Largest rating gain', value: 'gain' }
+        )
+      )
+      .addIntegerOption((option) =>
+        option.setName('count').setDescription('Number of targets to show (default 10)').setRequired(false).setMinValue(1).setMaxValue(20)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('progress')
+      .setDescription('Show version completion and plate progress')
+      .addStringOption((option) =>
+        option.setName('version').setDescription('maimai version; omit for an overview').setRequired(false).setAutocomplete(true)
+      )
+      .addStringOption((option) =>
+        option.setName('plate').setDescription('Plate goal; choose with a version to list missing charts').setRequired(false).addChoices(
+          { name: '極 — FC or better', value: 'kiwami' },
+          { name: '将 — SSS or better', value: 'shou' },
+          { name: '神 — AP or better', value: 'shin' },
+          { name: '舞舞 — FDX or better', value: 'maimai' }
+        )
+      )
+      .addStringOption((option) =>
+        option.setName('difficulty').setDescription('Limit progress to one difficulty').setRequired(false).addChoices(
+          { name: 'BASIC', value: 'basic' },
+          { name: 'ADVANCED', value: 'advanced' },
+          { name: 'EXPERT', value: 'expert' },
+          { name: 'MASTER', value: 'master' }
+        )
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand.setName('history').setDescription('Show rating and play-count changes across saved syncs')
+      .addIntegerOption((option) =>
+        option.setName('count').setDescription('Snapshots to show (default 10)').setRequired(false).setMinValue(2).setMaxValue(20)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand.setName('daily').setDescription('Summarize saved plays for one day')
+      .addStringOption((option) =>
+        option.setName('date').setDescription('Play date (YYYY-MM-DD); omit for latest saved day').setRequired(false).setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand.setName('roast').setDescription('Receive a completely scientific review of your account')
   )
   .addSubcommand((subcommand) =>
     subcommand

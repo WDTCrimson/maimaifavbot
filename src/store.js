@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -319,6 +320,62 @@ function accountJsonForSqlite(account) {
   return JSON.stringify(stored);
 }
 
+function safeJsonClone(value) {
+  return value == null ? value : JSON.parse(JSON.stringify(value));
+}
+
+function buildHistorySnapshot(account) {
+  const snapshot = safeJsonClone(account || {});
+  delete snapshot.linkedAuth;
+  delete snapshot.linkSession;
+  delete snapshot.allScores;
+  delete snapshot.recentSessions;
+  return snapshot;
+}
+
+function buildSnapshotFingerprint(account, scores) {
+  const normalizedScores = (Array.isArray(scores) ? scores : [])
+    .map((score) => ({
+      songId: score?.songId || score?.favoriteId || null,
+      title: score?.title || null,
+      difficulty: score?.difficulty || null,
+      type: score?.type || score?.chartType || null,
+      achievement: score?.achievement ?? null,
+      dxScore: score?.dxScore ?? null,
+      fc: score?.fc || null,
+      fs: score?.fs || null,
+      playCount: score?.playCount ?? null,
+      rating: score?.rating ?? null
+    }))
+    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  const payload = {
+    player: account?.player?.name || null,
+    rating: account?.metrics?.rating ?? null,
+    playCount: account?.metrics?.playCount ?? null,
+    gameVersion: account?.gameVersion ?? null,
+    best50: account?.best50 || null,
+    scores: normalizedScores
+  };
+  return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+function buildRecentPlayKey(play) {
+  const playedAtIso = String(play?.playedAtIso || play?.playedAt || '').trim();
+  if (!Number.isFinite(Date.parse(playedAtIso))) return null;
+  const signature = {
+    playedAtIso,
+    title: play?.title || play?.songName || null,
+    difficulty: play?.difficulty || null,
+    type: play?.type || play?.chartType || null,
+    track: play?.track ?? null,
+    achievement: play?.achievement ?? null,
+    dxScore: play?.dxScore ?? null,
+    fc: play?.fc || null,
+    fs: play?.fs || null
+  };
+  return createHash('sha256').update(JSON.stringify(signature)).digest('hex');
+}
+
 function accountScoreFromRow(row) {
   const data = parseNullableJson(row.data_json) || {};
   const noteCounts = parseNullableJson(row.note_counts_json);
@@ -520,6 +577,34 @@ class SqliteStoreBackend {
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS account_snapshots (
+        snapshot_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        profile_name TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        captured_at TEXT NOT NULL,
+        rating INTEGER,
+        play_count INTEGER,
+        total_rating INTEGER,
+        snapshot_json TEXT NOT NULL,
+        scores_json TEXT NOT NULL,
+        UNIQUE (user_id, profile_name, fingerprint)
+      );
+      CREATE INDEX IF NOT EXISTS idx_account_snapshots_user_profile_captured
+        ON account_snapshots(user_id, profile_name, captured_at DESC, snapshot_id DESC);
+
+      CREATE TABLE IF NOT EXISTS account_recent_history (
+        user_id TEXT NOT NULL,
+        profile_name TEXT NOT NULL,
+        play_key TEXT NOT NULL,
+        played_at_iso TEXT NOT NULL,
+        first_seen_at TEXT NOT NULL,
+        data_json TEXT NOT NULL,
+        PRIMARY KEY (user_id, profile_name, play_key)
+      );
+      CREATE INDEX IF NOT EXISTS idx_account_recent_history_user_profile_played
+        ON account_recent_history(user_id, profile_name, played_at_iso DESC);
     `);
     this.migrateToProfilesSchema();
   }
@@ -737,6 +822,26 @@ class SqliteStoreBackend {
     }
 
     this.backfillAccountDataFromJson();
+    this.backfillAccountHistoryFromCurrent();
+  }
+
+  backfillAccountHistoryFromCurrent() {
+    const rows = this.db
+      .prepare('SELECT user_id, profile_name, account_json FROM account_profiles WHERE account_json IS NOT NULL')
+      .all();
+    for (const row of rows) {
+      const account = parseNullableJson(row.account_json);
+      if (!account) continue;
+      const scores = this.readAccountScores(row.user_id, row.profile_name);
+      const recent = this.readAccountRecentSessions(row.user_id, row.profile_name);
+      this.recordAccountSnapshot(row.user_id, row.profile_name, account, scores);
+      this.recordRecentHistory(
+        row.user_id,
+        row.profile_name,
+        recent,
+        account.updatedAt || new Date().toISOString()
+      );
+    }
   }
 
   backfillAccountDataFromJson() {
@@ -1022,6 +1127,106 @@ class SqliteStoreBackend {
       .map(accountRecentFromRow);
   }
 
+  recordAccountSnapshot(userId, profileName, account, scores) {
+    const capturedAt = account?.sourceFetchedAt || account?.updatedAt || new Date().toISOString();
+    const fingerprint = buildSnapshotFingerprint(account, scores);
+    const snapshot = buildHistorySnapshot(account);
+    const result = this.db.prepare(
+      `INSERT OR IGNORE INTO account_snapshots (
+         user_id, profile_name, fingerprint, captured_at, rating, play_count,
+         total_rating, snapshot_json, scores_json
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      userId,
+      profileName,
+      fingerprint,
+      capturedAt,
+      account?.metrics?.rating ?? null,
+      account?.metrics?.playCount ?? null,
+      account?.best50?.totalRating ?? null,
+      JSON.stringify(snapshot),
+      JSON.stringify(Array.isArray(scores) ? scores : [])
+    );
+    return result.changes > 0;
+  }
+
+  listAccountSnapshots(userId, profileName, limit = 20) {
+    return this.db.prepare(
+      `SELECT snapshot_id, fingerprint, captured_at, rating, play_count, total_rating,
+              snapshot_json
+       FROM account_snapshots
+       WHERE user_id = ? AND profile_name = ?
+       ORDER BY captured_at DESC, snapshot_id DESC
+       LIMIT ?`
+    ).all(userId, profileName, Math.max(1, Math.min(365, Number(limit) || 20))).map((row) => ({
+      id: row.snapshot_id,
+      fingerprint: row.fingerprint,
+      capturedAt: row.captured_at,
+      rating: row.rating,
+      playCount: row.play_count,
+      totalRating: row.total_rating,
+      snapshot: parseNullableJson(row.snapshot_json) || {}
+    }));
+  }
+
+  recordRecentHistory(userId, profileName, recentSessions, firstSeenAt = new Date().toISOString()) {
+    if (!Array.isArray(recentSessions)) return 0;
+    const insert = this.db.prepare(
+      `INSERT OR IGNORE INTO account_recent_history (
+         user_id, profile_name, play_key, played_at_iso, first_seen_at, data_json
+       ) VALUES (?, ?, ?, ?, ?, ?)`
+    );
+    let written = 0;
+    const persist = this.db.transaction((plays) => {
+      for (const rawPlay of plays) {
+        const play = normalizeAccountRecentEntry(rawPlay);
+        const key = buildRecentPlayKey(play);
+        if (!play || !key) continue;
+        const playedAtIso = String(play.playedAtIso || play.playedAt);
+        written += insert.run(
+          userId, profileName, key, playedAtIso, firstSeenAt, JSON.stringify(play)
+        ).changes;
+      }
+    });
+    persist(recentSessions);
+    return written;
+  }
+
+  listRecentHistory(userId, profileName, { date = null, limit = 500 } = {}) {
+    const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
+    const rows = date
+      ? this.db.prepare(
+          `SELECT data_json FROM account_recent_history
+           WHERE user_id = ? AND profile_name = ? AND substr(played_at_iso, 1, 10) = ?
+           ORDER BY played_at_iso ASC LIMIT ?`
+        ).all(userId, profileName, date, safeLimit)
+      : this.db.prepare(
+          `SELECT data_json FROM account_recent_history
+           WHERE user_id = ? AND profile_name = ?
+           ORDER BY played_at_iso DESC LIMIT ?`
+        ).all(userId, profileName, safeLimit);
+    return rows.map((row) => parseNullableJson(row.data_json)).filter(Boolean);
+  }
+
+  listRecentHistoryDates(userId, profileName, limit = 25) {
+    return this.db.prepare(
+      `SELECT substr(played_at_iso, 1, 10) AS play_date, COUNT(*) AS play_count
+       FROM account_recent_history
+       WHERE user_id = ? AND profile_name = ?
+       GROUP BY play_date
+       ORDER BY play_date DESC
+       LIMIT ?`
+    ).all(userId, profileName, Math.max(1, Math.min(100, Number(limit) || 25))).map((row) => ({
+      date: row.play_date,
+      playCount: row.play_count
+    }));
+  }
+
+  deleteAccountHistory(userId, profileName) {
+    this.db.prepare('DELETE FROM account_snapshots WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
+    this.db.prepare('DELETE FROM account_recent_history WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
+  }
+
   readActiveProfileName(userId) {
     const row = this.db
       .prepare('SELECT active_profile FROM user_settings WHERE user_id = ?')
@@ -1079,6 +1284,7 @@ class SqliteStoreBackend {
     this.db.transaction(() => {
       deleteScores.run(userId, profileName);
       deleteRecent.run(userId, profileName);
+      this.deleteAccountHistory(userId, profileName);
       deleteProfile.run(userId, profileName);
     })();
   }
@@ -1092,6 +1298,7 @@ class SqliteStoreBackend {
       const raw = await readFile(this.legacyJsonPath, 'utf8');
       const parsed = normalizeLoadedState(JSON.parse(raw));
       await this.saveState(parsed);
+      this.backfillAccountHistoryFromCurrent();
     } catch (error) {
       if (error.code !== 'ENOENT') {
         throw error;
@@ -1360,6 +1567,7 @@ class SqliteStoreBackend {
       if (!account) {
         this.db.prepare('DELETE FROM account_score_charts WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
         this.db.prepare('DELETE FROM account_recent_plays WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
+        this.deleteAccountHistory(userId, profileName);
         continue;
       }
       if (Object.prototype.hasOwnProperty.call(account, 'allScores')) {
@@ -1854,6 +2062,8 @@ export class LoadoutStore {
       const existing = profiles[normalized]?.account || null;
       if (profiles[normalized]) {
         profiles[normalized].account = null;
+        delete profiles[normalized].accountHistory;
+        delete profiles[normalized].recentHistory;
       }
       await this.saveUser(userId);
 
@@ -1917,6 +2127,75 @@ export class LoadoutStore {
     const user = this.getUser(userId);
     const account = user.profiles?.[profileName]?.account;
     return Array.isArray(account?.recentSessions) ? account.recentSessions : [];
+  }
+
+  getAccountHistory(userId, limit = 20, profileName = this.getActiveProfileName(userId)) {
+    if (this.backendName === 'sqlite') {
+      return this.backend.listAccountSnapshots(userId, profileName, limit);
+    }
+    const profile = this.getUser(userId).profiles?.[profileName];
+    return (Array.isArray(profile?.accountHistory) ? profile.accountHistory : [])
+      .slice()
+      .sort((a, b) => String(b.capturedAt).localeCompare(String(a.capturedAt)))
+      .slice(0, Math.max(1, Math.min(365, Number(limit) || 20)))
+      .map(({ scores: _scores, ...entry }) => entry);
+  }
+
+  getAccountRecentHistory(userId, options = {}, profileName = this.getActiveProfileName(userId)) {
+    if (this.backendName === 'sqlite') {
+      return this.backend.listRecentHistory(userId, profileName, options);
+    }
+    const profile = this.getUser(userId).profiles?.[profileName];
+    const values = Object.values(profile?.recentHistory || {});
+    const filtered = options.date
+      ? values.filter((play) => String(play.playedAtIso || play.playedAt || '').slice(0, 10) === options.date)
+      : values;
+    return filtered
+      .sort((a, b) => String(options.date ? a.playedAtIso : b.playedAtIso).localeCompare(String(options.date ? b.playedAtIso : a.playedAtIso)))
+      .slice(0, Math.max(1, Math.min(5000, Number(options.limit) || 500)));
+  }
+
+  getAccountRecentHistoryDates(userId, limit = 25, profileName = this.getActiveProfileName(userId)) {
+    if (this.backendName === 'sqlite') {
+      return this.backend.listRecentHistoryDates(userId, profileName, limit);
+    }
+    const counts = new Map();
+    for (const play of this.getAccountRecentHistory(userId, { limit: 5000 }, profileName)) {
+      const date = String(play.playedAtIso || play.playedAt || '').slice(0, 10);
+      if (date) counts.set(date, (counts.get(date) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort(([a], [b]) => b.localeCompare(a))
+      .slice(0, Math.max(1, Math.min(100, Number(limit) || 25)))
+      .map(([date, playCount]) => ({ date, playCount }));
+  }
+
+  recordJsonAccountHistory(userId, profileName, account, scores, recentSessions) {
+    const profile = this.getUser(userId).profiles[profileName];
+    if (!Array.isArray(profile.accountHistory)) profile.accountHistory = [];
+    if (!profile.recentHistory || typeof profile.recentHistory !== 'object' || Array.isArray(profile.recentHistory)) {
+      profile.recentHistory = {};
+    }
+    const fingerprint = buildSnapshotFingerprint(account, scores);
+    if (!profile.accountHistory.some((entry) => entry.fingerprint === fingerprint)) {
+      profile.accountHistory.push({
+        id: fingerprint.slice(0, 16),
+        fingerprint,
+        capturedAt: account?.sourceFetchedAt || account?.updatedAt || new Date().toISOString(),
+        rating: account?.metrics?.rating ?? null,
+        playCount: account?.metrics?.playCount ?? null,
+        totalRating: account?.best50?.totalRating ?? null,
+        snapshot: buildHistorySnapshot(account),
+        scores: safeJsonClone(Array.isArray(scores) ? scores : [])
+      });
+    }
+    for (const rawPlay of Array.isArray(recentSessions) ? recentSessions : []) {
+      const play = normalizeAccountRecentEntry(rawPlay);
+      const key = buildRecentPlayKey(play);
+      if (play && key && !profile.recentHistory[key]) {
+        profile.recentHistory[key] = safeJsonClone(play);
+      }
+    }
   }
 
   getExportState() {
@@ -1993,9 +2272,24 @@ export class LoadoutStore {
     };
     delete nextAccount.linkSession;
 
+    const historyScores = Array.isArray(account?.allScores)
+      ? safeJsonClone(account.allScores)
+      : safeJsonClone(this.getAccountScores(userId, profileName));
+    const historyRecent = Array.isArray(account?.recentSessions)
+      ? safeJsonClone(account.recentSessions)
+      : [];
+
     user.profiles[profileName].account = nextAccount;
 
+    if (this.backendName === 'json') {
+      this.recordJsonAccountHistory(userId, profileName, nextAccount, historyScores, historyRecent);
+    }
+
     await this.saveUser(userId);
+    if (this.backendName === 'sqlite') {
+      this.backend.recordAccountSnapshot(userId, profileName, nextAccount, historyScores);
+      this.backend.recordRecentHistory(userId, profileName, historyRecent, nextAccount.updatedAt);
+    }
     if (this.backendName === 'sqlite' && user.profiles[profileName].account) {
       delete user.profiles[profileName].account.allScores;
       delete user.profiles[profileName].account.recentSessions;
@@ -2010,6 +2304,8 @@ export class LoadoutStore {
     const previous = profile?.account || null;
     if (profile) {
       profile.account = null;
+      delete profile.accountHistory;
+      delete profile.recentHistory;
     }
     await this.saveUser(userId);
     return previous;
