@@ -19,6 +19,11 @@ import { createBookmarkletCode, createLoadoutPayload } from './bookmarklet.js';
 import { renderPlaylistTargetGraphic } from './playlist-target-graphic.js';
 import { renderLevelSummaryGraphic } from './level-summary-graphic.js';
 import {
+  buildGapRecommendationPage,
+  GapRecommendationSessions,
+  parseGapRecommendationCustomId
+} from './account-gap-view.js';
+import {
   buildAccountHistorySummary,
   buildAccountProgress,
   buildAccountRoast,
@@ -79,6 +84,7 @@ if (loadoutStorageStatus.legacySongIdsRemaining > 0) {
 
 const recommendationCatalog = new RecommendationCatalog(config.recommendationFile, songCatalog);
 await recommendationCatalog.ensureReady();
+const gapRecommendationSessions = new GapRecommendationSessions();
 
 if (accountLinkCallbackServerEnabled(config)) {
   await startAccountLinkCallbackServer({
@@ -164,6 +170,31 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.respond([]);
       } catch {
         // ignored
+      }
+    }
+    return;
+  }
+
+  if (interaction.isButton()) {
+    const parsed = parseGapRecommendationCustomId(interaction.customId);
+    if (!parsed) return;
+    try {
+      await handleGapRecommendationButton(interaction, parsed);
+    } catch (error) {
+      const reference = createPublicErrorCode('BOT');
+      logInteractionError(reference, interaction, error);
+      if (interaction.deferred || interaction.replied) {
+        await interaction.editReply({
+          content: `Request failed. Reference: \`${reference}\``,
+          embeds: [],
+          components: [],
+          attachments: []
+        });
+      } else {
+        await interaction.reply({
+          content: `Request failed. Reference: \`${reference}\``,
+          flags: MessageFlags.Ephemeral
+        });
       }
     }
     return;
@@ -1395,11 +1426,15 @@ async function handleAccountCommand(interaction) {
         return;
       }
 
-      const embed = buildAccountGapEmbed(account, filtered.shown, {
+      const sessionId = randomBytes(9).toString('base64url');
+      const session = gapRecommendationSessions.create(sessionId, {
+        ownerId: interaction.user.id,
+        playerName: account?.player?.name || 'your account',
+        suggestions: filtered.shown,
         total: filtered.total,
         sort: filtered.sort
       });
-      await replyPayload(interaction, { embeds: [embed] });
+      await replyPayload(interaction, await buildGapRecommendationPayload(sessionId, session));
       return;
     }
 
@@ -3712,6 +3747,73 @@ async function resolveArtworkAttachment(song, namePrefix = '') {
   return null;
 }
 
+async function buildGapRecommendationPayload(sessionId, session) {
+  const preview = buildGapRecommendationPage({
+    sessionId,
+    playerName: session.playerName,
+    suggestions: session.suggestions,
+    page: session.page
+  });
+  const imageUrls = new Map();
+  const files = [];
+
+  await Promise.all(
+    preview.shown.map(async (suggestion, pageIndex) => {
+      const song = songCatalog.getByStoredId(suggestion.favoriteId)
+        || songCatalog.getUniqueByNormalizedTitle(suggestion.title);
+      if (!song) return;
+
+      const globalIndex = preview.start + pageIndex;
+      const artwork = await resolveArtworkAttachment(song, `gap-${sessionId}-${globalIndex + 1}`);
+      if (!artwork) return;
+
+      imageUrls.set(globalIndex, artwork.imageUrl);
+      files.push(artwork.attachment);
+    })
+  );
+
+  const page = buildGapRecommendationPage({
+    sessionId,
+    playerName: session.playerName,
+    suggestions: session.suggestions,
+    page: session.page,
+    imageUrls
+  });
+
+  return {
+    content: page.content,
+    embeds: page.embeds,
+    components: page.components,
+    files
+  };
+}
+
+async function handleGapRecommendationButton(interaction, { sessionId, action }) {
+  const session = gapRecommendationSessions.get(sessionId);
+  if (!session) {
+    await interaction.reply({
+      content: 'These recommendation controls have expired. Run `/account gap` again.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+  if (interaction.user.id !== session.ownerId) {
+    await interaction.reply({
+      content: 'Only the person who requested these recommendations can change the page.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  gapRecommendationSessions.move(sessionId, action);
+  await interaction.deferUpdate();
+  const payload = await buildGapRecommendationPayload(sessionId, session);
+  await interaction.editReply({
+    ...payload,
+    attachments: []
+  });
+}
+
 async function replySongAdded(interaction, { playlist, song, songId }) {
   const artwork = await resolveArtworkAttachment(song);
   const embed = createSongEmbed(song, playlist, artwork?.imageUrl);
@@ -4239,35 +4341,6 @@ function buildAccountDailyEmbed(account, summary) {
     .setDescription(lines.join('\n'))
     .addFields({ name: account?.player?.name || 'Player', value: stats.join('\n') })
     .setFooter({ text: 'Only plays observed by a sync can appear here.' });
-}
-
-function buildAccountGapEmbed(account, suggestions, metadata = {}) {
-  const playerName = account?.player?.name || 'your account';
-  const shown = suggestions.slice(0, 20);
-
-  const lines = shown.map((s, i) => {
-    const diff = formatDifficultyShort(s.difficulty);
-    const level = formatInternalLevel(s.internalLevelValue);
-    const pct = (s.achievement / 10000).toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
-    const title = truncateText(s.title, 24);
-    return [
-      `\`#${String(i + 1).padStart(2, '0')}\` **+${s.ratingGain}** [${s.categoryTag}] ${title} (${diff} ${level})`,
-      `　${pct}% → **${s.targetLabel}** | chart ${s.rating} → ${s.targetRating}`
-    ].join('\n');
-  });
-
-  const embed = new EmbedBuilder()
-    .setColor(0x5865f2)
-    .setTitle(`Rating Recommendations — ${playerName}`)
-    .setDescription(lines.join('\n'));
-
-  const total = metadata.total ?? suggestions.length;
-  const summary = [`Matching: ${total} chart${total === 1 ? '' : 's'} · showing ${shown.length}`];
-  summary.push(`Sorted by ${metadata.sort === 'gain' ? 'largest rating gain' : 'efficiency'}.`);
-  summary.push('Each +N is the estimated net B15/B35 rating gain.');
-  embed.addFields({ name: 'Summary', value: summary.join('\n') });
-
-  return embed;
 }
 
 function sumRatings(entries) {
