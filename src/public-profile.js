@@ -17,7 +17,7 @@ function normalizeDifficulty(value) {
 
 function normalizeChartType(value) {
   const normalized = normalizeText(value);
-  if (normalized === 'dx') return 'dx';
+  if (normalized === 'dx' || normalized === 'deluxe') return 'dx';
   if (normalized === 'std' || normalized === 'sd' || normalized === 'standard') return 'std';
   return null;
 }
@@ -129,6 +129,45 @@ function publicChart(score, fallback = {}) {
   };
 }
 
+function compareTimedPlays(left, right) {
+  if (!right) return 1;
+  if (left.achievement !== right.achievement) return left.achievement - right.achievement;
+  const leftDx = left.dxScore ?? -1;
+  const rightDx = right.dxScore ?? -1;
+  if (leftDx !== rightDx) return leftDx - rightDx;
+  const timeDifference = Date.parse(left.playedAtIso) - Date.parse(right.playedAtIso);
+  if (timeDifference !== 0) return timeDifference;
+  return String(left.playKey || '').localeCompare(String(right.playKey || ''));
+}
+
+function buildTimedLookup(bestTimedPlays, songCatalog) {
+  const lookup = new Map();
+  if (!songCatalog?.available) return lookup;
+  for (const play of Array.isArray(bestTimedPlays) ? bestTimedPlays : []) {
+    const type = normalizeChartType(play?.type);
+    const difficulty = normalizeDifficulty(play?.difficulty);
+    const song = findSong(songCatalog, play);
+    const achievement = finiteNumber(play?.achievement);
+    const fastCount = finiteNumber(play?.fastCount);
+    const lateCount = finiteNumber(play?.lateCount);
+    const playedAtIso = String(play?.playedAtIso || '').trim();
+    if (!type || !difficulty || !song?.songId || !Number.isInteger(achievement) || achievement < 0 ||
+        !Number.isInteger(fastCount) || fastCount < 0 || !Number.isInteger(lateCount) || lateCount < 0 ||
+        !Number.isFinite(Date.parse(playedAtIso))) continue;
+    const candidate = {
+      achievement,
+      dxScore: Number.isInteger(play?.dxScore) && play.dxScore >= 0 ? play.dxScore : null,
+      fastCount,
+      lateCount,
+      playedAtIso: new Date(playedAtIso).toISOString(),
+      playKey: String(play?.playKey || '')
+    };
+    const key = `${song.songId}\0${type}\0${difficulty}`;
+    if (compareTimedPlays(candidate, lookup.get(key)) > 0) lookup.set(key, candidate);
+  }
+  return lookup;
+}
+
 function availableChart(chart) {
   return {
     type: normalizeChartType(chart?.type),
@@ -153,8 +192,9 @@ function compareCharts(a, b) {
   return (DIFFICULTY_ORDER.get(a.difficulty) ?? 99) - (DIFFICULTY_ORDER.get(b.difficulty) ?? 99);
 }
 
-export function buildPublicProfilePayload({ account, scores, recentPlays = [], songCatalog }) {
+export function buildPublicProfilePayload({ account, scores, recentPlays = [], bestTimedPlays = [], songCatalog }) {
   const groups = new Map();
+  const timedLookup = buildTimedLookup(bestTimedPlays, songCatalog);
 
   for (const score of Array.isArray(scores) ? scores : []) {
     const type = normalizeChartType(score?.type);
@@ -193,7 +233,23 @@ export function buildPublicProfilePayload({ account, scores, recentPlays = [], s
   }
 
   const songs = [...groups.values()].map((group) => {
-    const charts = [...group.charts.values()].sort(compareCharts);
+    const charts = [...group.charts.values()].map((chart) => {
+      const timed = group.songId && chart.played
+        ? timedLookup.get(`${group.songId}\0${chart.type}\0${chart.difficulty}`)
+        : null;
+      if (!timed) return chart;
+      return {
+        ...chart,
+        bestTimedPlay: {
+          achievement: timed.achievement,
+          dxScore: timed.dxScore,
+          fastCount: timed.fastCount,
+          lateCount: timed.lateCount,
+          playedAt: timed.playedAtIso,
+          matchesBest: timed.achievement === chart.achievement
+        }
+      };
+    }).sort(compareCharts);
     return {
       songId: group.songId,
       hasJacket: group.hasJacket,
@@ -208,7 +264,7 @@ export function buildPublicProfilePayload({ account, scores, recentPlays = [], s
   }).sort((a, b) => a.title.localeCompare(b.title));
 
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: new Date().toISOString(),
     player: {
       name: account?.player?.name || 'Player',

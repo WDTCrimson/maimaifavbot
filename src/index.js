@@ -94,6 +94,7 @@ if (accountLinkCallbackServerEnabled(config)) {
         account: match.account,
         scores: store.getAccountScores(match.userId, match.profileName),
         recentPlays: store.getAccountRecentHistory(match.userId, { limit: 24 }, match.profileName),
+        bestTimedPlays: store.getAccountBestTimedPlays(match.userId, match.profileName),
         songCatalog
       });
     },

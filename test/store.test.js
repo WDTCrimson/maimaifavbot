@@ -184,6 +184,49 @@ for (const backend of ['json', 'sqlite']) {
       reloaded.backend?.db?.close();
     });
   });
+
+  test(`${backend} store keeps one deterministic best timed play per chart`, async () => {
+    await withStore(backend, async (store, paths) => {
+      await store.setAccount('user', {
+        provider: 'manual',
+        player: { name: 'Timing Player' },
+        allScores: [{ favoriteId: '100', title: 'Alpha', difficulty: 'master', type: 'dx', achievement: 1_000_000 }],
+        recentSessions: [
+          { favoriteId: '100', title: 'Alpha', difficulty: 'master', type: 'dx', achievement: 990_000, dxScore: 1200, playedAtIso: '2026-09-01T10:00:00+09:00', details: { fastCount: 8, lateCount: 9 } },
+          { favoriteId: '100', title: 'Alpha', difficulty: 'master', type: 'dx', achievement: 1_000_000, dxScore: 900, playedAtIso: '2026-09-01T10:03:00+09:00', details: { fastCount: 4, lateCount: 5 } },
+          { favoriteId: '100', title: 'Alpha', difficulty: 'master', type: 'dx', achievement: 1_000_000, dxScore: 950, playedAtIso: '2026-09-01T10:06:00+09:00', details: { fastCount: 0, lateCount: 2 } },
+          { favoriteId: '200', title: 'Beta', difficulty: 'expert', type: 'std', achievement: 970_000, playedAtIso: '2026-09-01T10:09:00+09:00', details: { fastCount: 1.5, lateCount: 2 } },
+          { favoriteId: '300', title: 'Gamma', difficulty: 'Re:MASTER', type: 'DX', achievement: 995_000, playedAtIso: '2026-09-01T10:12:00+09:00', details: { fastCount: 3, lateCount: 0 } }
+        ]
+      });
+
+      const summaries = store.getAccountBestTimedPlays('user');
+      assert.equal(summaries.length, 2);
+      const alpha = summaries.find((play) => play.title === 'Alpha');
+      assert.equal(alpha.achievement, 1_000_000);
+      assert.equal(alpha.dxScore, 950);
+      assert.equal(alpha.fastCount, 0);
+      assert.equal(alpha.lateCount, 2);
+      assert.equal(alpha.playedAtIso, '2026-09-01T01:06:00.000Z');
+      assert.equal(alpha.favoriteId, '100');
+      assert.equal(summaries.find((play) => play.title === 'Gamma').difficulty, 'remaster');
+      if (backend === 'sqlite') {
+        assert.deepEqual(store.verifyBestTimedPlays(), {
+          scanned: 5, eligible: 4, expected: 2, stored: 2,
+          missing: 0, extra: 0, mismatched: 0, ok: true
+        });
+      }
+
+      const reloaded = new LoadoutStore(
+        { backend, jsonFile: paths.jsonFile, sqliteFile: paths.sqliteFile }, LIMITS
+      );
+      await reloaded.load();
+      assert.equal(reloaded.getAccountBestTimedPlays('user').length, 2);
+      await reloaded.clearAccount('user');
+      assert.equal(reloaded.getAccountBestTimedPlays('user').length, 0);
+      reloaded.backend?.db?.close();
+    });
+  });
 }
 
 test('legacy JSON state migrates account shape and stored song IDs', async () => {

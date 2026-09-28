@@ -5,6 +5,7 @@ import { dirname } from 'node:path';
 
 const LOADOUT_SCHEMA_VERSION = 2;
 const DEFAULT_PROFILE = 'default';
+const TIMED_DIFFICULTIES = new Set(['basic', 'advanced', 'expert', 'master', 'remaster']);
 
 function normalizeLoadoutName(name) {
   return name.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -226,6 +227,16 @@ function normalizeUserProfiles(user) {
     user.profiles[user.activeProfile] = { account: null };
   }
 
+  for (const profile of Object.values(user.profiles)) {
+    if (!profile || typeof profile !== 'object') continue;
+    if (!profile.bestTimedPlays || typeof profile.bestTimedPlays !== 'object' || Array.isArray(profile.bestTimedPlays)) {
+      profile.bestTimedPlays = {};
+    }
+    for (const rawPlay of Object.values(profile.recentHistory || {})) {
+      updateBestTimedPlayMap(profile.bestTimedPlays, rawPlay);
+    }
+  }
+
   return user;
 }
 
@@ -307,6 +318,142 @@ function normalizeAccountRecentEntry(play) {
     title: String(play.title || play.songName || 'Unknown Song').trim(),
     difficulty: play.difficulty == null ? null : String(play.difficulty).trim().toLowerCase(),
     type: play.type == null ? null : String(play.type).trim().toLowerCase()
+  };
+}
+
+function normalizeTimedChartType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'dx' || normalized === 'deluxe') return 'dx';
+  if (normalized === 'std' || normalized === 'sd' || normalized === 'standard') return 'std';
+  return null;
+}
+
+function normalizeTimedDifficulty(value) {
+  const normalized = String(value || '').trim().toLowerCase().replace(/^re:master$/, 'remaster');
+  return TIMED_DIFFICULTIES.has(normalized) ? normalized : null;
+}
+
+function normalizeNonNegativeInteger(value) {
+  if (value == null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function normalizePlayedAtIso(value) {
+  const parsed = Date.parse(String(value || '').trim());
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+function timedChartKey(titleKey, type, difficulty) {
+  return JSON.stringify([titleKey, type, difficulty]);
+}
+
+function buildBestTimedPlay(rawPlay, playKey = null, syncedAt = new Date().toISOString()) {
+  const play = normalizeAccountRecentEntry(rawPlay);
+  if (!play) return null;
+  const title = String(play.title || '').normalize('NFKC').trim();
+  const titleKey = title;
+  const type = normalizeTimedChartType(play.type);
+  const difficulty = normalizeTimedDifficulty(play.difficulty);
+  const achievement = normalizeNonNegativeInteger(play.achievement);
+  const fastCount = normalizeNonNegativeInteger(play?.details?.fastCount);
+  const lateCount = normalizeNonNegativeInteger(play?.details?.lateCount);
+  const dxScore = normalizeNonNegativeInteger(play.dxScore);
+  const playedAtIso = normalizePlayedAtIso(play.playedAtIso || play.playedAt);
+  const resolvedPlayKey = playKey || buildRecentPlayKey(play);
+  if (!titleKey || !type || !difficulty || achievement == null || fastCount == null || lateCount == null || !playedAtIso || !resolvedPlayKey) {
+    return null;
+  }
+  const favoriteId = String(play.favoriteId || '').trim() || null;
+  return {
+    title,
+    titleKey,
+    favoriteId,
+    difficulty,
+    type,
+    achievement,
+    dxScore,
+    fastCount,
+    lateCount,
+    playedAtIso,
+    playKey: resolvedPlayKey,
+    syncedAt: normalizePlayedAtIso(syncedAt) || playedAtIso
+  };
+}
+
+function compareBestTimedPlays(left, right) {
+  if (!right) return 1;
+  if (left.achievement !== right.achievement) return left.achievement - right.achievement;
+  const leftDx = left.dxScore ?? -1;
+  const rightDx = right.dxScore ?? -1;
+  if (leftDx !== rightDx) return leftDx - rightDx;
+  const timeDifference = Date.parse(left.playedAtIso) - Date.parse(right.playedAtIso);
+  if (timeDifference !== 0) return timeDifference;
+  return String(left.playKey).localeCompare(String(right.playKey));
+}
+
+function updateBestTimedPlayMap(map, rawPlay, playKey = null, syncedAt = new Date().toISOString()) {
+  const candidate = buildBestTimedPlay(rawPlay, playKey, syncedAt);
+  if (!candidate) return false;
+  const key = timedChartKey(candidate.titleKey, candidate.type, candidate.difficulty);
+  if (compareBestTimedPlays(candidate, map[key]) <= 0) return false;
+  map[key] = candidate;
+  return true;
+}
+
+export function verifyBestTimedPlayRows(historyRows, actualRows) {
+  const expected = new Map();
+  let eligible = 0;
+  for (const row of historyRows) {
+    const candidate = buildBestTimedPlay(parseNullableJson(row.data_json), row.play_key, row.first_seen_at);
+    if (!candidate) continue;
+    eligible += 1;
+    const key = JSON.stringify([
+      row.user_id, row.profile_name, candidate.titleKey, candidate.difficulty, candidate.type
+    ]);
+    if (compareBestTimedPlays(candidate, expected.get(key)?.play) > 0) {
+      expected.set(key, { play: candidate });
+    }
+  }
+
+  const actual = new Map(actualRows.map((row) => [
+    JSON.stringify([row.user_id, row.profile_name, row.title_key, row.difficulty, row.chart_type]),
+    {
+      title: row.title,
+      titleKey: row.title_key,
+      favoriteId: row.favorite_id,
+      difficulty: row.difficulty,
+      type: row.chart_type,
+      achievement: row.achievement,
+      dxScore: row.dx_score,
+      fastCount: row.fast_count,
+      lateCount: row.late_count,
+      playedAtIso: row.played_at_iso,
+      playKey: row.play_key,
+      syncedAt: row.synced_at
+    }
+  ]));
+
+  let missing = 0;
+  let mismatched = 0;
+  for (const [key, value] of expected) {
+    const stored = actual.get(key);
+    if (!stored) missing += 1;
+    else if (JSON.stringify(stored) !== JSON.stringify(value.play)) mismatched += 1;
+  }
+  let extra = 0;
+  for (const key of actual.keys()) {
+    if (!expected.has(key)) extra += 1;
+  }
+  return {
+    scanned: historyRows.length,
+    eligible,
+    expected: expected.size,
+    stored: actual.size,
+    missing,
+    extra,
+    mismatched,
+    ok: missing === 0 && extra === 0 && mismatched === 0
   };
 }
 
@@ -452,7 +599,12 @@ class JsonStoreBackend {
 
     try {
       const raw = await readFile(this.filePath, 'utf8');
-      return normalizeLoadedState(JSON.parse(raw));
+      const parsed = JSON.parse(raw);
+      const normalized = normalizeLoadedState(parsed);
+      if (JSON.stringify(parsed) !== JSON.stringify(normalized)) {
+        await this.saveState(normalized);
+      }
+      return normalized;
     } catch (error) {
       if (error.code !== 'ENOENT') {
         throw error;
@@ -605,8 +757,30 @@ class SqliteStoreBackend {
       );
       CREATE INDEX IF NOT EXISTS idx_account_recent_history_user_profile_played
         ON account_recent_history(user_id, profile_name, played_at_iso DESC);
+
+      CREATE TABLE IF NOT EXISTS account_best_timed_plays (
+        user_id TEXT NOT NULL,
+        profile_name TEXT NOT NULL,
+        title TEXT NOT NULL CHECK (length(trim(title)) > 0),
+        title_key TEXT NOT NULL CHECK (length(title_key) > 0),
+        favorite_id TEXT,
+        difficulty TEXT NOT NULL
+          CHECK (difficulty IN ('basic', 'advanced', 'expert', 'master', 'remaster')),
+        chart_type TEXT NOT NULL CHECK (chart_type IN ('std', 'dx')),
+        achievement INTEGER NOT NULL CHECK (achievement >= 0),
+        dx_score INTEGER CHECK (dx_score IS NULL OR dx_score >= 0),
+        fast_count INTEGER NOT NULL CHECK (fast_count >= 0),
+        late_count INTEGER NOT NULL CHECK (late_count >= 0),
+        played_at_iso TEXT NOT NULL CHECK (length(played_at_iso) > 0),
+        play_key TEXT NOT NULL CHECK (length(play_key) = 64),
+        synced_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, profile_name, title_key, difficulty, chart_type),
+        FOREIGN KEY (user_id, profile_name)
+          REFERENCES account_profiles(user_id, profile_name) ON DELETE CASCADE
+      );
     `);
     this.migrateToProfilesSchema();
+    this.backfillBestTimedPlays();
   }
 
   migrateToProfilesSchema() {
@@ -1169,6 +1343,128 @@ class SqliteStoreBackend {
     }));
   }
 
+  readBestTimedPlay(userId, profileName, candidate) {
+    const row = this.db.prepare(
+      `SELECT title, title_key, favorite_id, difficulty, chart_type, achievement,
+              dx_score, fast_count, late_count, played_at_iso, play_key, synced_at
+       FROM account_best_timed_plays
+       WHERE user_id = ? AND profile_name = ? AND title_key = ?
+         AND difficulty = ? AND chart_type = ?`
+    ).get(userId, profileName, candidate.titleKey, candidate.difficulty, candidate.type);
+    return row ? {
+      title: row.title,
+      titleKey: row.title_key,
+      favoriteId: row.favorite_id,
+      difficulty: row.difficulty,
+      type: row.chart_type,
+      achievement: row.achievement,
+      dxScore: row.dx_score,
+      fastCount: row.fast_count,
+      lateCount: row.late_count,
+      playedAtIso: row.played_at_iso,
+      playKey: row.play_key,
+      syncedAt: row.synced_at
+    } : null;
+  }
+
+  upsertBestTimedPlay(userId, profileName, candidate) {
+    if (!candidate || compareBestTimedPlays(candidate, this.readBestTimedPlay(userId, profileName, candidate)) <= 0) {
+      return false;
+    }
+    this.db.prepare(
+      `INSERT INTO account_best_timed_plays (
+         user_id, profile_name, title, title_key, favorite_id, difficulty, chart_type,
+         achievement, dx_score, fast_count, late_count, played_at_iso, play_key, synced_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, profile_name, title_key, difficulty, chart_type) DO UPDATE SET
+         title = excluded.title,
+         favorite_id = excluded.favorite_id,
+         achievement = excluded.achievement,
+         dx_score = excluded.dx_score,
+         fast_count = excluded.fast_count,
+         late_count = excluded.late_count,
+         played_at_iso = excluded.played_at_iso,
+         play_key = excluded.play_key,
+         synced_at = excluded.synced_at`
+    ).run(
+      userId, profileName, candidate.title, candidate.titleKey, candidate.favoriteId,
+      candidate.difficulty, candidate.type, candidate.achievement, candidate.dxScore,
+      candidate.fastCount, candidate.lateCount, candidate.playedAtIso,
+      candidate.playKey, candidate.syncedAt
+    );
+    return true;
+  }
+
+  backfillBestTimedPlays() {
+    const startedAt = Date.now();
+    const rows = this.db.prepare(
+      `SELECT h.user_id, h.profile_name, h.play_key, h.first_seen_at, h.data_json
+       FROM account_recent_history h
+       INNER JOIN account_profiles p
+         ON p.user_id = h.user_id AND p.profile_name = h.profile_name
+       ORDER BY h.played_at_iso ASC, h.play_key ASC`
+    ).all();
+    let eligible = 0;
+    let updated = 0;
+    const backfill = this.db.transaction((historyRows) => {
+      for (const row of historyRows) {
+        const play = parseNullableJson(row.data_json);
+        const candidate = buildBestTimedPlay(play, row.play_key, row.first_seen_at);
+        if (!candidate) continue;
+        eligible += 1;
+        if (this.upsertBestTimedPlay(row.user_id, row.profile_name, candidate)) updated += 1;
+      }
+    });
+    backfill(rows);
+    const result = {
+      scanned: rows.length,
+      eligible,
+      updated,
+      skipped: rows.length - eligible,
+      durationMs: Date.now() - startedAt
+    };
+    if (updated > 0) console.log(`Best timed play backfill: ${JSON.stringify(result)}`);
+    return result;
+  }
+
+  listBestTimedPlays(userId, profileName) {
+    return this.db.prepare(
+      `SELECT title, title_key, favorite_id, difficulty, chart_type, achievement,
+              dx_score, fast_count, late_count, played_at_iso, play_key, synced_at
+       FROM account_best_timed_plays
+       WHERE user_id = ? AND profile_name = ?
+       ORDER BY title COLLATE NOCASE, difficulty, chart_type`
+    ).all(userId, profileName).map((row) => ({
+      title: row.title,
+      titleKey: row.title_key,
+      favoriteId: row.favorite_id,
+      difficulty: row.difficulty,
+      type: row.chart_type,
+      achievement: row.achievement,
+      dxScore: row.dx_score,
+      fastCount: row.fast_count,
+      lateCount: row.late_count,
+      playedAtIso: row.played_at_iso,
+      playKey: row.play_key,
+      syncedAt: row.synced_at
+    }));
+  }
+
+  verifyBestTimedPlays() {
+    const historyRows = this.db.prepare(
+      `SELECT h.user_id, h.profile_name, h.play_key, h.first_seen_at, h.data_json
+       FROM account_recent_history h
+       INNER JOIN account_profiles p
+         ON p.user_id = h.user_id AND p.profile_name = h.profile_name`
+    ).all();
+    const actualRows = this.db.prepare(
+      `SELECT user_id, profile_name, title, title_key, favorite_id, difficulty, chart_type,
+              achievement, dx_score, fast_count, late_count, played_at_iso, play_key, synced_at
+       FROM account_best_timed_plays`
+    ).all();
+    return verifyBestTimedPlayRows(historyRows, actualRows);
+  }
+
   recordRecentHistory(userId, profileName, recentSessions, firstSeenAt = new Date().toISOString()) {
     if (!Array.isArray(recentSessions)) return 0;
     const insert = this.db.prepare(
@@ -1186,6 +1482,8 @@ class SqliteStoreBackend {
         written += insert.run(
           userId, profileName, key, playedAtIso, firstSeenAt, JSON.stringify(play)
         ).changes;
+        const candidate = buildBestTimedPlay(play, key, firstSeenAt);
+        if (candidate) this.upsertBestTimedPlay(userId, profileName, candidate);
       }
     });
     persist(recentSessions);
@@ -1225,6 +1523,7 @@ class SqliteStoreBackend {
   deleteAccountHistory(userId, profileName) {
     this.db.prepare('DELETE FROM account_snapshots WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
     this.db.prepare('DELETE FROM account_recent_history WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
+    this.db.prepare('DELETE FROM account_best_timed_plays WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
   }
 
   readActiveProfileName(userId) {
@@ -1472,6 +1771,7 @@ class SqliteStoreBackend {
         DELETE FROM loadouts;
         DELETE FROM account_score_charts;
         DELETE FROM account_recent_plays;
+        DELETE FROM account_best_timed_plays;
         DELETE FROM account_profiles;
         DELETE FROM user_settings;
         DELETE FROM users;
@@ -1533,6 +1833,7 @@ class SqliteStoreBackend {
     });
 
     persist(normalized);
+    this.backfillBestTimedPlays();
   }
 
   async saveMetadata(metadata) {
@@ -2064,6 +2365,7 @@ export class LoadoutStore {
         profiles[normalized].account = null;
         delete profiles[normalized].accountHistory;
         delete profiles[normalized].recentHistory;
+        delete profiles[normalized].bestTimedPlays;
       }
       await this.saveUser(userId);
 
@@ -2155,6 +2457,21 @@ export class LoadoutStore {
       .slice(0, Math.max(1, Math.min(5000, Number(options.limit) || 500)));
   }
 
+  getAccountBestTimedPlays(userId, profileName = this.getActiveProfileName(userId)) {
+    if (this.backendName === 'sqlite') {
+      return this.backend.listBestTimedPlays(userId, profileName);
+    }
+    const profile = this.getUser(userId).profiles?.[profileName];
+    return Object.values(profile?.bestTimedPlays || {}).map((play) => safeJsonClone(play));
+  }
+
+  verifyBestTimedPlays() {
+    if (this.backendName !== 'sqlite') {
+      throw new Error('Best timed play verification currently requires the SQLite backend.');
+    }
+    return this.backend.verifyBestTimedPlays();
+  }
+
   getAccountRecentHistoryDates(userId, limit = 25, profileName = this.getActiveProfileName(userId)) {
     if (this.backendName === 'sqlite') {
       return this.backend.listRecentHistoryDates(userId, profileName, limit);
@@ -2176,6 +2493,9 @@ export class LoadoutStore {
     if (!profile.recentHistory || typeof profile.recentHistory !== 'object' || Array.isArray(profile.recentHistory)) {
       profile.recentHistory = {};
     }
+    if (!profile.bestTimedPlays || typeof profile.bestTimedPlays !== 'object' || Array.isArray(profile.bestTimedPlays)) {
+      profile.bestTimedPlays = {};
+    }
     const fingerprint = buildSnapshotFingerprint(account, scores);
     if (!profile.accountHistory.some((entry) => entry.fingerprint === fingerprint)) {
       profile.accountHistory.push({
@@ -2194,6 +2514,9 @@ export class LoadoutStore {
       const key = buildRecentPlayKey(play);
       if (play && key && !profile.recentHistory[key]) {
         profile.recentHistory[key] = safeJsonClone(play);
+      }
+      if (play && key) {
+        updateBestTimedPlayMap(profile.bestTimedPlays, play, key, account?.updatedAt);
       }
     }
   }
@@ -2370,6 +2693,7 @@ export class LoadoutStore {
       profile.account = null;
       delete profile.accountHistory;
       delete profile.recentHistory;
+      delete profile.bestTimedPlays;
     }
     await this.saveUser(userId);
     return previous;
