@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh MaiDeck song catalog twice daily
+Description=Refresh MaiDeck song catalog and aliases twice daily
 
 [Timer]
 OnCalendar=*-*-* 00,12:15:00 UTC

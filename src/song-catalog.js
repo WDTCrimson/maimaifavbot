@@ -5,6 +5,25 @@ const DEFAULT_PLAYLIST_ID_MAP_FILE = './data/reference/playlist-id-map.json';
 const DEFAULT_SONG_ALIAS_FILE = './data/reference/song-aliases.json';
 const SEARCH_CACHE_LIMIT = 200;
 
+async function readOptionalUtf8(filePath) {
+  try {
+    return await readFile(filePath, 'utf8');
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function hashCatalogInputs(catalogRaw, aliasRaw) {
+  return createHash('sha256')
+    .update(catalogRaw, 'utf8')
+    .update('\0', 'utf8')
+    .update(aliasRaw || '', 'utf8')
+    .digest('hex');
+}
+
 function normalizeText(value) {
   return String(value || '')
     .normalize('NFKC')
@@ -511,6 +530,7 @@ export class SongCatalog {
   async load() {
     try {
       const raw = await readFile(this.filePath, 'utf8');
+      const aliasRaw = await readOptionalUtf8(this.aliasFile);
       const parsed = JSON.parse(raw);
       const sourceSongs = Array.isArray(parsed?.songs) ? parsed.songs : [];
       let playlistIdMap = new Map();
@@ -606,8 +626,7 @@ export class SongCatalog {
         byNormTitleArtist.set(`${song.normTitle}::${song.normArtist}`, song);
       }
 
-      try {
-        const aliasRaw = await readFile(this.aliasFile, 'utf8');
+      if (aliasRaw !== null) {
         const aliasParsed = JSON.parse(aliasRaw);
         const aliasEntries = normalizeAliasFileEntries(aliasParsed);
 
@@ -633,10 +652,6 @@ export class SongCatalog {
             song.normAliases.push(normalizedAlias);
           }
         }
-      } catch (error) {
-        if (error.code !== 'ENOENT') {
-          throw error;
-        }
       }
 
       for (const song of this.songs) {
@@ -654,7 +669,7 @@ export class SongCatalog {
       this.byNormTitleArtist = byNormTitleArtist;
       this.byAlias = byAlias;
       this.searchCache = new Map();
-      this.contentHash = createHash('sha256').update(raw, 'utf8').digest('hex');
+      this.contentHash = hashCatalogInputs(raw, aliasRaw);
       this.generatedAt = parsed?.generatedAt || null;
       this.available = true;
       this.error = null;
@@ -677,7 +692,8 @@ export class SongCatalog {
   async reloadIfChanged() {
     try {
       const raw = await readFile(this.filePath, 'utf8');
-      const nextHash = createHash('sha256').update(raw, 'utf8').digest('hex');
+      const aliasRaw = await readOptionalUtf8(this.aliasFile);
+      const nextHash = hashCatalogInputs(raw, aliasRaw);
       if (nextHash === this.contentHash) {
         return { changed: false, reloaded: false, count: this.count, hash: nextHash };
       }

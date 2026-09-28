@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh MaiDeck song catalog and missing jacket assets
+Description=Refresh MaiDeck song catalog, aliases, and missing jacket assets
 After=network-online.target
 Wants=network-online.target
 
@@ -9,7 +9,7 @@ User=crimson
 Group=crimson
 WorkingDirectory=/home/crimson/maimaifavbot
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/flock -n /var/lib/maimai-fav-bot/catalog-refresh.lock /usr/bin/env node scripts/import-maimai-data.js --skip-logos
+ExecStart=/usr/bin/flock -n /var/lib/maimai-fav-bot/catalog-refresh.lock /bin/sh -c '/usr/bin/env node scripts/import-maimai-data.js --skip-logos && /usr/bin/env node scripts/import-song-aliases.js'
 TimeoutStartSec=60min
 PrivateTmp=true
 NoNewPrivileges=true

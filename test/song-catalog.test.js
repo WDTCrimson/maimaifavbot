@@ -76,6 +76,18 @@ test('catalog hot reload installs valid changes and keeps the last good catalog 
     assert.equal(catalog.count, 2);
     assert.equal(catalog.generatedAt, 'second');
 
+    await writeFile(aliasesFile, JSON.stringify({ entries: [{ alias: 'deux', title: 'Two' }] }));
+    const aliasUpdated = await catalog.reloadIfChanged();
+    assert.equal(aliasUpdated.reloaded, true);
+    assert.equal(catalog.getByAlias('deux')?.title, 'Two');
+
+    await writeFile(aliasesFile, '{');
+    const badAliases = await catalog.reloadIfChanged();
+    assert.equal(badAliases.reloaded, false);
+    assert.equal(catalog.available, true);
+    assert.equal(catalog.getByAlias('deux')?.title, 'Two');
+
+    await writeFile(aliasesFile, JSON.stringify({ entries: [{ alias: 'deux', title: 'Two' }] }));
     await writeFile(songsFile, '{');
     const failed = await catalog.reloadIfChanged();
     assert.equal(failed.reloaded, false);
