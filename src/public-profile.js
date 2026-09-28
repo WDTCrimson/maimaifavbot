@@ -72,6 +72,13 @@ function publicAvatarUrl(account) {
   }
 }
 
+function publicSearchAliases(song) {
+  const aliases = Array.isArray(song?.normAliases)
+    ? song.normAliases
+    : (Array.isArray(song?.aliases) ? song.aliases : []).map((alias) => normalizeText(alias));
+  return [...new Set(aliases.map((alias) => normalizeText(alias)).filter(Boolean))];
+}
+
 function publicRecentPlay(play, songCatalog) {
   const type = normalizeChartType(play?.type);
   const difficulty = normalizeDifficulty(play?.difficulty);
@@ -165,6 +172,7 @@ export function buildPublicProfilePayload({ account, scores, recentPlays = [], s
         title: song?.title || title,
         artist: song?.artist || score?.artist || null,
         category: song?.category || null,
+        searchAliases: publicSearchAliases(song),
         charts: new Map()
       };
       for (const chart of song?.difficultyLevels || []) {
@@ -192,6 +200,7 @@ export function buildPublicProfilePayload({ account, scores, recentPlays = [], s
       title: group.title,
       artist: group.artist,
       category: group.category,
+      searchAliases: group.searchAliases,
       playedChartCount: charts.filter((chart) => chart.played).length,
       availableChartCount: charts.length,
       charts

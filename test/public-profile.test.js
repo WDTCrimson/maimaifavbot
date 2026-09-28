@@ -8,6 +8,8 @@ test('public profile groups played and unplayed difficulties by song and chart t
     favoriteId: '100',
     title: 'Melt',
     artist: 'ryo',
+    aliases: ['Melty Song', ' メルト曲 '],
+    normAliases: ['melty song', 'メルト曲'],
     category: 'niconico',
     jacket: { dxratingFile: 'melt.jpg' },
     difficultyLevels: [
@@ -49,6 +51,7 @@ test('public profile groups played and unplayed difficulties by song and chart t
   ]);
   assert.equal(profile.songs[0].charts[0].achievementRank, 'SSS+');
   assert.equal(profile.songs[0].hasJacket, true);
+  assert.deepEqual(profile.songs[0].searchAliases, ['melty song', 'メルト曲']);
   assert.equal(profile.player.avatarUrl, 'https://maimaidx-eng.com/maimai-mobile/img/Icon/alice.png');
   assert.equal(profile.gameVersion, 13);
   assert.deepEqual(profile.recentPlays[0], {
