@@ -72,7 +72,8 @@ export const config = {
     optionalEnv('ACCOUNT_LINK_SIGNING_SECRET') || optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
   accountLinkDataSecret:
     optionalEnv('ACCOUNT_LINK_DATA_SECRET') || optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
-  accountLinkTtlMinutes: parseOptionalInteger('ACCOUNT_LINK_TTL_MINUTES', 15)
+  accountLinkTtlMinutes: parseOptionalInteger('ACCOUNT_LINK_TTL_MINUTES', 15),
+  accountPublicBaseUrl: optionalEnv('ACCOUNT_PUBLIC_BASE_URL')
 };
 
 export const limits = {

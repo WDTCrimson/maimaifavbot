@@ -58,6 +58,31 @@ test('callback server exposes health and rejects unauthorized and unknown routes
   });
 });
 
+test('callback server returns only enabled public profile payloads to the linker', async () => {
+  const store = { cleanupExpiredAccountLinkSessions: async () => {}, getAccountLinkSession: () => null };
+  await withServer({
+    sharedSecret: 'shared', store, normalizeImportedAccountSnapshot: (value) => value,
+    getPublicProfile: (id) => id === 'abcdefghijklmnopqrstuvwx'
+      ? { player: { name: 'Alice' }, songs: [] }
+      : null
+  }, async (base) => {
+    const unauthorized = await responseJson(`${base}/public-profile/abcdefghijklmnopqrstuvwx`);
+    assert.equal(unauthorized.response.status, 401);
+
+    const found = await responseJson(`${base}/public-profile/abcdefghijklmnopqrstuvwx`, {
+      headers: { 'x-account-link-secret': 'shared' }
+    });
+    assert.equal(found.response.status, 200);
+    assert.deepEqual(found.body.profile, { player: { name: 'Alice' }, songs: [] });
+    assert.equal(found.response.headers.get('cache-control'), 'private, no-store');
+
+    const missing = await responseJson(`${base}/public-profile/zyxwvutsrqponmlkjihgfedc`, {
+      headers: { 'x-account-link-secret': 'shared' }
+    });
+    assert.equal(missing.response.status, 404);
+  });
+});
+
 test('callback server validates sessions, normalizes snapshots, stores auth, and consumes the token', async () => {
   const calls = [];
   const future = new Date(Date.now() + 60_000).toISOString();

@@ -91,6 +91,7 @@ export async function startAccountLinkCallbackServer({
   sharedSecret,
   store,
   normalizeImportedAccountSnapshot,
+  getPublicProfile = null,
   prepareLinkedAuth,
   logger = console
 }) {
@@ -100,6 +101,29 @@ export async function startAccountLinkCallbackServer({
 
     if (method === 'GET' && url.pathname === '/health') {
       writeJson(response, 200, { ok: true, service: 'account-link-callback' });
+      return;
+    }
+
+    if (method === 'GET' && url.pathname.startsWith('/public-profile/')) {
+      const providedSecret = String(request.headers['x-account-link-secret'] || '').trim();
+      if (!providedSecret || providedSecret !== sharedSecret) {
+        writeJson(response, 401, { ok: false, error: 'Unauthorized.', code: 'CALLBACK-UNAUTHORIZED' });
+        return;
+      }
+      const publicId = decodeURIComponent(url.pathname.slice('/public-profile/'.length));
+      try {
+        const profile = getPublicProfile ? await getPublicProfile(publicId) : null;
+        if (!profile) {
+          writeJson(response, 404, { ok: false, error: 'Not found.', code: 'PUBLIC-PROFILE-NOT-FOUND' });
+          return;
+        }
+        response.setHeader('cache-control', 'private, no-store');
+        writeJson(response, 200, { ok: true, profile });
+      } catch (error) {
+        const reference = createCallbackErrorCode();
+        logger.error(`[${reference}] Public profile callback error:`, error);
+        writeJson(response, 500, { ok: false, error: 'Request failed.', code: reference });
+      }
       return;
     }
 

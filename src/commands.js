@@ -443,6 +443,22 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('public')
+      .setDescription('Manage the shareable public page for your active profile')
+      .addStringOption((option) =>
+        option
+          .setName('action')
+          .setDescription('Enable, view, or disable public sharing')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Enable', value: 'enable' },
+            { name: 'View link', value: 'view' },
+            { name: 'Disable', value: 'disable' }
+          )
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('sync')
       .setDescription('Refresh your linked International account snapshot')
   )

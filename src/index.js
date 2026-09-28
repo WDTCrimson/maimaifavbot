@@ -27,6 +27,7 @@ import {
 } from './account-insights.js';
 import { applyIntlFavoritesFromClal, buildBest50, calculateChartRating, computeRatingRecommendations, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
 import { RecommendationCatalog } from './recommendation-catalog.js';
+import { buildPublicProfilePayload } from './public-profile.js';
 import { accountSnapshotAge, inferSuggestionRange, recommendCharts, resolveSuggestionAccess } from './recommendation-engine.js';
 import { SongCatalog } from './song-catalog.js';
 import { LoadoutStore } from './store.js';
@@ -86,6 +87,15 @@ if (accountLinkCallbackServerEnabled(config)) {
     sharedSecret: config.accountLinkSharedSecret,
     store,
     normalizeImportedAccountSnapshot,
+    getPublicProfile: (publicId) => {
+      const match = store.findPublicProfile(publicId);
+      if (!match) return null;
+      return buildPublicProfilePayload({
+        account: match.account,
+        scores: store.getAccountScores(match.userId, match.profileName),
+        songCatalog
+      });
+    },
     prepareLinkedAuth: (rawAuth) => {
       if (!config.accountLinkDataSecret) {
         return null;
@@ -857,6 +867,39 @@ async function handleAccountCommand(interaction) {
   const userId = interaction.user.id;
 
   switch (subcommand) {
+    case 'public': {
+      const action = interaction.options.getString('action', true);
+      if (!config.accountPublicBaseUrl) {
+        await replySafely(interaction, 'Public profiles are not configured on this bot host yet.');
+        return;
+      }
+
+      if (action === 'disable') {
+        const changed = await store.disablePublicProfile(userId);
+        await replySafely(interaction, changed
+          ? 'Public sharing is disabled. The old profile link no longer works.'
+          : 'This account profile is already private.');
+        return;
+      }
+
+      let settings = store.getPublicProfileSettings(userId);
+      if (action === 'enable') {
+        settings = await store.enablePublicProfile(userId);
+      }
+      if (!settings) {
+        await replySafely(interaction, 'This account profile is private. Use `/account public action:Enable` first.');
+        return;
+      }
+
+      const base = config.accountPublicBaseUrl.replace(/\/+$/, '');
+      const clientSegment = encodeURIComponent(config.accountLinkClientId || 'default');
+      const url = `${base}/${clientSegment}/${settings.id}`;
+      await replySafely(interaction, action === 'enable'
+        ? `Public sharing is enabled for your active profile:\n${url}`
+        : `Your public profile:\n${url}`);
+      return;
+    }
+
     case 'link': {
       await measureUsage(
         interaction,
@@ -4325,10 +4368,12 @@ async function replyPublicPayload(interaction, payload) {
 
 process.on('unhandledRejection', (error) => {
   console.error('Unhandled rejection:', error);
+  process.exit(1);
 });
 
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error);
+  process.exit(1);
 });
 
 await client.login(config.token);

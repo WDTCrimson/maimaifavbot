@@ -1,5 +1,5 @@
 import Database from 'better-sqlite3';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -2267,6 +2267,7 @@ export class LoadoutStore {
     const previous = user.profiles[profileName].account || null;
     const nextAccount = {
       ...account,
+      publicProfile: previous?.publicProfile || null,
       linkedAt: previous?.linkedAt || account.linkedAt || now,
       updatedAt: now
     };
@@ -2295,6 +2296,69 @@ export class LoadoutStore {
       delete user.profiles[profileName].account.recentSessions;
     }
     return user.profiles[profileName].account;
+  }
+
+  async enablePublicProfile(userId, profileName = this.getActiveProfileName(userId)) {
+    const account = this.getAccount(userId, profileName);
+    if (!account) {
+      throw new Error('Link an account before enabling a public profile.');
+    }
+    const now = new Date().toISOString();
+    account.publicProfile = {
+      id: account.publicProfile?.enabled && account.publicProfile?.id
+        ? account.publicProfile.id
+        : randomBytes(18).toString('base64url'),
+      enabled: true,
+      createdAt: account.publicProfile?.createdAt || now,
+      updatedAt: now
+    };
+    const user = this.getUser(userId);
+    user.profiles[profileName].account = account;
+    await this.saveUser(userId);
+    return { ...account.publicProfile };
+  }
+
+  async disablePublicProfile(userId, profileName = this.getActiveProfileName(userId)) {
+    const account = this.getAccount(userId, profileName);
+    if (!account?.publicProfile?.enabled) return false;
+    account.publicProfile = null;
+    const user = this.getUser(userId);
+    user.profiles[profileName].account = account;
+    await this.saveUser(userId);
+    return true;
+  }
+
+  getPublicProfileSettings(userId, profileName = this.getActiveProfileName(userId)) {
+    const value = this.getAccount(userId, profileName)?.publicProfile;
+    return value?.enabled && value?.id ? { ...value } : null;
+  }
+
+  findPublicProfile(publicId) {
+    const id = String(publicId || '').trim();
+    if (!/^[A-Za-z0-9_-]{24}$/.test(id)) return null;
+
+    if (this.backendName === 'sqlite') {
+      const rows = this.backend.db
+        .prepare('SELECT user_id, profile_name, account_json FROM account_profiles WHERE account_json IS NOT NULL')
+        .all();
+      for (const row of rows) {
+        const account = JSON.parse(row.account_json);
+        if (account?.publicProfile?.enabled && account.publicProfile.id === id) {
+          return { userId: row.user_id, profileName: row.profile_name, account };
+        }
+      }
+      return null;
+    }
+
+    for (const [userId, user] of Object.entries(this.state.users || {})) {
+      for (const [profileName, profile] of Object.entries(user?.profiles || {})) {
+        const account = profile?.account;
+        if (account?.publicProfile?.enabled && account.publicProfile.id === id) {
+          return { userId, profileName, account };
+        }
+      }
+    }
+    return null;
   }
 
   async clearAccount(userId) {

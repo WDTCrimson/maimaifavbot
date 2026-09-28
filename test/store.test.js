@@ -93,6 +93,32 @@ for (const backend of ['json', 'sqlite']) {
     });
   });
 
+  test(`${backend} store keeps public profiles opt-in, revocable, and stable across sync`, async () => {
+    await withStore(backend, async (store) => {
+      await assert.rejects(() => store.enablePublicProfile('missing'), /Link an account/);
+      await store.setAccount('user', {
+        provider: 'manual', player: { name: 'Public Player' },
+        allScores: [{ title: 'Melt', difficulty: 'master', type: 'dx', achievement: 990000 }]
+      });
+      assert.equal(store.getPublicProfileSettings('user'), null);
+
+      const enabled = await store.enablePublicProfile('user');
+      assert.match(enabled.id, /^[A-Za-z0-9_-]{24}$/);
+      assert.equal(store.findPublicProfile(enabled.id).account.player.name, 'Public Player');
+
+      await store.setAccount('user', {
+        provider: 'manual', player: { name: 'Public Player' },
+        allScores: [{ title: 'Melt', difficulty: 'master', type: 'dx', achievement: 1_000_000 }]
+      });
+      assert.equal(store.getPublicProfileSettings('user').id, enabled.id);
+
+      assert.equal(await store.disablePublicProfile('user'), true);
+      assert.equal(store.findPublicProfile(enabled.id), null);
+      const reenabled = await store.enablePublicProfile('user');
+      assert.notEqual(reenabled.id, enabled.id);
+    });
+  });
+
   test(`${backend} store replaces pending link sessions and cleans expired/completed data`, async () => {
     await withStore(backend, async (store) => {
       const future = new Date(Date.now() + 60_000).toISOString();

@@ -34,6 +34,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/account link`
 - `/account import provider:<auto|manual|maimaijson|tomomai|mimixd> data:<json-or-base64>`
 - `/account status`
+- `/account public action:<enable|view|disable>`
 - `/account sync`
 - `/account top`
 - `/account recent`
@@ -154,6 +155,7 @@ npm run check
 - `ACCOUNT_LINK_SIGNING_SECRET` (optional, defaults to `ACCOUNT_LINK_SHARED_SECRET`)
 - `ACCOUNT_LINK_DATA_SECRET` (optional, encrypts saved sync auth, defaults to `ACCOUNT_LINK_SHARED_SECRET`)
 - `ACCOUNT_LINK_TTL_MINUTES` (optional, default `15`)
+- `ACCOUNT_PUBLIC_BASE_URL` (optional, public linker profile base URL, for example `https://link.example.com/p`)
 
 ## Using bookmarklet flow
 
