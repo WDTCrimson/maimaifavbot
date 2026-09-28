@@ -5,10 +5,18 @@ import {
   calculateChartRating,
   computeRatingRecommendations,
   getCurrentIntlVersionId,
+  mapRecentDifficultyFromIcon,
   resolvePlayCountDetailLookups,
   resolveChartVersionId,
   reusePreviousPlayCounts
 } from '../src/maimai-intl.js';
+
+test('recent-play difficulty parser distinguishes Re:MASTER from MASTER', () => {
+  assert.equal(mapRecentDifficultyFromIcon('/maimai-mobile/img/diff_remaster.png'), 'remaster');
+  assert.equal(mapRecentDifficultyFromIcon('/maimai-mobile/img/diff_master.png'), 'master');
+  assert.equal(mapRecentDifficultyFromIcon('/maimai-mobile/img/diff_expert.png'), 'expert');
+  assert.equal(mapRecentDifficultyFromIcon('/maimai-mobile/img/unknown.png'), null);
+});
 
 function catalogFixture() {
   return {

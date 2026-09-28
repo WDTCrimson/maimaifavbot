@@ -558,6 +558,16 @@ function mapMusicTypeFromIcon(iconSrc) {
   return null;
 }
 
+export function mapRecentDifficultyFromIcon(iconSrc) {
+  const src = String(iconSrc || '').toLowerCase();
+  if (src.includes('remaster')) return 'remaster';
+  if (src.includes('master')) return 'master';
+  if (src.includes('expert')) return 'expert';
+  if (src.includes('advanced')) return 'advanced';
+  if (src.includes('basic')) return 'basic';
+  return null;
+}
+
 function parseFcFsFromIcons(srcList) {
   let fs = 'none';
   let fc = 'none';
@@ -1057,12 +1067,7 @@ async function fetchRecentPlays(cookies) {
       }
 
       const diffImg = record.find('img.playlog_diff').attr('src') || '';
-      let difficulty = null;
-      if (diffImg.includes('basic')) difficulty = 'basic';
-      else if (diffImg.includes('advanced')) difficulty = 'advanced';
-      else if (diffImg.includes('expert')) difficulty = 'expert';
-      else if (diffImg.includes('master')) difficulty = 'master';
-      else if (diffImg.includes('remaster')) difficulty = 'remaster';
+      const difficulty = mapRecentDifficultyFromIcon(diffImg);
       if (!difficulty) {
         return;
       }
