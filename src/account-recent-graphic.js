@@ -17,6 +17,7 @@ const VERSION_SETTINGS = {
   11: { charScale: 0.70, charLeft: 680, charTop: -100 },
   12: { charScale: 0.60, charLeft: 660, charTop: -30  },
   13: { charScale: 0.65, charLeft: 660, charTop: -30  },
+  14: { charScale: 1.00, charLeft: 700, charTop: -80  },
 };
 
 const BASE_SCORE_PER_TYPE = {
@@ -180,7 +181,7 @@ async function loadCachedImage(path) {
 
 function pickGameVersion(gameVersion) {
   const version = Number(gameVersion);
-  if (Number.isFinite(version) && version >= 10 && version <= 13) {
+  if (Number.isFinite(version) && version >= 10 && version <= 14) {
     return version;
   }
   return 13;
@@ -210,7 +211,7 @@ function mapAccountToSnapshot(account) {
   };
 }
 
-function groupRecentCredits(recentSessions) {
+export function groupRecentCredits(recentSessions) {
   const plays = Array.isArray(recentSessions)
     ? recentSessions
         .map((play, index) => ({ ...play, __index: index }))
@@ -265,20 +266,23 @@ function createTrackPayload(track) {
   };
 }
 
-function buildCreditPayload(account) {
+function buildCreditPayload(account, creditIndex = 0) {
   const credits = groupRecentCredits(account?.recentSessions || []);
   if (!credits.length) {
     return null;
   }
 
-  const latest = credits[0]
+  const selectedIndex = Math.min(Math.max(Number(creditIndex) || 0, 0), credits.length - 1);
+  const selected = credits[selectedIndex]
     .slice()
     .sort((a, b) => Number(a.track) - Number(b.track));
-  const playedAtIso = latest[0]?.playedAtIso || latest[0]?.playedAt || account?.sourceFetchedAt || new Date().toISOString();
+  const playedAtIso = selected[0]?.playedAtIso || selected[0]?.playedAt || account?.sourceFetchedAt || new Date().toISOString();
 
   return {
+    creditIndex: selectedIndex,
+    creditCount: credits.length,
     playedAt: new Date(playedAtIso),
-    tracks: latest.map(createTrackPayload)
+    tracks: selected.map(createTrackPayload)
   };
 }
 
@@ -462,7 +466,7 @@ async function renderBackground(ctx, gameVersion, long) {
     ctx.drawImage(background, 0, 0, CANVAS_WIDTH * 2, canvasHeight * 2, 0, 0, CANVAS_WIDTH, canvasHeight);
   }
 
-  const vs = VERSION_SETTINGS[gameVersion] || VERSION_SETTINGS[13];
+  const vs = VERSION_SETTINGS[gameVersion] || VERSION_SETTINGS[14];
   const charImg = await loadCachedImage(join(ASSET_ROOT, 'character', `${gameVersion}.png`));
   if (charImg) {
     ctx.save();
@@ -907,10 +911,10 @@ function sanitizeFileName(text) {
   return value || 'recent-credit';
 }
 
-export async function renderAccountRecentGraphic({ account }) {
+export async function renderAccountRecentGraphic({ account, creditIndex = 0 }) {
   await registerFonts();
   const snapshot = mapAccountToSnapshot(account);
-  const credit = buildCreditPayload(account);
+  const credit = buildCreditPayload(account, creditIndex);
   if (!credit) {
     throw new Error('No recent credit data available. Run /account sync first.');
   }
@@ -927,6 +931,10 @@ export async function renderAccountRecentGraphic({ account }) {
   const buffer = await canvas.toBuffer('png');
   return {
     buffer,
-    fileName: `${sanitizeFileName(account?.player?.name || 'account')}-recent-credit.png`
+    fileName: `${sanitizeFileName(account?.player?.name || 'account')}-recent-credit-${credit.creditIndex + 1}.png`,
+    creditIndex: credit.creditIndex,
+    creditCount: credit.creditCount,
+    playedAt: credit.playedAt,
+    trackCount: credit.tracks.length
   };
 }

@@ -453,7 +453,7 @@ function parseIntlReleaseDate(value) {
   if (!year || !month || !day) {
     return Number.NaN;
   }
-  return Date.parse(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00+09:00`);
+  return Date.parse(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T07:00:00+09:00`);
 }
 
 export function resolveChartVersionId(version) {
@@ -1784,6 +1784,11 @@ export function computeRatingRecommendations(scores, songCatalog, options = {}) 
       recommendations.push({
         ...score,
         isInBest,
+        bucketLabel: score.bucket === 'new' ? 'B15' : 'B35',
+        bucketTag: score.bucket === 'new' ? 'NEW' : 'OLD',
+        bucketCount: score.bucket === 'new' ? b15.length : b35.length,
+        bucketLimit: score.bucket === 'new' ? 15 : 35,
+        cutoffRating: floor,
         categoryTag: isInBest
           ? (score.bucket === 'new' ? 'B15' : 'B35')
           : (score.bucket === 'new' ? 'NEW' : 'OLD'),

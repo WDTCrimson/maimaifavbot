@@ -3,7 +3,7 @@ import { basename, extname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
-import { renderAccountRecentGraphic } from './account-recent-graphic.js';
+import { groupRecentCredits, renderAccountRecentGraphic } from './account-recent-graphic.js';
 import { renderSongScoreGraphic } from './song-score-graphic.js';
 import { renderPlayCountGraphic } from './playcount-graphic.js';
 import {
@@ -23,6 +23,11 @@ import {
   GapRecommendationSessions,
   parseGapRecommendationCustomId
 } from './account-gap-view.js';
+import {
+  buildRecentCreditNavigation,
+  parseRecentCreditCustomId,
+  RecentCreditSessions
+} from './account-recent-view.js';
 import {
   buildAccountHistorySummary,
   buildAccountProgress,
@@ -85,6 +90,7 @@ if (loadoutStorageStatus.legacySongIdsRemaining > 0) {
 const recommendationCatalog = new RecommendationCatalog(config.recommendationFile, songCatalog);
 await recommendationCatalog.ensureReady();
 const gapRecommendationSessions = new GapRecommendationSessions();
+const recentCreditSessions = new RecentCreditSessions();
 
 if (accountLinkCallbackServerEnabled(config)) {
   await startAccountLinkCallbackServer({
@@ -160,6 +166,25 @@ client.once(Events.ClientReady, (readyClient) => {
   }
 });
 
+const catalogReloadTimer = setInterval(async () => {
+  const result = await songCatalog.reloadIfChanged();
+  if (result.reloaded) {
+    console.log(`Reloaded song catalog: ${result.count} songs`);
+    const recommendationsReloaded = await recommendationCatalog.load();
+    if (!recommendationsReloaded) {
+      console.warn('Song catalog reloaded, but the recommendation catalog could not be rebound.', {
+        error: recommendationCatalog.error?.message || String(recommendationCatalog.error || 'unknown error')
+      });
+    }
+  } else if (result.error) {
+    console.warn('Song catalog refresh detected an unusable update; keeping the last known-good catalog.', {
+      error: result.error.message || String(result.error),
+      count: result.count
+    });
+  }
+}, config.catalogReloadIntervalMinutes * 60 * 1000);
+catalogReloadTimer.unref();
+
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isAutocomplete()) {
     try {
@@ -176,10 +201,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 
   if (interaction.isButton()) {
-    const parsed = parseGapRecommendationCustomId(interaction.customId);
-    if (!parsed) return;
+    const gapControl = parseGapRecommendationCustomId(interaction.customId);
+    const recentControl = parseRecentCreditCustomId(interaction.customId);
+    if (!gapControl && !recentControl) return;
     try {
-      await handleGapRecommendationButton(interaction, parsed);
+      if (gapControl) {
+        await handleGapRecommendationButton(interaction, gapControl);
+      } else {
+        await handleRecentCreditButton(interaction, recentControl);
+      }
     } catch (error) {
       const reference = createPublicErrorCode('BOT');
       logInteractionError(reference, interaction, error);
@@ -363,7 +393,8 @@ async function handleAccountAutocomplete(interaction) {
   if (subcommand === 'progress' && focused.name === 'version') {
     const query = String(focused.value || '').trim().toLowerCase();
     const versions = [...new Set(songCatalog.songs.flatMap((song) =>
-      (song.difficultyLevels || []).map((chart) => chart.version).filter(Boolean)
+      (song.regions && !song.regions.intl ? [] : (song.difficultyLevels || []))
+        .map((chart) => chart.version).filter(Boolean)
     ))]
       .filter((version) => !query || version.toLowerCase().includes(query))
       .sort((a, b) => a.localeCompare(b))
@@ -1263,7 +1294,9 @@ async function handleAccountCommand(interaction) {
             };
           }
 
-          const recentSessions = store.getAccountRecentSessions(userId);
+          const currentRecent = store.getAccountRecentSessions(userId);
+          const recentHistory = store.getAccountRecentHistory(userId, { limit: 200 });
+          const recentSessions = groupRecentCredits(recentHistory).length ? recentHistory : currentRecent;
           if (!recentSessions.length) {
             await replySafely(
               interaction,
@@ -1287,19 +1320,37 @@ async function handleAccountCommand(interaction) {
             };
           }
 
-          const graphic = await renderAccountRecentGraphic({ account: { ...account, recentSessions } });
-          const attachment = new AttachmentBuilder(graphic.buffer, {
-            name: graphic.fileName
-          });
+          const creditCount = groupRecentCredits(recentSessions).length;
+          if (!creditCount) {
+            await replySafely(
+              interaction,
+              'Saved recent plays could not be grouped into credits. Run `/account sync` again.'
+            );
+            return {
+              provider: account.provider || null,
+              trackCount: 0
+            };
+          }
 
-          await replyPayload(interaction, {
-            content: `Generated recent-credit graphic for **${account.player?.name || 'linked account'}**.`,
-            files: [attachment]
+          const sessionId = randomBytes(9).toString('base64url');
+          const session = recentCreditSessions.create(sessionId, {
+            ownerId: interaction.user.id,
+            creditCount,
+            account: {
+              player: account.player,
+              metrics: account.metrics,
+              extra: account.extra,
+              gameVersion: account.gameVersion,
+              sourceFetchedAt: account.sourceFetchedAt,
+              recentSessions
+            }
           });
+          await replyPayload(interaction, await buildRecentCreditPayload(sessionId, session));
 
           return {
             provider: account.provider || null,
-            trackCount: recentSessions.length
+            trackCount: recentSessions.length,
+            creditCount
           };
         }
       );
@@ -2842,11 +2893,18 @@ function formatSongLevels(song) {
 
 function buildSongInfoEmbed(song, imageUrl) {
   const aliases = Array.isArray(song.aliases) ? song.aliases.slice(0, 8) : [];
+  const availability = [
+    song.regions?.jp ? 'JP' : null,
+    song.regions?.intl ? 'International' : null,
+    song.regions?.usa ? 'USA' : null,
+    song.regions?.cn ? 'China' : null
+  ].filter(Boolean);
   const metadataLines = [
-    `ID: ${song.favoriteId}`,
+    song.favoriteId ? `International favorite ID: ${song.favoriteId}` : 'International favorite ID: unavailable',
     song.legacyFavoriteId ? `Legacy ID: ${song.legacyFavoriteId}` : null,
     `Category: ${song.category || 'Unknown'}`,
     `BPM: ${song.bpm ?? 'Unknown'}`,
+    `Availability: ${availability.join(', ') || 'Unknown'}`,
     `Levels: ${formatSongLevels(song)}`
   ].filter(Boolean);
 
@@ -3814,6 +3872,54 @@ async function handleGapRecommendationButton(interaction, { sessionId, action })
   });
 }
 
+async function buildRecentCreditPayload(sessionId, session) {
+  const graphic = await renderAccountRecentGraphic({
+    account: session.account,
+    creditIndex: session.creditIndex
+  });
+  const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
+  const timestamp = Number.isNaN(graphic.playedAt.getTime())
+    ? null
+    : formatDateTime(graphic.playedAt.toISOString());
+  const position = `${graphic.creditIndex + 1}/${graphic.creditCount}`;
+  return {
+    content: [
+      `Recent credit **${position}** for **${session.account?.player?.name || 'linked account'}**`,
+      timestamp ? `Played: ${timestamp}` : null
+    ].filter(Boolean).join('\n'),
+    components: graphic.creditCount > 1
+      ? [buildRecentCreditNavigation(sessionId, graphic.creditIndex, graphic.creditCount)]
+      : [],
+    files: [attachment]
+  };
+}
+
+async function handleRecentCreditButton(interaction, { sessionId, action }) {
+  const session = recentCreditSessions.get(sessionId);
+  if (!session) {
+    await interaction.reply({
+      content: 'These recent-credit controls have expired. Run `/account recent` again.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+  if (interaction.user.id !== session.ownerId) {
+    await interaction.reply({
+      content: 'Only the person who requested this recent-credit graphic can change the page.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  recentCreditSessions.move(sessionId, action);
+  await interaction.deferUpdate();
+  const payload = await buildRecentCreditPayload(sessionId, session);
+  await interaction.editReply({
+    ...payload,
+    attachments: []
+  });
+}
+
 async function replySongAdded(interaction, { playlist, song, songId }) {
   const artwork = await resolveArtworkAttachment(song);
   const embed = createSongEmbed(song, playlist, artwork?.imageUrl);
@@ -3832,12 +3938,19 @@ async function replySongAdded(interaction, { playlist, song, songId }) {
 
 function createSongEmbed(song, playlist, imageUrl, target = null) {
   const chartSummary = buildChartSummary(song);
+  const availability = [
+    song.regions?.jp ? 'JP' : null,
+    song.regions?.intl ? 'International' : null,
+    song.regions?.usa ? 'USA' : null,
+    song.regions?.cn ? 'China' : null
+  ].filter(Boolean).join(', ') || 'Unknown';
   const embed = new EmbedBuilder()
     .setColor(0x4f46e5)
     .setTitle(song.title)
     .setDescription(song.artist || 'Unknown artist')
     .addFields(
       { name: 'Playlist', value: `${playlist.name} (${playlist.songs.length}/30)` },
+      { name: 'Availability', value: availability },
       { name: 'Charts', value: chartSummary.join('\n') },
       { name: 'Target', value: formatPlaylistTarget(target) }
     );

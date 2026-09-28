@@ -70,6 +70,7 @@ const VERSION_SETTINGS = {
   11: { charScale: 0.70, charLeft: 680, charTop: -100 },
   12: { charScale: 0.60, charLeft: 660, charTop: -30  },
   13: { charScale: 0.65, charLeft: 660, charTop: -30  },
+  14: { charScale: 1.00, charLeft: 700, charTop: -80  },
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -293,7 +294,7 @@ async function drawBackground(ctx, v, totalH) {
     ctx.fillRect(0, 0, W, totalH);
   }
 
-  const vs = VERSION_SETTINGS[v] || VERSION_SETTINGS[13];
+  const vs = VERSION_SETTINGS[v] || VERSION_SETTINGS[14];
   const charImg = await loadCached(join(THEME_DIR, `character-${v}.png`));
   if (charImg) {
     ctx.save();
@@ -558,7 +559,7 @@ export async function renderLevelSummaryGraphic({ account, scores, difficulty, l
   await registerFonts();
 
   const gameVersion = Number(account?.gameVersion) || 13;
-  const v = Math.min(Math.max(Math.floor(gameVersion), 10), 13);
+  const v = Math.min(Math.max(Math.floor(gameVersion), 10), 14);
 
   const inBracket = parseLevelBracket(levelBracket);
   const diff = String(difficulty || 'master').toLowerCase();

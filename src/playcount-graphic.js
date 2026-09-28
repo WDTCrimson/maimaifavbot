@@ -130,7 +130,7 @@ function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
 // ─── Background ───────────────────────────────────────────────────────────────
 
 async function drawBackground(ctx, gameVersion, totalH) {
-  const v = Math.min(Math.max(Math.floor(Number(gameVersion) || 13), 10), 13);
+  const v = Math.min(Math.max(Math.floor(Number(gameVersion) || 13), 10), 14);
   const bgImg = await loadCached(join(TOMOMAI, 'bg', `${v}.png`));
   if (bgImg) {
     const scale = W / bgImg.width;
@@ -440,7 +440,7 @@ export async function renderPlayCountGraphic({ account, entries }) {
   }
 
   const gameVersion = Number(account?.gameVersion) || 13;
-  const badgeVer    = Math.min(Math.max(Math.floor(gameVersion), 10), 13);
+  const badgeVer    = Math.min(Math.max(Math.floor(gameVersion), 10), 14);
 
   const HDR_H   = 36;
   const n       = entries.length;

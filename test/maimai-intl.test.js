@@ -66,7 +66,8 @@ test('version resolution handles aliases and release boundaries', () => {
   assert.equal(resolveChartVersionId(' PRiSM Plus '), 11);
   assert.equal(resolveChartVersionId('maimai DX'), 0);
   assert.equal(resolveChartVersionId('unknown'), null);
-  assert.equal(getCurrentIntlVersionId(Date.parse('2026-07-22T00:00:00Z')), 12);
+  assert.equal(getCurrentIntlVersionId(Date.parse('2026-07-22T21:59:59Z')), 12);
+  assert.equal(getCurrentIntlVersionId(Date.parse('2026-07-22T22:00:00Z')), 13);
   assert.equal(getCurrentIntlVersionId(Date.parse('2026-07-24T00:00:00Z')), 13);
   assert.equal(getCurrentIntlVersionId(Date.parse('2010-01-01T00:00:00Z')), null);
 });
@@ -93,6 +94,9 @@ test('rating recommendations report the actual gain for a chart already in B15',
   assert.equal(recommendations.length, 1);
   assert.equal(recommendations[0].title, 'New Song');
   assert.equal(recommendations[0].categoryTag, 'B15');
+  assert.equal(recommendations[0].bucketTag, 'NEW');
+  assert.equal(recommendations[0].bucketLabel, 'B15');
+  assert.equal(recommendations[0].isInBest, true);
   assert.equal(recommendations[0].targetLabel, '100.50%');
   assert.equal(
     recommendations[0].ratingGain,
@@ -132,6 +136,9 @@ test('rating recommendations use the matching B15 floor and reject targets with 
 
   assert.ok(newOutside);
   assert.equal(newOutside.categoryTag, 'NEW');
+  assert.equal(newOutside.bucketLabel, 'B15');
+  assert.equal(newOutside.cutoffRating, 216);
+  assert.equal(newOutside.isInBest, false);
   assert.equal(newOutside.targetLabel, '97.00%');
   assert.equal(newOutside.ratingGain, newOutside.targetRating - 216);
   assert.ok(oldOutside);

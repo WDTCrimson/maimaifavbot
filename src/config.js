@@ -58,6 +58,7 @@ export const config = {
   sqliteFile: process.env.SQLITE_FILE?.trim() || './data/loadouts.sqlite',
   usageLogDir: process.env.USAGE_LOG_DIR?.trim() || './logs',
   songCatalogFile: process.env.SONG_CATALOG_FILE?.trim() || './data/import/songs.normalized.json',
+  catalogReloadIntervalMinutes: parseOptionalInteger('CATALOG_RELOAD_INTERVAL_MINUTES', 5),
   songAliasFile: process.env.SONG_ALIAS_FILE?.trim() || './data/reference/song-aliases.json',
   recommendationFile:
     process.env.RECOMMENDATION_FILE?.trim() || './data/recommendations/community.json',

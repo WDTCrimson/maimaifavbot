@@ -406,6 +406,31 @@ node scripts/import-maimai-data.js --skip-logos
 node scripts/import-maimai-data.js --skip-data
 ```
 
+The normalized catalog retains per-song `jp`, `intl`, `usa`, and `cn` availability. JP-only releases are searchable immediately, but their region metadata remains distinct so they are not treated as International availability.
+
+### Automatic catalog refresh
+
+The running bot checks `SONG_CATALOG_FILE` every five minutes by default and atomically installs a changed catalog. A malformed update, or one that unexpectedly removes more than 10% of the known songs, is rejected while the last known-good catalog remains active.
+
+Install the supplied systemd timer to fetch source data and any missing jackets twice daily:
+
+```bash
+sudo install -m 0644 maimai-catalog-refresh.service /etc/systemd/system/
+sudo install -m 0644 maimai-catalog-refresh.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now maimai-catalog-refresh.timer
+sudo systemctl start maimai-catalog-refresh.service
+```
+
+Inspect it with:
+
+```bash
+systemctl list-timers maimai-catalog-refresh.timer
+journalctl -u maimai-catalog-refresh.service -n 100 --no-pager
+```
+
+Change the bot-side file polling interval with `CATALOG_RELOAD_INTERVAL_MINUTES`. The timer imports both International and JP-only entries from the upstream datasets; no bot restart is required after a successful refresh.
+
 ## Customize graphic assets
 
 `/playlist graphic` can use custom assets from `GRAPHIC_THEME_DIR` (default `data/theme/tomomai/` when available).

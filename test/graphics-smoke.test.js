@@ -3,9 +3,11 @@ import assert from 'node:assert/strict';
 import { renderPlayCountGraphic } from '../src/playcount-graphic.js';
 import { renderPlaylistTargetGraphic } from '../src/playlist-target-graphic.js';
 import { renderSongScoreGraphic } from '../src/song-score-graphic.js';
+import { renderAccountB50Graphic } from '../src/account-b50-graphic.js';
+import { renderAccountRecentGraphic } from '../src/account-recent-graphic.js';
 
 const account = {
-  gameVersion: 13,
+  gameVersion: 14,
   player: { name: 'Test Player' },
   metrics: { rating: 15000 },
   rating: 15000
@@ -64,4 +66,25 @@ test('playlist target renderer produces a themed PNG without requiring a jacket'
     }]
   });
   assertPng(result, 'my-goals-targets.png');
+});
+
+test('version 14 account graphics use the staged MAGiCAL assets', async () => {
+  const b50 = await renderAccountB50Graphic({
+    account: { ...account, best50: { b15: [], b35: [] } },
+    songCatalog: { getByFavoriteId: () => null }
+  });
+  assertPng(b50, 'Test-Player-b50.png');
+
+  const recent = await renderAccountRecentGraphic({
+    account: {
+      ...account,
+      recentSessions: [{
+        title: 'Prototype', track: 1, difficulty: 'master', type: 'dx', level: '14',
+        achievement: 1_005_000, dxScore: 1000, maxDxScore: 1000, fc: 'ap', fs: 'fdx',
+        playedAtIso: '2026-09-28T07:00:00+09:00'
+      }]
+    }
+  });
+  assertPng(recent, 'Test-Player-recent-credit-1.png');
+  assert.equal(recent.creditCount, 1);
 });

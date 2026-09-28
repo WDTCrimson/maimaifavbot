@@ -242,7 +242,7 @@ function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r);
 // ─── Background ───────────────────────────────────────────────────────────────
 
 async function drawBackground(ctx, gameVersion, totalH) {
-  const v = Math.min(Math.max(Math.floor(Number(gameVersion) || 13), 10), 13);
+  const v = Math.min(Math.max(Math.floor(Number(gameVersion) || 13), 10), 14);
   const bgImg = await loadCached(join(TOMOMAI, 'bg', `${v}.png`));
 
   if (bgImg) {
@@ -662,7 +662,7 @@ export async function renderSongScoreGraphic({ account, song, scores }) {
   }
 
   const gameVersion = Number(account?.gameVersion) || 13;
-  const badgeVer    = Math.min(Math.max(Math.floor(gameVersion), 10), 13);
+  const badgeVer    = Math.min(Math.max(Math.floor(gameVersion), 10), 14);
 
   const n      = scores.length;
   const totalH = PLAYER_H + GAP + SONG_H + GAP + n * ROW_H + (n - 1) * GAP + BOTTOM_PAD;

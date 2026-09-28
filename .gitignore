@@ -8,6 +8,27 @@ data/*.sqlite
 data/*.sqlite-*
 data/import/
 data/assets/
+# Keep the version-14 Tomomai render prototype deployable without vendoring every asset pack.
+!data/assets/
+data/assets/*
+!data/assets/tomomai/
+data/assets/tomomai/*
+!data/assets/tomomai/res/
+data/assets/tomomai/res/*
+!data/assets/tomomai/res/badge/
+data/assets/tomomai/res/badge/*
+!data/assets/tomomai/res/badge/14/
+!data/assets/tomomai/res/badge/14/*.png
+!data/assets/tomomai/res/bg/
+data/assets/tomomai/res/bg/*
+!data/assets/tomomai/res/bg/14.png
+!data/assets/tomomai/res/bg/14_long.png
+!data/assets/tomomai/res/character/
+data/assets/tomomai/res/character/*
+!data/assets/tomomai/res/character/14.png
+!data/assets/tomomai/res/logo/
+data/assets/tomomai/res/logo/*
+!data/assets/tomomai/res/logo/14.png
 data/recommendations/import-report.json
 data/recommendations/sources.json
 data/recommendation-worker-reports/
@@ -37,4 +58,5 @@ COMMANDS_REVIEW.local.md
 PLANNING.local.md
 *.service
 !maimai-recommendation-worker.service
+!maimai-catalog-refresh.service
 list.html

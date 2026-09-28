@@ -316,7 +316,9 @@ function scoreSong(song, query) {
 }
 
 function buildSongLabel(song) {
-  const prefix = `[${song.favoriteId}]`;
+  const prefix = song.favoriteId
+    ? `[${song.favoriteId}]`
+    : (song.regions?.jp && !song.regions?.intl ? '[JP]' : '[CAT]');
   const body = `${song.title} - ${song.artist}`;
   return truncate(`${prefix} ${body}`, 100);
 }
@@ -496,6 +498,8 @@ export class SongCatalog {
     this.byNormTitleArtist = new Map();
     this.byAlias = new Map();
     this.searchCache = new Map();
+    this.contentHash = null;
+    this.generatedAt = null;
   }
 
   async ensureReady() {
@@ -536,10 +540,6 @@ export class SongCatalog {
         const playlistKey = `${normalizeText(sourceSong.title)}::${normalizeText(sourceSong.artist)}`;
         const legacyFavoriteId = normalizeFavoriteId(playlistIdMap.get(playlistKey));
         const favoriteId = resolveStableFavoriteId(sourceSong);
-        if (!favoriteId) {
-          continue;
-        }
-
         const title = String(sourceSong.title || '').trim();
         const artist = String(sourceSong.artist || '').trim();
         if (!title) {
@@ -558,6 +558,12 @@ export class SongCatalog {
           artist: artist || 'Unknown',
           bpm: sourceSong.bpm ?? null,
           category: sourceSong.category ?? null,
+          regions: {
+            jp: Boolean(sourceSong.regions?.jp),
+            intl: Boolean(sourceSong.regions?.intl),
+            usa: Boolean(sourceSong.regions?.usa),
+            cn: Boolean(sourceSong.regions?.cn)
+          },
           jacket: {
             dxratingFile: sourceSong.jacket?.dxratingFile || null,
             otogeFile: sourceSong.jacket?.otogeFile || null
@@ -573,13 +579,17 @@ export class SongCatalog {
         const existing = bySongId.get(song.songId);
         if (!existing || song.difficultyLevels.length > existing.difficultyLevels.length) {
           if (existing) {
-            byFavoriteId.delete(existing.favoriteId);
+            if (existing.favoriteId) {
+              byFavoriteId.delete(existing.favoriteId);
+            }
             if (existing.legacyFavoriteId) {
               byLegacyFavoriteId.delete(existing.legacyFavoriteId);
             }
           }
           bySongId.set(song.songId, song);
-          byFavoriteId.set(favoriteId, song);
+          if (favoriteId) {
+            byFavoriteId.set(favoriteId, song);
+          }
           if (song.legacyFavoriteId) {
             byLegacyFavoriteId.set(song.legacyFavoriteId, song);
           }
@@ -644,6 +654,8 @@ export class SongCatalog {
       this.byNormTitleArtist = byNormTitleArtist;
       this.byAlias = byAlias;
       this.searchCache = new Map();
+      this.contentHash = createHash('sha256').update(raw, 'utf8').digest('hex');
+      this.generatedAt = parsed?.generatedAt || null;
       this.available = true;
       this.error = null;
     } catch (error) {
@@ -659,6 +671,52 @@ export class SongCatalog {
       this.songs = [];
     } finally {
       this.loaded = true;
+    }
+  }
+
+  async reloadIfChanged() {
+    try {
+      const raw = await readFile(this.filePath, 'utf8');
+      const nextHash = createHash('sha256').update(raw, 'utf8').digest('hex');
+      if (nextHash === this.contentHash) {
+        return { changed: false, reloaded: false, count: this.count, hash: nextHash };
+      }
+
+      const candidate = new SongCatalog(this.filePath);
+      candidate.playlistIdMapFile = this.playlistIdMapFile;
+      candidate.aliasFile = this.aliasFile;
+      await candidate.load();
+      if (!candidate.available) {
+        this.error = candidate.error;
+        return { changed: true, reloaded: false, count: this.count, hash: this.contentHash, error: candidate.error };
+      }
+
+      const minimumCount = this.available ? Math.floor(this.count * 0.9) : 1;
+      if (candidate.count < minimumCount) {
+        const error = new Error(
+          `Refusing catalog reload that shrinks from ${this.count} to ${candidate.count} songs.`
+        );
+        this.error = error;
+        return { changed: true, reloaded: false, count: this.count, hash: this.contentHash, error };
+      }
+
+      this.songs = candidate.songs;
+      this.bySongId = candidate.bySongId;
+      this.byFavoriteId = candidate.byFavoriteId;
+      this.byLegacyFavoriteId = candidate.byLegacyFavoriteId;
+      this.byNormTitle = candidate.byNormTitle;
+      this.byNormTitleArtist = candidate.byNormTitleArtist;
+      this.byAlias = candidate.byAlias;
+      this.searchCache = new Map();
+      this.contentHash = candidate.contentHash;
+      this.generatedAt = candidate.generatedAt;
+      this.loaded = true;
+      this.available = true;
+      this.error = null;
+      return { changed: true, reloaded: true, count: this.count, hash: this.contentHash };
+    } catch (error) {
+      this.error = error;
+      return { changed: false, reloaded: false, count: this.count, hash: this.contentHash, error };
     }
   }
 

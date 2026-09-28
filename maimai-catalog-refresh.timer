@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh MaiDeck song catalog twice daily
+
+[Timer]
+OnCalendar=*-*-* 00,12:15:00 UTC
+Persistent=true
+RandomizedDelaySec=30min
+Unit=maimai-catalog-refresh.service
+
+[Install]
+WantedBy=timers.target

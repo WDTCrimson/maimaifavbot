@@ -15,6 +15,13 @@ function recommendation(overrides = {}) {
     internalLevelValue: 13.6,
     achievement: 1_004_726,
     rating: 295,
+    bucket: 'new',
+    bucketTag: 'NEW',
+    bucketLabel: 'B15',
+    bucketCount: 15,
+    bucketLimit: 15,
+    cutoffRating: 290,
+    isInBest: true,
     targetLabel: 'SSS+',
     targetAchievement: 1_005_000,
     targetRating: 306,
@@ -40,6 +47,7 @@ test('buildGapRecommendationPage renders five jacket-backed cards and navigation
   assert.equal(page.embeds[0].data.description, 'DX MASTER • Lv 13.6');
   assert.equal(page.embeds[0].data.fields[0].value, '100.4726% (295)');
   assert.equal(page.embeds[0].data.fields[1].value, '100.5000% (306)\n**+5 rating**');
+  assert.equal(page.embeds[0].data.fields[2].value, 'NEW • Already in B15');
   assert.equal(page.embeds[0].data.thumbnail.url, 'attachment://song-1.png');
   assert.equal(page.components.length, 1);
 
@@ -48,6 +56,16 @@ test('buildGapRecommendationPage renders five jacket-backed cards and navigation
   assert.equal(controls[0].disabled, true);
   assert.equal(controls[2].label, '1/2');
   assert.equal(controls[3].disabled, false);
+});
+
+test('buildGapRecommendationPage explains entry and replacement cutoff', () => {
+  const page = buildGapRecommendationPage({
+    sessionId: 'abcdefgh',
+    playerName: 'Player',
+    suggestions: [recommendation({ isInBest: false, categoryTag: 'NEW', cutoffRating: 290 })]
+  });
+
+  assert.equal(page.embeds[0].data.fields[2].value, 'NEW • Enters B15\nReplaces cutoff: 290');
 });
 
 test('buildGapRecommendationPage preserves numbering and Re:MASTER styling across pages', () => {

@@ -29,10 +29,14 @@ Then restart bot and run:
 
 ## Extra version assets copied
 
-- `bg-10.png`, `bg-11.png`, `bg-12.png`, `bg-13.png`
-- `bg-11-long.png`, `bg-12-long.png`, `bg-13-long.png`
-- `logo-10.png`, `logo-11.png`, `logo-12.png`, `logo-13.png`
-- `character-10.png`, `character-11.png`, `character-12.png`, `character-13.png`
+- `bg-10.png`, `bg-11.png`, `bg-12.png`, `bg-13.png`, `bg-14.png`
+- `bg-11-long.png`, `bg-12-long.png`, `bg-13-long.png`, `bg-14-long.png`
+- `logo-10.png`, `logo-11.png`, `logo-12.png`, `logo-13.png`, `logo-14.png`
+- `character-10.png`, `character-11.png`, `character-12.png`, `character-13.png`, `character-14.png`
+
+Version 14 is staged for MAGiCAL prototyping. It is selected only when a snapshot explicitly reports game version 14; current International profiles remain on CiRCLE PLUS assets.
+
+The MAGiCAL files were copied from sibling Tomomai commit `4390db9d` (`apps/render/public/res`). Tomomai is AGPL-3.0; maimai artwork and branding remain third-party SEGA material. Keep this provenance note with redistributed copies.
 
 ## Fonts
 

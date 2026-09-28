@@ -36,6 +36,26 @@ function formatInternalLevel(value, fallback = '?') {
   return Number.isFinite(numeric) ? numeric.toFixed(1) : String(fallback || '?');
 }
 
+function formatB50Impact(entry) {
+  const bucketLabel = entry.bucketLabel || (entry.bucket === 'new' ? 'B15' : 'B35');
+  const bucketTag = entry.bucketTag || (entry.bucket === 'new' ? 'NEW' : 'OLD');
+  if (entry.isInBest) {
+    return `${bucketTag} • Already in ${bucketLabel}`;
+  }
+
+  const cutoff = Number(entry.cutoffRating);
+  if (Number.isFinite(cutoff) && cutoff > 0) {
+    return `${bucketTag} • Enters ${bucketLabel}\nReplaces cutoff: ${Math.round(cutoff)}`;
+  }
+
+  const count = Number(entry.bucketCount);
+  const limit = Number(entry.bucketLimit);
+  const availableSlot = Number.isFinite(count) && Number.isFinite(limit)
+    ? ` (${Math.round(count)}/${Math.round(limit)} filled)`
+    : '';
+  return `${bucketTag} • Enters ${bucketLabel}${availableSlot}`;
+}
+
 function recommendationCustomId(sessionId, action) {
   return `gap:${sessionId}:${action}`;
 }
@@ -108,6 +128,11 @@ export function buildGapRecommendationPage({
           name: 'Target',
           value: `${targetScore} (${Math.round(Number(entry.targetRating) || 0)})\n**+${Math.round(Number(entry.ratingGain) || 0)} rating**`,
           inline: true
+        },
+        {
+          name: 'B50 impact',
+          value: formatB50Impact(entry),
+          inline: false
         }
       );
     const imageUrl = imageUrls.get(globalIndex);

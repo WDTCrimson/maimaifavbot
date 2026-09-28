@@ -1,0 +1,25 @@
+[Unit]
+Description=Refresh MaiDeck song catalog and missing jacket assets
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=crimson
+Group=crimson
+WorkingDirectory=/home/crimson/maimaifavbot
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/flock -n /var/lib/maimai-fav-bot/catalog-refresh.lock /usr/bin/env node scripts/import-maimai-data.js --skip-logos
+TimeoutStartSec=60min
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+StateDirectory=maimai-fav-bot
+StateDirectoryMode=0750
+ReadWritePaths=/home/crimson/maimaifavbot/data /var/lib/maimai-fav-bot
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

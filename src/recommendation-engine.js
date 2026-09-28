@@ -68,7 +68,9 @@ export function resolvePlayerScores(scores, songCatalog) {
 
 function catalogConstantBounds(songCatalog) {
   const constants = songCatalog.songs.flatMap((song) =>
-    (song.difficultyLevels || []).map((chart) => finiteNumber(chart.internalLevelValue)).filter((value) => value != null)
+    (song.regions && !song.regions.intl ? [] : (song.difficultyLevels || []))
+      .map((chart) => finiteNumber(chart.internalLevelValue))
+      .filter((value) => value != null)
   );
   return {
     min: constants.length ? Math.min(...constants) : 1,
@@ -179,6 +181,7 @@ function buildDiscoveryCandidates({ resolvedScores, catalog, range, focus }) {
   const candidates = [];
   for (const entry of catalog.entries) {
     if (!activeEvidence(entry) || played.has(entry.key) || !inRange(entry.constant, range)) continue;
+    if (entry.song.regions && !entry.song.regions.intl) continue;
     if (focus && !entry.tags.includes(normalizeText(focus))) continue;
     const levelFit = 1 - Math.min(Math.abs(entry.constant - midpoint) / denominator, 1);
     candidates.push({

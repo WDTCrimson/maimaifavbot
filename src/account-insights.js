@@ -97,6 +97,7 @@ export function buildAccountProgress(scores, songCatalog, options = {}) {
 
   const catalogCharts = [];
   for (const song of songCatalog.songs) {
+    if (song.regions && !song.regions.intl) continue;
     for (const chart of song.difficultyLevels || []) {
       const difficulty = normalizeDifficulty(chart.difficulty);
       if (!MAIN_DIFFICULTIES.includes(difficulty) || !chart.version) continue;
