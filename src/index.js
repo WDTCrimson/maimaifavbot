@@ -1,5 +1,5 @@
-import { appendFile, mkdir, stat } from 'node:fs/promises';
-import { basename, join } from 'node:path';
+import { appendFile, mkdir, readFile, stat } from 'node:fs/promises';
+import { basename, extname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
@@ -93,8 +93,26 @@ if (accountLinkCallbackServerEnabled(config)) {
       return buildPublicProfilePayload({
         account: match.account,
         scores: store.getAccountScores(match.userId, match.profileName),
+        recentPlays: store.getAccountRecentHistory(match.userId, { limit: 24 }, match.profileName),
         songCatalog
       });
+    },
+    getPublicJacket: async (songId) => {
+      const song = songCatalog.getBySongId(songId);
+      const candidates = [
+        song?.jacket?.dxratingFile ? join(process.cwd(), 'data', 'assets', 'jacket', 'dxrating', basename(song.jacket.dxratingFile)) : null,
+        song?.jacket?.otogeFile ? join(process.cwd(), 'data', 'assets', 'jacket', 'otoge-db', basename(song.jacket.otogeFile)) : null
+      ].filter(Boolean);
+      for (const filePath of candidates) {
+        try {
+          const data = await readFile(filePath);
+          const extension = extname(filePath).toLowerCase();
+          return { data, contentType: extension === '.png' ? 'image/png' : 'image/jpeg' };
+        } catch (error) {
+          if (error?.code !== 'ENOENT') throw error;
+        }
+      }
+      return null;
     },
     prepareLinkedAuth: (rawAuth) => {
       if (!config.accountLinkDataSecret) {

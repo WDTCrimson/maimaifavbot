@@ -64,6 +64,9 @@ test('callback server returns only enabled public profile payloads to the linker
     sharedSecret: 'shared', store, normalizeImportedAccountSnapshot: (value) => value,
     getPublicProfile: (id) => id === 'abcdefghijklmnopqrstuvwx'
       ? { player: { name: 'Alice' }, songs: [] }
+      : null,
+    getPublicJacket: (songId) => songId === 'song:1234567890abcdef'
+      ? { data: Buffer.from('jacket-bytes'), contentType: 'image/jpeg' }
       : null
   }, async (base) => {
     const unauthorized = await responseJson(`${base}/public-profile/abcdefghijklmnopqrstuvwx`);
@@ -80,6 +83,15 @@ test('callback server returns only enabled public profile payloads to the linker
       headers: { 'x-account-link-secret': 'shared' }
     });
     assert.equal(missing.response.status, 404);
+
+    const unauthorizedJacket = await fetch(`${base}/public-jacket/song%3A1234567890abcdef`);
+    assert.equal(unauthorizedJacket.status, 401);
+    const jacket = await fetch(`${base}/public-jacket/song%3A1234567890abcdef`, {
+      headers: { 'x-account-link-secret': 'shared' }
+    });
+    assert.equal(jacket.status, 200);
+    assert.equal(jacket.headers.get('content-type'), 'image/jpeg');
+    assert.equal(await jacket.text(), 'jacket-bytes');
   });
 });
 

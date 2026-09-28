@@ -92,6 +92,7 @@ export async function startAccountLinkCallbackServer({
   store,
   normalizeImportedAccountSnapshot,
   getPublicProfile = null,
+  getPublicJacket = null,
   prepareLinkedAuth,
   logger = console
 }) {
@@ -122,6 +123,33 @@ export async function startAccountLinkCallbackServer({
       } catch (error) {
         const reference = createCallbackErrorCode();
         logger.error(`[${reference}] Public profile callback error:`, error);
+        writeJson(response, 500, { ok: false, error: 'Request failed.', code: reference });
+      }
+      return;
+    }
+
+    if (method === 'GET' && url.pathname.startsWith('/public-jacket/')) {
+      const providedSecret = String(request.headers['x-account-link-secret'] || '').trim();
+      if (!providedSecret || providedSecret !== sharedSecret) {
+        writeJson(response, 401, { ok: false, error: 'Unauthorized.', code: 'CALLBACK-UNAUTHORIZED' });
+        return;
+      }
+      const songId = decodeURIComponent(url.pathname.slice('/public-jacket/'.length));
+      try {
+        const jacket = getPublicJacket ? await getPublicJacket(songId) : null;
+        if (!jacket?.data) {
+          writeJson(response, 404, { ok: false, error: 'Not found.', code: 'PUBLIC-JACKET-NOT-FOUND' });
+          return;
+        }
+        response.writeHead(200, {
+          'content-type': jacket.contentType || 'application/octet-stream',
+          'content-length': jacket.data.length,
+          'cache-control': 'private, max-age=86400'
+        });
+        response.end(jacket.data);
+      } catch (error) {
+        const reference = createCallbackErrorCode();
+        logger.error(`[${reference}] Public jacket callback error:`, error);
         writeJson(response, 500, { ok: false, error: 'Request failed.', code: reference });
       }
       return;

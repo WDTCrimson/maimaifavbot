@@ -58,6 +58,50 @@ function findSong(songCatalog, score) {
   return songCatalog.getUniqueByNormalizedTitle(score?.title) || null;
 }
 
+function publicAvatarUrl(account) {
+  const value = account?.extra?.iconUrl || account?.player?.iconUrl;
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || !['maimaidx-eng.com', 'www.maimaidx-eng.com'].includes(url.hostname)) {
+      return null;
+    }
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function publicRecentPlay(play, songCatalog) {
+  const type = normalizeChartType(play?.type);
+  const difficulty = normalizeDifficulty(play?.difficulty);
+  const title = String(play?.title || '').trim();
+  if (!type || !difficulty || !title) return null;
+  const song = findSong(songCatalog, play);
+  const fastCount = finiteNumber(play?.details?.fastCount);
+  const lateCount = finiteNumber(play?.details?.lateCount);
+  return {
+    songId: song?.songId || null,
+    hasJacket: Boolean(song?.jacket?.dxratingFile || song?.jacket?.otogeFile),
+    title: song?.title || title,
+    artist: song?.artist || play?.artist || null,
+    type,
+    difficulty,
+    level: play?.level || null,
+    achievement: finiteNumber(play?.achievement),
+    achievementRank: achievementRank(finiteNumber(play?.achievement)),
+    dxScore: finiteNumber(play?.dxScore),
+    maxDxScore: finiteNumber(play?.maxDxScore),
+    fc: play?.fc || null,
+    fs: play?.fs || null,
+    track: finiteNumber(play?.track),
+    playedAt: play?.playedAtIso || play?.playedAt || null,
+    fastCount,
+    lateCount,
+    ratingChange: finiteNumber(play?.details?.ratingChange)
+  };
+}
+
 function publicChart(score, fallback = {}) {
   const achievement = finiteNumber(score?.achievement);
   return {
@@ -102,7 +146,7 @@ function compareCharts(a, b) {
   return (DIFFICULTY_ORDER.get(a.difficulty) ?? 99) - (DIFFICULTY_ORDER.get(b.difficulty) ?? 99);
 }
 
-export function buildPublicProfilePayload({ account, scores, songCatalog }) {
+export function buildPublicProfilePayload({ account, scores, recentPlays = [], songCatalog }) {
   const groups = new Map();
 
   for (const score of Array.isArray(scores) ? scores : []) {
@@ -117,6 +161,7 @@ export function buildPublicProfilePayload({ account, scores, songCatalog }) {
     if (!group) {
       group = {
         songId: song?.songId || null,
+        hasJacket: Boolean(song?.jacket?.dxratingFile || song?.jacket?.otogeFile),
         title: song?.title || title,
         artist: song?.artist || score?.artist || null,
         category: song?.category || null,
@@ -143,6 +188,7 @@ export function buildPublicProfilePayload({ account, scores, songCatalog }) {
     const charts = [...group.charts.values()].sort(compareCharts);
     return {
       songId: group.songId,
+      hasJacket: group.hasJacket,
       title: group.title,
       artist: group.artist,
       category: group.category,
@@ -158,8 +204,10 @@ export function buildPublicProfilePayload({ account, scores, songCatalog }) {
     player: {
       name: account?.player?.name || 'Player',
       region: account?.player?.region || account?.region || null,
-      title: account?.player?.title || account?.title || null
+      title: account?.extra?.title || account?.player?.title || account?.title || null,
+      avatarUrl: publicAvatarUrl(account)
     },
+    gameVersion: finiteNumber(account?.gameVersion),
     metrics: {
       rating: finiteNumber(account?.metrics?.rating ?? account?.rating),
       playCount: finiteNumber(account?.metrics?.playCount ?? account?.playCount),
@@ -167,7 +215,10 @@ export function buildPublicProfilePayload({ account, scores, songCatalog }) {
       playedChartCount: songs.reduce((sum, song) => sum + song.playedChartCount, 0)
     },
     updatedAt: account?.sourceFetchedAt || account?.updatedAt || null,
+    recentPlays: (Array.isArray(recentPlays) ? recentPlays : [])
+      .map((play) => publicRecentPlay(play, songCatalog))
+      .filter(Boolean)
+      .slice(0, 24),
     songs
   };
 }
-
