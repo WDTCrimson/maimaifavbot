@@ -131,6 +131,7 @@ for (const backend of ['json', 'sqlite']) {
       assert.equal(store.getPendingAccountLinkSessionForUser('user').token, 'second');
       assert.equal(store.getPendingAccountLinkSessionForUser('user').profileName, 'friend');
 
+      await store.save();
       const reloaded = new LoadoutStore(
         { backend, jsonFile: paths.jsonFile, sqliteFile: paths.sqliteFile }, LIMITS
       );

@@ -1778,7 +1778,9 @@ class SqliteStoreBackend {
       'INSERT INTO playlist_targets (user_id, loadout_key, song_id, achievement_rate, difficulty, chart_type, combo_flag) VALUES (?, ?, ?, ?, ?, ?, ?)'
     );
     const insertSession = this.db.prepare(
-      'INSERT INTO account_link_sessions (token, user_id, status, created_at, expires_at) VALUES (?, ?, ?, ?, ?)'
+      `INSERT INTO account_link_sessions (
+        token, user_id, profile_name, status, created_at, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?)`
     );
 
     const persist = this.db.transaction((snapshot) => {
@@ -1842,6 +1844,7 @@ class SqliteStoreBackend {
         insertSession.run(
           session.token,
           session.userId,
+          session.profileName || DEFAULT_PROFILE,
           session.status,
           session.createdAt,
           session.expiresAt
