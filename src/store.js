@@ -725,6 +725,7 @@ class SqliteStoreBackend {
       CREATE TABLE IF NOT EXISTS account_link_sessions (
         token TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
+        profile_name TEXT NOT NULL DEFAULT 'default',
         status TEXT NOT NULL,
         created_at TEXT NOT NULL,
         expires_at TEXT NOT NULL
@@ -784,6 +785,21 @@ class SqliteStoreBackend {
   }
 
   migrateToProfilesSchema() {
+    const sessionColumns = new Set(
+      this.db.prepare('PRAGMA table_info(account_link_sessions)').all().map((c) => c.name)
+    );
+    if (!sessionColumns.has('profile_name')) {
+      this.db.exec(`
+        ALTER TABLE account_link_sessions ADD COLUMN profile_name TEXT;
+        UPDATE account_link_sessions
+        SET profile_name = COALESCE(
+          (SELECT active_profile FROM user_settings WHERE user_settings.user_id = account_link_sessions.user_id),
+          'default'
+        )
+        WHERE profile_name IS NULL;
+      `);
+    }
+
     // Step 1: Rebuild account_score_charts with profile_name if needed
     const scoreColumns = new Set(
       this.db.prepare('PRAGMA table_info(account_score_charts)').all().map((c) => c.name)
@@ -1686,12 +1702,13 @@ class SqliteStoreBackend {
     }
 
     const sessions = this.db
-      .prepare('SELECT token, user_id, status, created_at, expires_at FROM account_link_sessions ORDER BY created_at')
+      .prepare('SELECT token, user_id, profile_name, status, created_at, expires_at FROM account_link_sessions ORDER BY created_at')
       .all();
     for (const row of sessions) {
       state.accountLinkSessions[row.token] = {
         token: row.token,
         userId: row.user_id,
+        profileName: row.profile_name || DEFAULT_PROFILE,
         status: row.status,
         createdAt: row.created_at,
         expiresAt: row.expires_at
@@ -1942,15 +1959,16 @@ class SqliteStoreBackend {
     await this.ensureReady();
     this.db
       .prepare(
-        `INSERT INTO account_link_sessions (token, user_id, status, created_at, expires_at)
-         VALUES (?, ?, ?, ?, ?)
+        `INSERT INTO account_link_sessions (token, user_id, profile_name, status, created_at, expires_at)
+         VALUES (?, ?, ?, ?, ?, ?)
          ON CONFLICT(token) DO UPDATE SET
            user_id = excluded.user_id,
+           profile_name = excluded.profile_name,
            status = excluded.status,
            created_at = excluded.created_at,
            expires_at = excluded.expires_at`
       )
-      .run(token, session.userId, session.status, session.createdAt, session.expiresAt);
+      .run(token, session.userId, session.profileName || DEFAULT_PROFILE, session.status, session.createdAt, session.expiresAt);
   }
 
   async deleteSession(token) {
@@ -2578,8 +2596,7 @@ export class LoadoutStore {
     return Boolean(this.getAccount(userId));
   }
 
-  async setAccount(userId, account) {
-    const profileName = this.getActiveProfileName(userId);
+  async setAccount(userId, account, profileName = this.getActiveProfileName(userId)) {
     const user = this.getUser(userId);
 
     if (!user.profiles[profileName]) {
@@ -2785,6 +2802,7 @@ export class LoadoutStore {
     sessions[session.token] = {
       token: session.token,
       userId,
+      profileName: session.profileName || this.getActiveProfileName(userId),
       status: 'pending',
       createdAt: session.createdAt,
       expiresAt: session.expiresAt
@@ -2806,6 +2824,7 @@ export class LoadoutStore {
     const completedSession = {
       token: session.token,
       userId: session.userId,
+      profileName: session.profileName || DEFAULT_PROFILE,
       createdAt: session.createdAt,
       expiresAt: session.expiresAt,
       completedAt: details.completedAt || new Date().toISOString()

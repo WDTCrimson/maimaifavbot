@@ -202,7 +202,7 @@ export async function startAccountLinkCallbackServer({
           ...normalizedAccount,
           linkMethod: 'web',
           linkedAuth
-        });
+        }, session.profileName);
 
         await store.completeAccountLinkSession(token, {
           completedAt: new Date().toISOString()

@@ -95,13 +95,18 @@ test('callback server returns only enabled public profile payloads to the linker
   });
 });
 
-test('callback server validates sessions, normalizes snapshots, stores auth, and consumes the token', async () => {
+test('callback server validates sessions, normalizes snapshots, stores auth in the bound profile, and consumes the token', async () => {
   const calls = [];
   const future = new Date(Date.now() + 60_000).toISOString();
   const store = {
     cleanupExpiredAccountLinkSessions: async () => calls.push('cleanup'),
-    getAccountLinkSession: (token) => token === 'valid' ? { userId: 'user-1', status: 'pending', expiresAt: future } : null,
-    setAccount: async (userId, account) => { calls.push(['set', userId, account]); return account; },
+    getAccountLinkSession: (token) => token === 'valid'
+      ? { userId: 'user-1', profileName: 'friend', status: 'pending', expiresAt: future }
+      : null,
+    setAccount: async (userId, account, profileName) => {
+      calls.push(['set', userId, account, profileName]);
+      return account;
+    },
     completeAccountLinkSession: async (token) => calls.push(['complete', token])
   };
   await withServer({
@@ -118,7 +123,7 @@ test('callback server validates sessions, normalizes snapshots, stores auth, and
     assert.deepEqual(result.body, { ok: true, provider: 'tomomai' });
     assert.deepEqual(calls[1], ['set', 'user-1', {
       provider: 'tomomai', player: { name: 'Alice' }, linkMethod: 'web', linkedAuth: { encrypted: 'cookie' }
-    }]);
+    }, 'friend']);
     assert.deepEqual(calls[2].slice(0, 2), ['complete', 'valid']);
 
     const unknown = await responseJson(`${base}/account-link/callback`, {

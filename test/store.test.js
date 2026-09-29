@@ -120,15 +120,27 @@ for (const backend of ['json', 'sqlite']) {
   });
 
   test(`${backend} store replaces pending link sessions and cleans expired/completed data`, async () => {
-    await withStore(backend, async (store) => {
+    await withStore(backend, async (store, paths) => {
       const future = new Date(Date.now() + 60_000).toISOString();
       const past = new Date(Date.now() - 60_000).toISOString();
-      await store.createAccountLinkSession('user', { token: 'first', createdAt: past, expiresAt: future });
-      await store.createAccountLinkSession('user', { token: 'second', createdAt: past, expiresAt: future });
+      await store.setAccount('user', { provider: 'manual', player: { name: 'Owner' } });
+      await store.switchActiveProfile('user', 'friend');
+      await store.createAccountLinkSession('user', { token: 'first', profileName: 'friend', createdAt: past, expiresAt: future });
+      await store.createAccountLinkSession('user', { token: 'second', profileName: 'friend', createdAt: past, expiresAt: future });
       assert.equal(store.getAccountLinkSession('first'), null);
       assert.equal(store.getPendingAccountLinkSessionForUser('user').token, 'second');
+      assert.equal(store.getPendingAccountLinkSessionForUser('user').profileName, 'friend');
+
+      const reloaded = new LoadoutStore(
+        { backend, jsonFile: paths.jsonFile, sqliteFile: paths.sqliteFile }, LIMITS
+      );
+      await reloaded.load();
+      assert.equal(reloaded.getAccountLinkSession('second').profileName, 'friend');
+      reloaded.backend?.db?.close();
+
       const completed = await store.completeAccountLinkSession('second');
       assert.equal(completed.userId, 'user');
+      assert.equal(completed.profileName, 'friend');
       assert.equal(store.getAccountLinkSession('second'), null);
 
       await store.createAccountLinkSession('user', { token: 'expired', createdAt: past, expiresAt: past });

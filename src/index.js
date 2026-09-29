@@ -2054,6 +2054,7 @@ async function handleSongCommand(interaction) {
 }
 
 async function createPendingAccountLinkSession(userId) {
+  const profileName = store.getActiveProfileName(userId);
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(
     Date.now() + config.accountLinkTtlMinutes * 60 * 1000
@@ -2075,6 +2076,7 @@ async function createPendingAccountLinkSession(userId) {
 
   const session = await store.createAccountLinkSession(userId, {
     token,
+    profileName,
     createdAt,
     expiresAt
   });
