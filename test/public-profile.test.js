@@ -86,6 +86,39 @@ test('public profile keeps Standard and DX charts separate', () => {
   assert.deepEqual(profile.songs[0].charts.map((chart) => chart.type), ['dx', 'std']);
 });
 
+test('public profile uses current catalog levels instead of stale stored levels', () => {
+  const song = {
+    songId: 'song:1234567890abcdef',
+    favoriteId: 'schwarzschild',
+    title: 'Schwarzschild',
+    artist: 'Tsukasa',
+    difficultyLevels: [{
+      type: 'std', difficulty: 'remaster', level: '14+', internalLevelValue: 14.9, version: 'FiNALE'
+    }]
+  };
+  const catalog = {
+    available: true,
+    getByFavoriteId: () => song,
+    getUniqueByNormalizedTitle: () => song
+  };
+  const profile = buildPublicProfilePayload({
+    account: { player: { name: 'Alice' } },
+    scores: [{
+      favoriteId: 'schwarzschild', title: 'Schwarzschild', type: 'std', difficulty: 'remaster',
+      level: '15', internalLevelValue: 15, version: 'FiNALE', achievement: 695162
+    }],
+    recentPlays: [{
+      favoriteId: 'schwarzschild', title: 'Schwarzschild', type: 'std', difficulty: 'remaster',
+      level: '15', achievement: 695162
+    }],
+    songCatalog: catalog
+  });
+
+  assert.equal(profile.recentPlays[0].level, '14+');
+  assert.equal(profile.songs[0].charts[0].level, '14+');
+  assert.equal(profile.songs[0].charts[0].internalLevelValue, 14.9);
+});
+
 test('public profile canonicalizes renamed timed plays and keeps lower timing separate', () => {
   const song = { songId: 'song:1234567890abcdef', favoriteId: '100', title: 'New Name', difficultyLevels: [] };
   const catalog = {

@@ -58,6 +58,12 @@ function findSong(songCatalog, score) {
   return songCatalog.getUniqueByNormalizedTitle(score?.title) || null;
 }
 
+function findCatalogChart(song, type, difficulty) {
+  return (song?.difficultyLevels || []).find((chart) =>
+    normalizeChartType(chart?.type) === type && normalizeDifficulty(chart?.difficulty) === difficulty
+  ) || null;
+}
+
 function publicAvatarUrl(account) {
   const value = account?.extra?.iconUrl || account?.player?.iconUrl;
   if (!value) return null;
@@ -85,6 +91,7 @@ function publicRecentPlay(play, songCatalog) {
   const title = String(play?.title || '').trim();
   if (!type || !difficulty || !title) return null;
   const song = findSong(songCatalog, play);
+  const chart = findCatalogChart(song, type, difficulty);
   const fastCount = finiteNumber(play?.details?.fastCount);
   const lateCount = finiteNumber(play?.details?.lateCount);
   return {
@@ -94,7 +101,7 @@ function publicRecentPlay(play, songCatalog) {
     artist: song?.artist || play?.artist || null,
     type,
     difficulty,
-    level: play?.level || null,
+    level: chart?.level || play?.level || null,
     achievement: finiteNumber(play?.achievement),
     achievementRank: achievementRank(finiteNumber(play?.achievement)),
     dxScore: finiteNumber(play?.dxScore),
@@ -114,9 +121,9 @@ function publicChart(score, fallback = {}) {
   return {
     type: normalizeChartType(score?.type) || fallback.type,
     difficulty: normalizeDifficulty(score?.difficulty) || fallback.difficulty,
-    level: score?.level || fallback.level || null,
-    internalLevelValue: finiteNumber(score?.internalLevelValue ?? fallback.internalLevelValue),
-    version: score?.version || fallback.version || null,
+    level: fallback.level || score?.level || null,
+    internalLevelValue: finiteNumber(fallback.internalLevelValue ?? score?.internalLevelValue),
+    version: fallback.version || score?.version || null,
     played: true,
     achievement,
     achievementRank: achievementRank(achievement),
