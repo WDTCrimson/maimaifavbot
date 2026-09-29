@@ -375,6 +375,7 @@ function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
           difficulty: sheet.difficulty,
           level: sheet.level,
           internalLevelValue: otogeInternalLevelValue ?? sheet.internalLevelValue,
+          noteDesigner: sheet.noteDesigner || null,
           noteCounts,
           version: sheet.version,
           releaseDate: sheet.releaseDate || null

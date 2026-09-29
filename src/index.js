@@ -5,6 +5,7 @@ import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, Mes
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
 import { groupRecentCredits, renderAccountRecentGraphic } from './account-recent-graphic.js';
 import { renderSongScoreGraphic } from './song-score-graphic.js';
+import { renderSongInfoGraphic } from './song-info-graphic.js';
 import { renderPlayCountGraphic } from './playcount-graphic.js';
 import {
   accountLinkCallbackServerEnabled,
@@ -1765,13 +1766,23 @@ async function handleSongCommand(interaction) {
         return;
       }
 
-      const artwork = await resolveArtworkAttachment(song, 'song-info');
-      const embed = buildSongInfoEmbed(song, artwork?.imageUrl);
-      const payload = { embeds: [embed] };
-      if (artwork) {
-        payload.files = [artwork.attachment];
+      try {
+        const graphic = await renderSongInfoGraphic({ song });
+        await replyPublicPayload(interaction, {
+          content: `**${song.title}** — ${song.artist || 'Unknown artist'}`,
+          files: [new AttachmentBuilder(graphic.buffer, { name: graphic.fileName })]
+        });
+      } catch (error) {
+        console.warn('Song info graphic failed; falling back to the text embed.', {
+          title: song.title,
+          error: error.message || String(error)
+        });
+        const artwork = await resolveArtworkAttachment(song, 'song-info');
+        const embed = buildSongInfoEmbed(song, artwork?.imageUrl);
+        const payload = { embeds: [embed] };
+        if (artwork) payload.files = [artwork.attachment];
+        await replyPublicPayload(interaction, payload);
       }
-      await replyPublicPayload(interaction, payload);
       return;
     }
 

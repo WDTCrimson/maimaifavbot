@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { renderPlayCountGraphic } from '../src/playcount-graphic.js';
 import { renderPlaylistTargetGraphic } from '../src/playlist-target-graphic.js';
 import { renderSongScoreGraphic } from '../src/song-score-graphic.js';
+import { renderSongInfoGraphic, resolveSongInfoVersion } from '../src/song-info-graphic.js';
 import { renderAccountB50Graphic } from '../src/account-b50-graphic.js';
 import { renderAccountRecentGraphic } from '../src/account-recent-graphic.js';
 
@@ -49,6 +50,27 @@ test('song-score renderer produces a PNG and rejects empty input', async () => {
     }]
   });
   assertPng(result, 'KING-score.png');
+});
+
+test('song-info renderer produces a chart reference PNG', async () => {
+  assert.deepEqual(resolveSongInfoVersion('PRiSM PLUS'), { themeNumber: 11, logoFile: '11.png' });
+  assert.deepEqual(resolveSongInfoVersion('CiRCLE PLUS'), { themeNumber: 13, logoFile: '13.png' });
+  assert.deepEqual(resolveSongInfoVersion('MAGiCAL'), { themeNumber: 14, logoFile: '14.png' });
+  await assert.rejects(() => renderSongInfoGraphic({ song: { title: 'Empty' } }), /No chart metadata/);
+  const result = await renderSongInfoGraphic({
+    song: {
+      title: 'Luminescence', artist: '米虾Fomiki & 初云CLoudie', bpm: 184,
+      category: 'ゲーム＆バラエティ', regions: { jp: true, intl: true }, jacket: {},
+      aliases: ['lumi'], displayAliases: ['Lumi'],
+      difficultyLevels: [{
+        type: 'dx', difficulty: 'master', level: '13+', internalLevelValue: 13.8,
+        noteDesigner: 'Jack', version: 'PRiSM PLUS',
+        noteCounts: { total: 882, tap: 599, hold: 40, slide: 72, touch: 129, break: 42 }
+      }]
+    }
+  });
+  assertPng(result, 'Luminescence-info.png');
+  assert.equal(result.chartCount, 1);
 });
 
 test('playlist target renderer produces a themed PNG without requiring a jacket', async () => {
