@@ -60,6 +60,7 @@ export const config = {
   songCatalogFile: process.env.SONG_CATALOG_FILE?.trim() || './data/import/songs.normalized.json',
   catalogReloadIntervalMinutes: parseOptionalInteger('CATALOG_RELOAD_INTERVAL_MINUTES', 5),
   songAliasFile: process.env.SONG_ALIAS_FILE?.trim() || './data/reference/song-aliases.json',
+  songGeneratedAliasFile: process.env.SONG_GENERATED_ALIAS_FILE?.trim() || './data/reference/song-aliases.generated.json',
   recommendationFile:
     process.env.RECOMMENDATION_FILE?.trim() || './data/recommendations/community.json',
   graphicThemeDir: process.env.GRAPHIC_THEME_DIR?.trim() || resolveDefaultGraphicThemeDir(),

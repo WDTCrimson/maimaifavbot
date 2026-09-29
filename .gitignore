@@ -34,6 +34,7 @@ data/recommendations/sources.json
 data/recommendation-worker-reports/
 data/reference/song-aliases.json
 data/reference/song-aliases-report.json
+data/reference/song-aliases.generated.json
 # Keep tomomai preset images trackable for server deploy via git pull
 data/theme/tomomai/*
 !data/theme/tomomai/*.png

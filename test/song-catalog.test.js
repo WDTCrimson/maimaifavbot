@@ -26,6 +26,8 @@ async function fixtureCatalog(run) {
     await writeFile(mapFile, JSON.stringify({ entries: { 'king::kanaria': '999' } }));
     const catalog = new SongCatalog(songsFile);
     catalog.aliasFile = aliasesFile;
+    catalog.curatedAliasFile = join(directory, 'curated.json');
+    catalog.generatedAliasFile = join(directory, 'generated.json');
     catalog.playlistIdMapFile = mapFile;
     await catalog.load();
     await run(catalog);
@@ -66,6 +68,8 @@ test('catalog hot reload installs valid changes and keeps the last good catalog 
 
     const catalog = new SongCatalog(songsFile);
     catalog.aliasFile = aliasesFile;
+    catalog.curatedAliasFile = join(directory, 'curated.json');
+    catalog.generatedAliasFile = join(directory, 'generated.json');
     catalog.playlistIdMapFile = mapFile;
     await catalog.load();
     assert.equal(catalog.count, 1);
@@ -125,6 +129,40 @@ test('catalog fails closed for malformed or missing source data', async () => {
     await missing.ensureReady();
     assert.equal(missing.loaded, true);
     assert.equal(missing.available, false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('catalog generates typeable aliases for stylized, kana, curated, and utage titles', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'song-catalog-generated-'));
+  try {
+    const songsFile = join(directory, 'songs.json');
+    const curatedFile = join(directory, 'curated.json');
+    await writeFile(songsFile, JSON.stringify({ songs: [
+      { title: 'RONDØ', artist: 'A', difficultyLevels: [] },
+      { title: 'アンビバレンス', artist: 'B', difficultyLevels: [] },
+      { title: '[奏]アンビバレンス', artist: 'B', difficultyLevels: [] },
+      { title: '雑魚', artist: 'C', difficultyLevels: [] },
+      { title: 'Outsider', artist: 'D', difficultyLevels: [] }
+    ] }));
+    await writeFile(curatedFile, JSON.stringify({ entries: [
+      { title: 'アンビバレンス', aliases: ['ambivalence'] },
+      { title: '雑魚', aliases: ['zako'] }
+    ] }));
+    const catalog = new SongCatalog(songsFile);
+    catalog.aliasFile = join(directory, 'missing.json');
+    catalog.curatedAliasFile = curatedFile;
+    catalog.generatedAliasFile = join(directory, 'generated.json');
+    await catalog.load();
+
+    assert.equal(catalog.search('rondo', 1)[0].title, 'RONDØ');
+    assert.equal(catalog.search('zako', 1)[0].title, '雑魚');
+    assert.deepEqual(catalog.search('anbibarensu', 2).map((song) => song.title), ['アンビバレンス', '[奏]アンビバレンス']);
+    assert.equal(catalog.search('ambivalence', 1)[0].title, 'アンビバレンス');
+    assert.ok(catalog.getUniqueByNormalizedTitle('[奏]アンビバレンス').normAliases.includes('ambivalence'));
+    assert.deepEqual(catalog.getUniqueByNormalizedTitle('アンビバレンス').displayAliases, ['Ambivalence']);
+    assert.equal(catalog.getByAlias('anbibarensu'), null);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { foldLatin, romajiVariants } from './romaji.js';
 
 const DEFAULT_PLAYLIST_ID_MAP_FILE = './data/reference/playlist-id-map.json';
 const DEFAULT_SONG_ALIAS_FILE = './data/reference/song-aliases.json';
+const DEFAULT_CURATED_ALIAS_FILE = './data/reference/song-aliases.curated.json';
+const DEFAULT_GENERATED_ALIAS_FILE = './data/reference/song-aliases.generated.json';
+const UTAGE_PREFIX = /^\[[^\]]{1,2}\]\s*/;
 const SEARCH_CACHE_LIMIT = 200;
 
 async function readOptionalUtf8(filePath) {
@@ -16,12 +20,24 @@ async function readOptionalUtf8(filePath) {
   }
 }
 
-function hashCatalogInputs(catalogRaw, aliasRaw) {
-  return createHash('sha256')
-    .update(catalogRaw, 'utf8')
-    .update('\0', 'utf8')
-    .update(aliasRaw || '', 'utf8')
-    .digest('hex');
+function hashCatalogInputs(catalogRaw, aliasRaws) {
+  const hash = createHash('sha256').update(catalogRaw, 'utf8');
+  for (const aliasRaw of aliasRaws) {
+    hash.update('\0', 'utf8').update(aliasRaw || '', 'utf8');
+  }
+  return hash.digest('hex');
+}
+
+// Typeable aliases derived from the title itself: folded Latin ("RONDØ" → "rondo") and kana romaji.
+function buildTitleAliases(title) {
+  const baseTitle = title.replace(UTAGE_PREFIX, '');
+  const output = [];
+  const folded = foldLatin(baseTitle);
+  if (/^[a-z0-9 ]+$/.test(folded) && /[a-z]/.test(folded) && folded !== normalizeText(title)) {
+    output.push(folded);
+  }
+  output.push(...romajiVariants(baseTitle));
+  return output;
 }
 
 function normalizeText(value) {
@@ -325,6 +341,10 @@ function scoreSong(song, query) {
   if (Array.isArray(song.normAliases) && song.normAliases.some((alias) => alias.includes(query))) {
     score += 260;
   }
+  // Utage charts share aliases with their base song; rank the base song first.
+  if (score > 0 && song.isUtage && song.normTitle !== query) {
+    score -= 5;
+  }
 
   const tokens = query.split(' ').filter(Boolean);
   if (tokens.length > 1 && tokens.every((token) => song.searchBlob.includes(token))) {
@@ -506,6 +526,8 @@ export class SongCatalog {
     this.filePath = filePath;
     this.playlistIdMapFile = DEFAULT_PLAYLIST_ID_MAP_FILE;
     this.aliasFile = DEFAULT_SONG_ALIAS_FILE;
+    this.curatedAliasFile = DEFAULT_CURATED_ALIAS_FILE;
+    this.generatedAliasFile = DEFAULT_GENERATED_ALIAS_FILE;
     this.loaded = false;
     this.available = false;
     this.error = null;
@@ -521,6 +543,12 @@ export class SongCatalog {
     this.generatedAt = null;
   }
 
+  readAliasFiles() {
+    return Promise.all(
+      [this.aliasFile, this.curatedAliasFile, this.generatedAliasFile].map((file) => readOptionalUtf8(file))
+    );
+  }
+
   async ensureReady() {
     if (!this.loaded) {
       await this.load();
@@ -530,7 +558,7 @@ export class SongCatalog {
   async load() {
     try {
       const raw = await readFile(this.filePath, 'utf8');
-      const aliasRaw = await readOptionalUtf8(this.aliasFile);
+      const aliasRaws = await this.readAliasFiles();
       const parsed = JSON.parse(raw);
       const sourceSongs = Array.isArray(parsed?.songs) ? parsed.songs : [];
       let playlistIdMap = new Map();
@@ -591,6 +619,7 @@ export class SongCatalog {
           difficultyLevels: Array.isArray(sourceSong.difficultyLevels)
             ? sourceSong.difficultyLevels
             : [],
+          isUtage: UTAGE_PREFIX.test(title),
           normTitle: normalizeText(title),
           normArtist: normalizeText(artist),
           searchBlob: normalizeText(`${favoriteId} ${legacyFavoriteId || ''} ${title} ${artist}`)
@@ -626,9 +655,12 @@ export class SongCatalog {
         byNormTitleArtist.set(`${song.normTitle}::${song.normArtist}`, song);
       }
 
-      if (aliasRaw !== null) {
-        const aliasParsed = JSON.parse(aliasRaw);
-        const aliasEntries = normalizeAliasFileEntries(aliasParsed);
+      // Community aliases first, then curated, then Qwen-generated: earlier files win conflicts.
+      for (const rawFile of aliasRaws) {
+        if (rawFile === null) {
+          continue;
+        }
+        const aliasEntries = normalizeAliasFileEntries(JSON.parse(rawFile));
 
         for (const entry of aliasEntries) {
           const song = resolveAliasSong(entry, {
@@ -654,12 +686,37 @@ export class SongCatalog {
         }
       }
 
+      // Search-only aliases: not registered in byAlias because utage charts share them with
+      // their base song, and a direct alias hit would hide one of the two.
+      const addSearchAlias = (song, alias) => {
+        const normalizedAlias = normalizeText(alias);
+        if (normalizedAlias && !song.normAliases.includes(normalizedAlias)) {
+          song.aliases.push(alias);
+          song.normAliases.push(normalizedAlias);
+        }
+      };
+
       for (const song of this.songs) {
+        if (!song.isUtage) {
+          continue;
+        }
+        const baseMatches = byNormTitle.get(normalizeText(song.title.replace(UTAGE_PREFIX, ''))) || [];
+        if (baseMatches.length === 1) {
+          for (const alias of baseMatches[0].aliases) {
+            addSearchAlias(song, alias);
+          }
+        }
+      }
+
+      for (const song of this.songs) {
+        song.displayAliases = pickDisplayAliases(song);
+        song.displayAlias = song.displayAliases[0] || null;
+        for (const alias of buildTitleAliases(song.title)) {
+          addSearchAlias(song, alias);
+        }
         if (song.aliases.length) {
           song.searchBlob = normalizeText(`${song.searchBlob} ${song.aliases.join(' ')}`);
         }
-        song.displayAliases = pickDisplayAliases(song);
-        song.displayAlias = song.displayAliases[0] || null;
       }
 
       this.bySongId = bySongId;
@@ -669,7 +726,7 @@ export class SongCatalog {
       this.byNormTitleArtist = byNormTitleArtist;
       this.byAlias = byAlias;
       this.searchCache = new Map();
-      this.contentHash = hashCatalogInputs(raw, aliasRaw);
+      this.contentHash = hashCatalogInputs(raw, aliasRaws);
       this.generatedAt = parsed?.generatedAt || null;
       this.available = true;
       this.error = null;
@@ -692,8 +749,8 @@ export class SongCatalog {
   async reloadIfChanged() {
     try {
       const raw = await readFile(this.filePath, 'utf8');
-      const aliasRaw = await readOptionalUtf8(this.aliasFile);
-      const nextHash = hashCatalogInputs(raw, aliasRaw);
+      const aliasRaws = await this.readAliasFiles();
+      const nextHash = hashCatalogInputs(raw, aliasRaws);
       if (nextHash === this.contentHash) {
         return { changed: false, reloaded: false, count: this.count, hash: nextHash };
       }
@@ -701,6 +758,8 @@ export class SongCatalog {
       const candidate = new SongCatalog(this.filePath);
       candidate.playlistIdMapFile = this.playlistIdMapFile;
       candidate.aliasFile = this.aliasFile;
+      candidate.curatedAliasFile = this.curatedAliasFile;
+      candidate.generatedAliasFile = this.generatedAliasFile;
       await candidate.load();
       if (!candidate.available) {
         this.error = candidate.error;
