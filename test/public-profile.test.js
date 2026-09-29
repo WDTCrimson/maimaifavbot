@@ -119,6 +119,46 @@ test('public profile uses current catalog levels instead of stale stored levels'
   assert.equal(profile.songs[0].charts[0].internalLevelValue, 14.9);
 });
 
+test('public profile prefers the recorded title over a stale favorite ID', () => {
+  const recordedSong = {
+    songId: 'song:1111111111111111',
+    favoriteId: '9999',
+    title: '系ぎて',
+    artist: 'rintaro soma',
+    difficultyLevels: [{ type: 'dx', difficulty: 'remaster', level: '15' }]
+  };
+  const staleIdSong = {
+    songId: 'song:2222222222222222',
+    favoriteId: '1383',
+    title: 'Schwarzschild',
+    artist: 'Tsukasa',
+    difficultyLevels: [{ type: 'std', difficulty: 'remaster', level: '14+' }]
+  };
+  const catalog = {
+    available: true,
+    getBySongId: () => null,
+    getByFavoriteId: (id) => id === '1383' ? staleIdSong : null,
+    getUniqueByNormalizedTitle: (title) => title === '系ぎて' ? recordedSong : null
+  };
+  const profile = buildPublicProfilePayload({
+    account: { player: { name: 'Alice' } },
+    scores: [{
+      favoriteId: '1383', title: '系ぎて', type: 'dx', difficulty: 'remaster',
+      level: '15', achievement: 695162
+    }],
+    recentPlays: [{
+      favoriteId: '1383', title: '系ぎて', type: 'dx', difficulty: 'remaster',
+      level: '15', achievement: 695162
+    }],
+    songCatalog: catalog
+  });
+
+  assert.equal(profile.recentPlays[0].title, '系ぎて');
+  assert.equal(profile.recentPlays[0].songId, 'song:1111111111111111');
+  assert.equal(profile.recentPlays[0].artist, 'rintaro soma');
+  assert.equal(profile.songs[0].title, '系ぎて');
+});
+
 test('public profile canonicalizes renamed timed plays and keeps lower timing separate', () => {
   const song = { songId: 'song:1234567890abcdef', favoriteId: '100', title: 'New Name', difficultyLevels: [] };
   const catalog = {

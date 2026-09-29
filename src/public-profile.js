@@ -51,11 +51,16 @@ function chartKey(type, difficulty) {
 
 function findSong(songCatalog, score) {
   if (!songCatalog?.available) return null;
-  if (score?.favoriteId) {
-    const byId = songCatalog.getByFavoriteId(score.favoriteId);
-    if (byId) return byId;
+  if (score?.songId && typeof songCatalog.getBySongId === 'function') {
+    const bySongId = songCatalog.getBySongId(score.songId);
+    if (bySongId) return bySongId;
   }
-  return songCatalog.getUniqueByNormalizedTitle(score?.title) || null;
+  const byTitle = songCatalog.getUniqueByNormalizedTitle(score?.title);
+  if (byTitle) return byTitle;
+  if (score?.favoriteId) {
+    return songCatalog.getByFavoriteId(score.favoriteId) || null;
+  }
+  return null;
 }
 
 function findCatalogChart(song, type, difficulty) {
