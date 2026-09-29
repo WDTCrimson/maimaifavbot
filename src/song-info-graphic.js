@@ -103,6 +103,31 @@ export function resolveSongInfoVersion(version) {
   return { themeNumber: null, logoFile: null };
 }
 
+export function songInfoVersionFile(version) {
+  if (!version) return null;
+  const raw = String(version).normalize('NFKC').toLowerCase().trim();
+  const exactAlias = {
+    'maimaiでらっくす': 'maimai_deluxe',
+    'maimaiでらっくす plus': 'maimai_deluxe_plus',
+    'maimai dx': 'maimai_deluxe',
+    'maimai dx plus': 'maimai_deluxe_plus'
+  };
+  if (exactAlias[raw]) return `${exactAlias[raw]}.png`;
+
+  const normalized = raw
+    .replace(/maimaiでらっくす/g, 'maimai_deluxe')
+    .replace(/でらっくす/g, 'deluxe')
+    .replace(/\s+/g, '_')
+    .replace(/[^\w]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  const alias = {
+    maimai_dx: 'maimai_deluxe',
+    maimai_dx_plus: 'maimai_deluxe_plus'
+  };
+  return normalized ? `${alias[normalized] || normalized}.png` : null;
+}
+
 function categoryFile(category) {
   const value = String(category || '').normalize('NFKC').toLowerCase();
   if (value.includes('original') || value === 'maimai') return 'category_original.png';
@@ -256,7 +281,12 @@ async function drawHeader(ctx, song, charts, y, jacket, version) {
     ctx.drawImage(category, x + width - category.width * scale - 18, y + 18, category.width * scale, category.height * scale);
   }
   const logoName = resolveSongInfoVersion(version).logoFile;
-  const logo = logoName ? await image(join(TOMOMAI, 'logo', logoName)) : null;
+  const legacyLogoName = songInfoVersionFile(version);
+  const logo = logoName
+    ? await image(join(TOMOMAI, 'logo', logoName))
+    : legacyLogoName
+      ? await image(join(VERSION_ASSET, legacyLogoName))
+      : null;
   if (logo) {
     const scale = Math.min(185 / logo.width, 82 / logo.height);
     ctx.drawImage(logo, x + width - logo.width * scale - 18, y + HEADER_H - logo.height * scale - 16, logo.width * scale, logo.height * scale);

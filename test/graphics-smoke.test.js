@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { renderPlayCountGraphic } from '../src/playcount-graphic.js';
 import { renderPlaylistTargetGraphic } from '../src/playlist-target-graphic.js';
 import { renderSongScoreGraphic } from '../src/song-score-graphic.js';
-import { renderSongInfoGraphic, resolveSongInfoVersion } from '../src/song-info-graphic.js';
+import { renderSongInfoGraphic, resolveSongInfoVersion, songInfoVersionFile } from '../src/song-info-graphic.js';
 import { renderAccountB50Graphic } from '../src/account-b50-graphic.js';
 import { renderAccountRecentGraphic } from '../src/account-recent-graphic.js';
 
@@ -56,6 +56,9 @@ test('song-info renderer produces a chart reference PNG', async () => {
   assert.deepEqual(resolveSongInfoVersion('PRiSM PLUS'), { themeNumber: 11, logoFile: '11.png' });
   assert.deepEqual(resolveSongInfoVersion('CiRCLE PLUS'), { themeNumber: 13, logoFile: '13.png' });
   assert.deepEqual(resolveSongInfoVersion('MAGiCAL'), { themeNumber: 14, logoFile: '14.png' });
+  assert.equal(songInfoVersionFile('FiNALE'), 'finale.png');
+  assert.equal(songInfoVersionFile('Splash PLUS'), 'splash_plus.png');
+  assert.equal(songInfoVersionFile('maimaiでらっくす PLUS'), 'maimai_deluxe_plus.png');
   await assert.rejects(() => renderSongInfoGraphic({ song: { title: 'Empty' } }), /No chart metadata/);
   const result = await renderSongInfoGraphic({
     song: {
