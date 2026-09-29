@@ -57,9 +57,14 @@ test('generator asks Qwen once per song missing aliases and the catalog picks th
     assert.deepEqual(summary, { pending: 2, checked: 2, aliased: 2, calls: 1, skipped: null });
     assert.match(calls[0], /ツムギボシ/);
     assert.match(calls[0], /雑魚/);
+    assert.match(calls[0], /Treat kanji-only titles as Japanese/);
+    assert.match(calls[0], /never return an artist/);
+    assert.doesNotMatch(calls[0], /"artist"/);
+    assert.doesNotMatch(calls[0], /pinyin reading for Chinese titles/);
     assert.doesNotMatch(calls[0], /アンビバレンス|KING|\[奏\]/);
 
     const written = JSON.parse(await readFile(config.outputFile, 'utf8'));
+    assert.equal(written.generatorVersion, 2);
     assert.deepEqual(written.entries.map((entry) => entry.aliases), [['tsumugiboshi'], ['zako', 'small fry']]);
 
     await catalog.load();
@@ -67,6 +72,36 @@ test('generator asks Qwen once per song missing aliases and the catalog picks th
 
     const again = await generateMissingAliases({ songCatalog: catalog, config, fetchImpl });
     assert.equal(again.pending, 0);
+    assert.equal(calls.length, 1);
+  });
+});
+
+test('generator version change discards and rechecks stale machine aliases', async () => {
+  await withCatalog(async (catalog, directory) => {
+    const outputFile = join(directory, 'generated.json');
+    await writeFile(outputFile, JSON.stringify({ entries: [{
+      title: '雑魚', artist: 'A', normTitle: '雑魚', normArtist: 'a',
+      aliases: ['liu li ge'], checkedAt: '2026-09-28T00:00:00.000Z'
+    }] }));
+    catalog.generatedAliasFile = outputFile;
+    await catalog.load();
+
+    const calls = [];
+    const config = { dashscopeApiKey: 'test', qwenBaseUrl: 'https://qwen.test/v1', qwenModel: 'm', outputFile, maxCalls: 3, timeoutMs: 1000 };
+    const summary = await generateMissingAliases({
+      songCatalog: catalog,
+      config,
+      fetchImpl: fakeQwen(calls, () => ({ songs: [
+        { id: 0, aliases: ['tsumugiboshi'] },
+        { id: 1, aliases: ['zako'] }
+      ] }))
+    });
+
+    assert.equal(summary.checked, 2);
+    const written = JSON.parse(await readFile(outputFile, 'utf8'));
+    assert.equal(written.generatorVersion, 2);
+    assert.deepEqual(written.entries.map((entry) => entry.aliases), [['tsumugiboshi'], ['zako']]);
+    assert.doesNotMatch(JSON.stringify(written), /liu li ge/);
     assert.equal(calls.length, 1);
   });
 });
