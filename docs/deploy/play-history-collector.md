@@ -4,7 +4,9 @@ Implemented 2026-09-30. This collector grows the timestamped play corpus needed 
 
 ## Production status
 
-Deployed 2026-09-30 at `12b7d93`. The global commands are registered, the bot is running with the additive SQLite tables, and the collector timer is enabled through the persistent user systemd manager. The pre-migration backup is `backups/loadouts-pre-collector-20260930-215820.sqlite` on the host. The timer's canary run exited successfully without reading any accounts because `QUIET_READS_ENABLED` remains unset. Activation is intentionally pending the dedicated-secret rekey.
+Deployed 2026-09-30. The global commands are registered, the bot is running with the additive SQLite tables, and the collector timer is enabled through the persistent user systemd manager. The pre-migration backup is `backups/loadouts-pre-collector-20260930-215820.sqlite` on the host.
+
+The dedicated-secret migration shipped at `c396fba` and rekeyed all four linked profiles. Production backups are `backups/loadouts-pre-linked-auth-rekey-20260930T151430Z.sqlite` and `backups/env-pre-linked-auth-rekey-20260930T151430Z`. All four payloads were verified with the new key, the bot logged back into Discord, `QUIET_READS_ENABLED=true`, and the collector canary completed with zero reads because no profile has opted in yet. The only remaining activation step is for a profile owner to run `/account settings history:true`.
 
 ## What is built
 
