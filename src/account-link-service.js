@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 const MAX_BODY_BYTES = 1024 * 1024;
 
@@ -60,6 +60,14 @@ export function createAccountLinkSignature({ clientId = null, token, expiresAt, 
     .digest('base64url');
 }
 
+// Hashing first gives equal-length buffers, so timingSafeEqual never leaks the secret's length.
+export function secretEquals(provided, expected) {
+  if (!provided || !expected) return false;
+  const providedHash = createHash('sha256').update(String(provided), 'utf8').digest();
+  const expectedHash = createHash('sha256').update(String(expected), 'utf8').digest();
+  return timingSafeEqual(providedHash, expectedHash);
+}
+
 export function verifyAccountLinkSignature({ clientId = null, token, expiresAt, signature, signingSecret }) {
   const expected = createAccountLinkSignature({ clientId, token, expiresAt, signingSecret });
   const actualBuffer = Buffer.from(String(signature || ''), 'utf8');
@@ -107,7 +115,7 @@ export async function startAccountLinkCallbackServer({
 
     if (method === 'GET' && url.pathname.startsWith('/public-profile/')) {
       const providedSecret = String(request.headers['x-account-link-secret'] || '').trim();
-      if (!providedSecret || providedSecret !== sharedSecret) {
+      if (!secretEquals(providedSecret, sharedSecret)) {
         writeJson(response, 401, { ok: false, error: 'Unauthorized.', code: 'CALLBACK-UNAUTHORIZED' });
         return;
       }
@@ -130,7 +138,7 @@ export async function startAccountLinkCallbackServer({
 
     if (method === 'GET' && url.pathname.startsWith('/public-jacket/')) {
       const providedSecret = String(request.headers['x-account-link-secret'] || '').trim();
-      if (!providedSecret || providedSecret !== sharedSecret) {
+      if (!secretEquals(providedSecret, sharedSecret)) {
         writeJson(response, 401, { ok: false, error: 'Unauthorized.', code: 'CALLBACK-UNAUTHORIZED' });
         return;
       }
@@ -157,7 +165,7 @@ export async function startAccountLinkCallbackServer({
 
     if (method === 'POST' && url.pathname === '/account-link/callback') {
       const providedSecret = String(request.headers['x-account-link-secret'] || '').trim();
-      if (!providedSecret || providedSecret !== sharedSecret) {
+      if (!secretEquals(providedSecret, sharedSecret)) {
         writeJson(response, 401, { ok: false, error: 'Unauthorized.', code: 'CALLBACK-UNAUTHORIZED' });
         return;
       }

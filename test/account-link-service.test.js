@@ -5,6 +5,7 @@ import {
   buildAccountLinkUrl,
   createAccountLinkSignature,
   createAccountLinkToken,
+  secretEquals,
   startAccountLinkCallbackServer,
   verifyAccountLinkSignature
 } from '../src/account-link-service.js';
@@ -164,5 +165,35 @@ test('callback server returns stable validation errors and hides internal failur
     assert.equal(failed.response.status, 400);
     assert.equal(JSON.stringify(failed.body).includes('database password'), false);
     assert.ok(errors.length >= 2);
+  });
+});
+
+test('secretEquals matches only the exact shared secret', () => {
+  assert.equal(secretEquals('shared', 'shared'), true);
+  assert.equal(secretEquals('shared-but-longer', 'shared'), false);
+  assert.equal(secretEquals('share', 'shared'), false);
+  assert.equal(secretEquals('', 'shared'), false);
+  assert.equal(secretEquals('shared', ''), false);
+  assert.equal(secretEquals(undefined, undefined), false);
+});
+
+test('every secret-checked callback route rejects a wrong secret', async () => {
+  const store = { cleanupExpiredAccountLinkSessions: async () => {}, getAccountLinkSession: () => null };
+  await withServer({
+    sharedSecret: 'shared', store, normalizeImportedAccountSnapshot: (value) => value,
+    getPublicProfile: () => ({ player: { name: 'Alice' }, songs: [] }),
+    getPublicJacket: () => ({ data: Buffer.from('jacket-bytes'), contentType: 'image/jpeg' })
+  }, async (base) => {
+    const wrong = { 'x-account-link-secret': 'shared-wrong' };
+    const profile = await fetch(`${base}/public-profile/abcdefghijklmnopqrstuvwx`, { headers: wrong });
+    assert.equal(profile.status, 401);
+    const jacket = await fetch(`${base}/public-jacket/song%3A1234567890abcdef`, { headers: wrong });
+    assert.equal(jacket.status, 401);
+    const callback = await fetch(`${base}/account-link/callback`, {
+      method: 'POST',
+      headers: { ...wrong, 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'abc' })
+    });
+    assert.equal(callback.status, 401);
   });
 });

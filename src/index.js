@@ -149,8 +149,10 @@ if (accountLinkCallbackServerEnabled(config)) {
   );
 }
 
+// Player and playlist names are user-controlled; never let them ping anyone.
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds]
+  intents: [GatewayIntentBits.Guilds],
+  allowedMentions: { parse: [], repliedUser: false }
 });
 
 client.once(Events.ClientReady, (readyClient) => {
