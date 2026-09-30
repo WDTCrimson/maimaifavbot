@@ -33,6 +33,16 @@ function parseOptionalInteger(name, fallback = null) {
   return parsed;
 }
 
+function parseOptionalPositiveNumber(name, fallback = null) {
+  const value = optionalEnv(name);
+  if (value == null) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Environment variable ${name} must be a positive number.`);
+  }
+  return parsed;
+}
+
 function parseDataBackend() {
   const value = process.env.DATA_BACKEND?.trim().toLowerCase() || 'json';
   if (value !== 'json' && value !== 'sqlite') {
@@ -61,6 +71,14 @@ export const config = {
   catalogReloadIntervalMinutes: parseOptionalInteger('CATALOG_RELOAD_INTERVAL_MINUTES', 5),
   songAliasFile: process.env.SONG_ALIAS_FILE?.trim() || './data/reference/song-aliases.json',
   songGeneratedAliasFile: process.env.SONG_GENERATED_ALIAS_FILE?.trim() || './data/reference/song-aliases.generated.json',
+  chartTagsFile: process.env.CHART_TAGS_FILE?.trim() || './data/reference/chart-tags.json',
+  patternLabelsFile: process.env.PATTERN_LABELS_FILE?.trim() || './data/reference/pattern-labels.json',
+  chartTagsReportFile: process.env.CHART_TAGS_REPORT_FILE?.trim() || './data/reference/chart-tags-report.json',
+  model: {
+    minNearbyBests: parseOptionalInteger('MODEL_MIN_NEARBY_BESTS', 20),
+    minTotalBests: parseOptionalInteger('MODEL_MIN_TOTAL_BESTS', 50),
+    nearbyConstantWindow: parseOptionalPositiveNumber('MODEL_NEARBY_WINDOW', 1.0)
+  },
   recommendationFile:
     process.env.RECOMMENDATION_FILE?.trim() || './data/recommendations/community.json',
   graphicThemeDir: process.env.GRAPHIC_THEME_DIR?.trim() || resolveDefaultGraphicThemeDir(),

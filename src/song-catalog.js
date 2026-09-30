@@ -40,13 +40,15 @@ function buildTitleAliases(title) {
   return output;
 }
 
-function normalizeText(value) {
+export function normalizeSongText(value) {
   return String(value || '')
     .normalize('NFKC')
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+const normalizeText = normalizeSongText;
 
 function normalizeFavoriteId(value) {
   const id = String(value || '').trim();
@@ -56,7 +58,7 @@ function normalizeFavoriteId(value) {
   return id;
 }
 
-function buildCanonicalSongId(title, artist) {
+export function buildCanonicalSongId(title, artist) {
   const digest = createHash('sha1')
     .update(`${normalizeText(title)}::${normalizeText(artist)}`, 'utf8')
     .digest('hex')

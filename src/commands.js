@@ -402,6 +402,46 @@ export const songCommand = new SlashCommandBuilder()
             { name: 'STD', value: 'std' }
           )
       )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('pattern')
+      .setDescription('Browse charts by an editor pattern tag')
+      .addStringOption((option) =>
+        option.setName('tag').setDescription('Pattern name in English, Japanese, or romaji').setRequired(true).setAutocomplete(true)
+      )
+      .addStringOption((option) =>
+        option.setName('level').setDescription('Displayed or precise level, such as 13+ or 13.7').setRequired(false)
+      )
+      .addStringOption((option) =>
+        option.setName('difficulty').setDescription('Chart difficulty').setRequired(false).addChoices(
+          { name: 'BASIC', value: 'basic' },
+          { name: 'ADVANCED', value: 'advanced' },
+          { name: 'EXPERT', value: 'expert' },
+          { name: 'MASTER', value: 'master' },
+          { name: 'Re:MASTER', value: 'remaster' }
+        )
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('random')
+      .setDescription('Pick one random chart')
+      .addStringOption((option) =>
+        option.setName('level').setDescription('Displayed or precise level, such as 13+ or 13.7').setRequired(false)
+      )
+      .addStringOption((option) =>
+        option.setName('difficulty').setDescription('Chart difficulty').setRequired(false).addChoices(
+          { name: 'BASIC', value: 'basic' },
+          { name: 'ADVANCED', value: 'advanced' },
+          { name: 'EXPERT', value: 'expert' },
+          { name: 'MASTER', value: 'master' },
+          { name: 'Re:MASTER', value: 'remaster' }
+        )
+      )
+      .addBooleanOption((option) =>
+        option.setName('unplayed').setDescription('Only choose charts missing from your linked scores').setRequired(false)
+      )
   );
 
 export const accountCommand = new SlashCommandBuilder()

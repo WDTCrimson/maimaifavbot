@@ -18,6 +18,10 @@ test('critical Discord options retain bounds, choices, and autocomplete contract
   const mode = suggest.options.find((option) => option.name === 'mode');
   assert.deepEqual([count.min_value, count.max_value], [1, 10]);
   assert.deepEqual(mode.choices.map((choice) => choice.value), ['balanced', 'discovery', 'improvement']);
+  const pattern = song.options.find((option) => option.name === 'pattern');
+  assert.equal(pattern.options.find((option) => option.name === 'tag').autocomplete, true);
+  const random = song.options.find((option) => option.name === 'random');
+  assert.ok(random.options.some((option) => option.name === 'unplayed'));
 
   const playlist = commands.find((command) => command.name === 'playlist');
   const addSong = playlist.options.find((option) => option.name === 'add-song');

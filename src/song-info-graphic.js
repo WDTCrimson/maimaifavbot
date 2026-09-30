@@ -7,7 +7,7 @@ import { calculateChartRating, getCurrentIntlVersionId } from './maimai-intl.js'
 const W = 1000;
 const MARGIN = 26;
 const HEADER_H = 400;
-const ROW_H = 190;
+const ROW_H = 225;
 const GAP = 22;
 const BOTTOM_PAD = 42;
 const FONT = 'Inter, Murecho, "Noto Sans JP", sans-serif';
@@ -144,9 +144,15 @@ function chartOrder(chart) {
   return (difficulty < 0 ? 99 : difficulty) * 2 + type;
 }
 
-function normalizeCharts(song) {
+function normalizeCharts(song, chartFacts = null) {
   return [...(song?.difficultyLevels || [])]
     .filter((chart) => chart?.level || Number.isFinite(Number(chart?.internalLevelValue)))
+    .map((chart) => ({
+      ...chart,
+      patternLabels: chartFacts?.available
+        ? chartFacts.tagsFor(song, chart).map((tag) => chartFacts.labelFor(tag))
+        : chartFacts ? [chartFacts.unavailableMessage()] : []
+    }))
     .sort((a, b) => chartOrder(a) - chartOrder(b));
 }
 
@@ -401,12 +407,19 @@ function drawChartRow(ctx, chart, y, gameVersion) {
     ctx.font = `600 16px ${FONT}`;
     ctx.fillText('Thresholds unavailable', bodyX + 132, y + 145);
   }
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.72)';
+  ctx.font = `600 15px ${FONT}`;
+  const patterns = Array.isArray(chart.patternLabels) && chart.patternLabels.length
+    ? chart.patternLabels.join(' · ')
+    : 'None listed';
+  ctx.fillText(fitText(ctx, `Patterns: ${patterns}`, width - 56), x + 28, y + 207);
   ctx.restore();
 }
 
-export async function renderSongInfoGraphic({ song }) {
+export async function renderSongInfoGraphic({ song, chartFacts = null }) {
   await registerFonts();
-  const charts = normalizeCharts(song);
+  const charts = normalizeCharts(song, chartFacts);
   if (!song || !charts.length) throw new Error('No chart metadata to render.');
 
   const version = charts.find((chart) => chart.version)?.version || null;

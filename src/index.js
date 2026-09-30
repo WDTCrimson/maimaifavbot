@@ -1,7 +1,7 @@
 import { appendFile, mkdir, readFile, stat } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
-import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags } from 'discord.js';
+import { AttachmentBuilder, Client, EmbedBuilder, Events, GatewayIntentBits, MessageFlags, escapeMarkdown } from 'discord.js';
 import { renderAccountB50Graphic } from './account-b50-graphic.js';
 import { groupRecentCredits, renderAccountRecentGraphic } from './account-recent-graphic.js';
 import { renderSongScoreGraphic } from './song-score-graphic.js';
@@ -41,6 +41,8 @@ import { RecommendationCatalog } from './recommendation-catalog.js';
 import { buildPublicProfilePayload } from './public-profile.js';
 import { accountSnapshotAge, inferSuggestionRange, recommendCharts, resolveSuggestionAccess } from './recommendation-engine.js';
 import { SongCatalog } from './song-catalog.js';
+import { ChartFacts } from './chart-facts.js';
+import { createSongFeatureHandlers } from './song-feature-handlers.js';
 import { LoadoutStore } from './store.js';
 
 const store = new LoadoutStore(
@@ -64,6 +66,13 @@ const songCatalog = new SongCatalog(config.songCatalogFile);
 songCatalog.aliasFile = config.songAliasFile;
 songCatalog.generatedAliasFile = config.songGeneratedAliasFile;
 await songCatalog.ensureReady();
+
+const chartFacts = new ChartFacts({
+  tagsFile: config.chartTagsFile,
+  labelsFile: config.patternLabelsFile,
+  reportFile: config.chartTagsReportFile
+});
+await chartFacts.ensureReady();
 
 const loadoutMigration = await store.migrateLoadouts((storedId) => songCatalog.getByStoredId(storedId));
 if (loadoutMigration.changed) {
@@ -93,6 +102,13 @@ const recommendationCatalog = new RecommendationCatalog(config.recommendationFil
 await recommendationCatalog.ensureReady();
 const gapRecommendationSessions = new GapRecommendationSessions();
 const recentCreditSessions = new RecentCreditSessions();
+const songFeatureHandlers = createSongFeatureHandlers({
+  chartFacts,
+  songCatalog,
+  store,
+  replyPayload,
+  replySafely
+});
 
 if (accountLinkCallbackServerEnabled(config)) {
   await startAccountLinkCallbackServer({
@@ -168,6 +184,11 @@ client.once(Events.ClientReady, (readyClient) => {
   } else {
     console.warn(`Recommendation catalog unavailable at ${config.recommendationFile}`);
   }
+  if (chartFacts.available) {
+    console.log(`Loaded chart pattern facts: ${chartFacts.byChartKey.size} charts`);
+  } else {
+    console.warn(chartFacts.unavailableMessage());
+  }
 });
 
 const catalogReloadTimer = setInterval(async () => {
@@ -184,6 +205,14 @@ const catalogReloadTimer = setInterval(async () => {
     console.warn('Song catalog refresh detected an unusable update; keeping the last known-good catalog.', {
       error: result.error.message || String(result.error),
       count: result.count
+    });
+  }
+  const factsResult = await chartFacts.reloadIfChanged();
+  if (factsResult.reloaded && factsResult.changed) {
+    console.log(`Reloaded chart pattern facts: ${chartFacts.byChartKey.size} charts`);
+  } else if (factsResult.error) {
+    console.warn('Chart pattern refresh detected unusable data; pattern features are unavailable.', {
+      error: factsResult.error.message || String(factsResult.error)
     });
   }
 }, config.catalogReloadIntervalMinutes * 60 * 1000);
@@ -207,10 +236,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton()) {
     const gapControl = parseGapRecommendationCustomId(interaction.customId);
     const recentControl = parseRecentCreditCustomId(interaction.customId);
-    if (!gapControl && !recentControl) return;
+    const patternControl = songFeatureHandlers.parseButton(interaction.customId);
+    if (!gapControl && !recentControl && !patternControl) return;
     try {
       if (gapControl) {
         await handleGapRecommendationButton(interaction, gapControl);
+      } else if (patternControl) {
+        await songFeatureHandlers.handleButton(interaction, patternControl);
       } else {
         await handleRecentCreditButton(interaction, recentControl);
       }
@@ -462,6 +494,9 @@ async function handlePlaylistAutocomplete(interaction) {
 }
 
 async function handleSongAutocomplete(interaction) {
+  if (await songFeatureHandlers.autocomplete(interaction)) {
+    return;
+  }
   if (!songCatalog.available) {
     await interaction.respond([]);
     return;
@@ -1656,6 +1691,11 @@ async function handleSongCommand(interaction) {
   songCatalog.requireAvailable();
 
   const subcommand = interaction.options.getSubcommand();
+  const featureHandler = songFeatureHandlers.commands.get(subcommand);
+  if (featureHandler) {
+    await featureHandler(interaction);
+    return;
+  }
 
   switch (subcommand) {
     case 'search': {
@@ -1770,7 +1810,7 @@ async function handleSongCommand(interaction) {
       }
 
       try {
-        const graphic = await renderSongInfoGraphic({ song });
+        const graphic = await renderSongInfoGraphic({ song, chartFacts });
         await replyPublicPayload(interaction, {
           content: `**${song.title}** — ${song.artist || 'Unknown artist'}`,
           files: [new AttachmentBuilder(graphic.buffer, { name: graphic.fileName })]
@@ -1781,7 +1821,7 @@ async function handleSongCommand(interaction) {
           error: error.message || String(error)
         });
         const artwork = await resolveArtworkAttachment(song, 'song-info');
-        const embed = buildSongInfoEmbed(song, artwork?.imageUrl);
+        const embed = buildSongInfoEmbed(song, artwork?.imageUrl, chartFacts);
         const payload = { embeds: [embed] };
         if (artwork) payload.files = [artwork.attachment];
         await replyPublicPayload(interaction, payload);
@@ -2907,7 +2947,7 @@ function formatSongLevels(song) {
   return pieces.join(', ') || 'Unknown';
 }
 
-function buildSongInfoEmbed(song, imageUrl) {
+function buildSongInfoEmbed(song, imageUrl, facts = null) {
   const aliases = Array.isArray(song.aliases) ? song.aliases.slice(0, 8) : [];
   const availability = [
     song.regions?.jp ? 'JP' : null,
@@ -2933,6 +2973,21 @@ function buildSongInfoEmbed(song, imageUrl) {
   const chartFields = buildSongInfoChartFields(song);
   if (chartFields.length) {
     embed.addFields(chartFields);
+  }
+
+  const patternLines = facts?.available
+    ? (song.difficultyLevels || []).map((chart) => {
+        const tags = facts.tagsFor(song, chart);
+        if (!tags.length) return null;
+        return `${formatDifficultyShort(chart.difficulty)} ${String(chart.type || '').toUpperCase()}: ${tags.map((tag) => escapeMarkdown(facts.labelFor(tag).slice(0, 64))).join(', ')}`;
+      }).filter(Boolean)
+    : [];
+  if (patternLines.length) {
+    embed.addFields({ name: 'Patterns', value: patternLines.join('\n').slice(0, 1024) });
+  } else if (facts && !facts.available) {
+    embed.addFields({ name: 'Patterns', value: facts.unavailableMessage() });
+  } else if (facts) {
+    embed.addFields({ name: 'Patterns', value: 'None listed.' });
   }
 
   if (aliases.length) {

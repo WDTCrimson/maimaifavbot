@@ -31,6 +31,8 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/song search query:<internal-level-or-range>`
 - `/song suggest range:<text> [focus:<text>] [count:<1-10>]`
 - `/song info query:<text>`
+- `/song pattern tag:<text> [level] [difficulty]`
+- `/song random [level] [difficulty] [unplayed]`
 - `/account link`
 - `/account import provider:<auto|manual|maimaijson|tomomai|mimixd> data:<json-or-base64>`
 - `/account status`
@@ -59,6 +61,38 @@ npm run import:dxrating-ranks
 ```
 
 Most bot replies are ephemeral (private). `/song info` is public.
+
+## Chart patterns
+
+MaiDeck can show editor-authored chart pattern tags in `/song info`, browse them with `/song pattern`, and choose a filtered chart with `/song random`. Pattern names are searchable in English, Japanese, or romaji. The generated tag dataset is optional: when it is absent, the bot continues to run and explains that pattern data is unavailable.
+
+Before enabling the automated import, ask the mai-notes owner for permission. Once permission is granted, import the derived tags with:
+
+```bash
+npm run import:tags
+```
+
+The importer uses conditional requests, stores derived tag names only, and never redistributes chart files or simai. `data/reference/pattern-labels.json` contains the reviewed English labels.
+
+To review generic labels against playable examples from mai-notes:
+
+```bash
+npm run review:patterns
+```
+
+Open `data/reports/pattern-translation-review.html`, use **Watch pattern** to launch the source simulator, and enter the terminology global players use. Draft names stay in browser local storage and **Export names** downloads them as JSON. The generated review board is local and gitignored.
+
+These features were inspired by Rasmai and rebuilt independently without using its source code. MaiDeck will have no paid features, ever.
+
+## Skill model backtest
+
+The skill model is kept as pure, side-effect-free functions. Run its deterministic fixture backtest on any checkout with:
+
+```bash
+npm run backtest -- --fixture
+```
+
+This writes `data/reports/skill-model-backtest.md`. To test local SQLite account data instead, use `npm run backtest -- --db ./data/loadouts.sqlite`; add `--json` for machine-readable output. A fixture pass only validates the pipeline—it does not establish real-player accuracy or odds calibration. Numeric odds stay disabled until a history replay has at least 500 usable plays and meets the reliability criteria; until then the UI uses odds bands.
 
 ## Song aliases
 
@@ -145,6 +179,12 @@ npm run check
 - `USAGE_LOG_DIR` (optional, default `./logs`, used for local expensive-command usage logs)
 - `SONG_CATALOG_FILE` (optional, default `./data/import/songs.normalized.json`)
 - `SONG_ALIAS_FILE` (optional, default `./data/reference/song-aliases.json`)
+- `CHART_TAGS_FILE` (optional, default `./data/reference/chart-tags.json`)
+- `PATTERN_LABELS_FILE` (optional, default `./data/reference/pattern-labels.json`)
+- `CHART_TAGS_REPORT_FILE` (optional, default `./data/reference/chart-tags-report.json`)
+- `MODEL_MIN_NEARBY_BESTS` (optional, default `20`)
+- `MODEL_MIN_TOTAL_BESTS` (optional, default `50`)
+- `MODEL_NEARBY_WINDOW` (optional, default `1.0` internal-level points)
 - `RECOMMENDATION_FILE` (optional, default `./data/recommendations/community.json`)
 - `GRAPHIC_THEME_DIR` (optional, default `./data/theme/tomomai` when present, else `./data/theme`)
 - `ACCOUNT_LINK_BASE_URL` (optional, external web service start URL for `/account link`)
