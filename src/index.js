@@ -107,7 +107,8 @@ const songFeatureHandlers = createSongFeatureHandlers({
   songCatalog,
   store,
   replyPayload,
-  replySafely
+  replySafely,
+  resolveArtworkAttachment
 });
 
 if (accountLinkCallbackServerEnabled(config)) {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { selectRandomChart } from '../src/song-random-view.js';
+import { buildRandomChartPayload, selectRandomChart } from '../src/song-random-view.js';
 
 const songCatalog = {
   songs: [
@@ -39,4 +39,22 @@ test('random selection excludes songs unavailable in the International region', 
   };
   const result = selectRandomChart({ songCatalog: regionalCatalog, rng: () => 0 });
   assert.equal(result.song.songId, regionalCatalog.songs[1].songId);
+});
+
+test('random payload uses a jacket-backed embed with chart and pattern details', () => {
+  const entry = {
+    song: { title: 'One', artist: 'Artist', category: 'maimai', songId: 'song:0000000000000001' },
+    chart: { type: 'dx', difficulty: 'master', level: '13+', internalLevelValue: 13.7 },
+    candidateCount: 42
+  };
+  const payload = buildRandomChartPayload(entry, {
+    imageUrl: 'attachment://jacket.png',
+    patternLabels: ['Trill (トリル)', 'Streams (乱打)']
+  });
+  const embed = payload.embeds[0].data;
+  assert.equal(embed.thumbnail.url, 'attachment://jacket.png');
+  assert.equal(embed.description, 'Artist');
+  assert.match(embed.fields.find((field) => field.name === 'Chart').value, /DX MASTER · Lv 13.7/);
+  assert.match(embed.fields.find((field) => field.name === 'Patterns').value, /Trill/);
+  assert.match(embed.footer.text, /42 matching charts/);
 });

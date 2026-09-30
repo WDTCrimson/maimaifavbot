@@ -2,6 +2,14 @@ import { EmbedBuilder, escapeMarkdown } from 'discord.js';
 import { canonicalChartKey } from './recommendation-schema.js';
 import { resolvePlayerScores } from './recommendation-engine.js';
 
+const DIFFICULTY_COLORS = Object.freeze({
+  basic: 0x37b24d,
+  advanced: 0xf5c400,
+  expert: 0xef4444,
+  master: 0x8b5cf6,
+  remaster: 0xdfc8ff
+});
+
 function normalize(value) {
   return String(value || '').normalize('NFKC').trim().toLowerCase().replace(/^re:master$/, 'remaster');
 }
@@ -28,14 +36,39 @@ export function selectRandomChart({ songCatalog, scores = [], level = null, diff
   return { ...candidates[index], candidateCount: candidates.length };
 }
 
-export function buildRandomChartPayload(entry) {
+function formatDifficulty(value) {
+  const normalized = normalize(value);
+  if (normalized === 'remaster') return 'Re:MASTER';
+  return normalized ? normalized.toUpperCase() : 'UNKNOWN';
+}
+
+export function buildRandomChartPayload(entry, { imageUrl = null, patternLabels = [] } = {}) {
   const constant = Number(entry.chart.internalLevelValue);
   const level = Number.isFinite(constant) ? constant.toFixed(1) : String(entry.chart.level || '?');
   const title = escapeMarkdown(String(entry.song.title || '').slice(0, 100));
   const embed = new EmbedBuilder()
-    .setColor(0x22c55e)
+    .setColor(DIFFICULTY_COLORS[normalize(entry.chart.difficulty)] || 0x22c55e)
     .setTitle(title)
-    .setDescription(`${String(entry.chart.type || '').toUpperCase()} ${String(entry.chart.difficulty || '').toUpperCase()} · Lv ${level}`)
+    .setDescription(escapeMarkdown(String(entry.song.artist || 'Unknown artist').slice(0, 100)))
+    .addFields(
+      {
+        name: 'Chart',
+        value: `${String(entry.chart.type || 'UNK').toUpperCase()} ${formatDifficulty(entry.chart.difficulty)} · Lv ${level}`,
+        inline: true
+      },
+      {
+        name: 'Category',
+        value: escapeMarkdown(String(entry.song.category || 'Unknown').slice(0, 100)),
+        inline: true
+      }
+    )
     .setFooter({ text: `Random pick from ${entry.candidateCount} matching chart${entry.candidateCount === 1 ? '' : 's'}` });
+  if (patternLabels.length) {
+    embed.addFields({
+      name: 'Patterns',
+      value: patternLabels.map((value) => escapeMarkdown(String(value).slice(0, 64))).join(' · ').slice(0, 1024)
+    });
+  }
+  if (imageUrl) embed.setThumbnail(imageUrl);
   return { embeds: [embed] };
 }

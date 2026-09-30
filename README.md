@@ -64,7 +64,7 @@ Most bot replies are ephemeral (private). `/song info` is public.
 
 ## Chart patterns
 
-MaiDeck can show editor-authored chart pattern tags in `/song info`, browse them with `/song pattern`, and choose a filtered chart with `/song random`. Pattern names are searchable in English, Japanese, or romaji. The generated tag dataset is optional: when it is absent, the bot continues to run and explains that pattern data is unavailable.
+MaiDeck can show editor-authored chart pattern tags in `/song info`, browse them with `/song pattern`, and choose a filtered chart with `/song random`. Pattern names are searchable in English, Japanese, or romaji. Pattern results are shown as jacket-backed embeds, five charts per page, with first/previous/next/last buttons when a result set spans multiple pages. Random picks use the same jacket-backed presentation and include the selected chart's pattern labels. The generated tag dataset is optional: when it is absent, the bot continues to run and explains that pattern data is unavailable.
 
 Before enabling the automated import, ask the mai-notes owner for permission. Once permission is granted, import the derived tags with:
 

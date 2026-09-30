@@ -3,8 +3,38 @@ import { MessageFlags } from 'discord.js';
 import { buildPatternPage, parsePatternCustomId, PatternSessions } from './song-pattern-view.js';
 import { buildRandomChartPayload, selectRandomChart } from './song-random-view.js';
 
-export function createSongFeatureHandlers({ chartFacts, songCatalog, store, replyPayload, replySafely, rng = Math.random }) {
+export function createSongFeatureHandlers({
+  chartFacts,
+  songCatalog,
+  store,
+  replyPayload,
+  replySafely,
+  resolveArtworkAttachment = async () => null,
+  rng = Math.random
+}) {
   const sessions = new PatternSessions();
+
+  async function buildPatternPayload(sessionId, session) {
+    const preview = buildPatternPage({ sessionId, ...session });
+    const imageUrls = new Map();
+    const files = [];
+    await Promise.all(
+      preview.shown.map(async (entry, pageIndex) => {
+        const globalIndex = preview.start + pageIndex;
+        const artwork = await resolveArtworkAttachment(entry.song, `pattern-${sessionId}-${globalIndex + 1}`);
+        if (!artwork) return;
+        imageUrls.set(globalIndex, artwork.imageUrl);
+        files.push(artwork.attachment);
+      })
+    );
+    const page = buildPatternPage({ sessionId, ...session, imageUrls });
+    return {
+      content: page.content,
+      embeds: page.embeds,
+      components: page.components,
+      files
+    };
+  }
 
   async function pattern(interaction) {
     await chartFacts.reloadIfChanged();
@@ -26,12 +56,14 @@ export function createSongFeatureHandlers({ chartFacts, songCatalog, store, repl
       charts,
       scores,
       songCatalog,
+      showScores: Boolean(account),
       playerName: account?.player?.name || null
     });
-    await replyPayload(interaction, buildPatternPage({ sessionId, ...session }));
+    await replyPayload(interaction, await buildPatternPayload(sessionId, session));
   }
 
   async function random(interaction) {
+    await chartFacts.reloadIfChanged();
     const level = interaction.options.getString('level');
     const difficulty = interaction.options.getString('difficulty');
     const unplayed = interaction.options.getBoolean('unplayed') || false;
@@ -52,7 +84,16 @@ export function createSongFeatureHandlers({ chartFacts, songCatalog, store, repl
       await replySafely(interaction, 'No charts match those random-pick filters.');
       return;
     }
-    await replyPayload(interaction, buildRandomChartPayload(entry));
+    const artwork = await resolveArtworkAttachment(entry.song, 'song-random');
+    const patternLabels = chartFacts.available
+      ? chartFacts.tagsFor(entry.song, entry.chart).map((tag) => chartFacts.labelFor(tag))
+      : [];
+    const payload = buildRandomChartPayload(entry, {
+      imageUrl: artwork?.imageUrl,
+      patternLabels
+    });
+    if (artwork) payload.files = [artwork.attachment];
+    await replyPayload(interaction, payload);
   }
 
   return {
@@ -77,7 +118,12 @@ export function createSongFeatureHandlers({ chartFacts, songCatalog, store, repl
         return;
       }
       sessions.move(control.sessionId, control.action);
-      await interaction.update(buildPatternPage({ sessionId: control.sessionId, ...session }));
+      await interaction.deferUpdate();
+      const payload = await buildPatternPayload(control.sessionId, session);
+      await interaction.editReply({
+        ...payload,
+        attachments: []
+      });
     }
   };
 }
