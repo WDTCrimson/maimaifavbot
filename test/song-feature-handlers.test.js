@@ -38,11 +38,13 @@ function makeHarness() {
     getAccountScores() { return []; }
   };
   const replies = [];
+  const publicReplies = [];
   const handlers = createSongFeatureHandlers({
     chartFacts,
     songCatalog,
     store,
     replyPayload: async (_interaction, payload) => replies.push(payload),
+    replyPublicPayload: async (_interaction, payload) => publicReplies.push(payload),
     replySafely: async () => {},
     resolveArtworkAttachment: async (_song, prefix) => ({
       attachment: { name: `${prefix}.png` },
@@ -50,11 +52,11 @@ function makeHarness() {
     }),
     rng: () => 0
   });
-  return { handlers, replies };
+  return { handlers, replies, publicReplies };
 }
 
 test('pattern handler attaches jackets and replaces them when paging', async () => {
-  const { handlers, replies } = makeHarness();
+  const { handlers, replies, publicReplies } = makeHarness();
   const pattern = handlers.commands.get('pattern');
   await pattern({
     user: { id: 'owner' },
@@ -63,10 +65,11 @@ test('pattern handler attaches jackets and replaces them when paging', async () 
     }
   });
 
-  assert.equal(replies.length, 1);
-  assert.equal(replies[0].embeds.length, 5);
-  assert.equal(replies[0].files.length, 5);
-  const nextId = replies[0].components[0].toJSON().components[3].custom_id;
+  assert.equal(replies.length, 0);
+  assert.equal(publicReplies.length, 1);
+  assert.equal(publicReplies[0].embeds.length, 5);
+  assert.equal(publicReplies[0].files.length, 5);
+  const nextId = publicReplies[0].components[0].toJSON().components[3].custom_id;
   const control = handlers.parseButton(nextId);
   let deferred = false;
   let edited = null;
@@ -84,7 +87,7 @@ test('pattern handler attaches jackets and replaces them when paging', async () 
 });
 
 test('random handler includes its jacket and pattern labels', async () => {
-  const { handlers, replies } = makeHarness();
+  const { handlers, replies, publicReplies } = makeHarness();
   const random = handlers.commands.get('random');
   await random({
     user: { id: 'owner' },
@@ -94,7 +97,8 @@ test('random handler includes its jacket and pattern labels', async () => {
     }
   });
 
-  assert.equal(replies[0].files.length, 1);
-  assert.equal(replies[0].embeds[0].data.thumbnail.url, 'attachment://song-random.png');
-  assert.match(replies[0].embeds[0].data.fields.find((field) => field.name === 'Patterns').value, /Trill/);
+  assert.equal(replies.length, 0);
+  assert.equal(publicReplies[0].files.length, 1);
+  assert.equal(publicReplies[0].embeds[0].data.thumbnail.url, 'attachment://song-random.png');
+  assert.match(publicReplies[0].embeds[0].data.fields.find((field) => field.name === 'Patterns').value, /Trill/);
 });

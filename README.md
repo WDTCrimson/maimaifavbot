@@ -60,7 +60,7 @@ To cache DXRating rank badges locally for the target board:
 npm run import:dxrating-ranks
 ```
 
-Most bot replies are ephemeral (private). `/song info` is public.
+Most bot replies are ephemeral (private). `/song info`, `/song pattern`, and `/song random` are public so their song cards can be shared in the channel.
 
 ## Chart patterns
 

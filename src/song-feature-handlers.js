@@ -8,6 +8,7 @@ export function createSongFeatureHandlers({
   songCatalog,
   store,
   replyPayload,
+  replyPublicPayload = replyPayload,
   replySafely,
   resolveArtworkAttachment = async () => null,
   rng = Math.random
@@ -59,7 +60,7 @@ export function createSongFeatureHandlers({
       showScores: Boolean(account),
       playerName: account?.player?.name || null
     });
-    await replyPayload(interaction, await buildPatternPayload(sessionId, session));
+    await replyPublicPayload(interaction, await buildPatternPayload(sessionId, session));
   }
 
   async function random(interaction) {
@@ -93,7 +94,7 @@ export function createSongFeatureHandlers({
       patternLabels
     });
     if (artwork) payload.files = [artwork.attachment];
-    await replyPayload(interaction, payload);
+    await replyPublicPayload(interaction, payload);
   }
 
   return {

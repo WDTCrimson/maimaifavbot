@@ -14,6 +14,7 @@ Deployed on 2026-09-30 at commit `5dabcd7fc05670d07410878f2f5485563beb3efb`.
 - The production canary resolved `trill`, `トリル`, and `toriru` to `トリル`; that tag currently resolves to 103 International charts.
 - Rollback revision: `0a1e31151e195b03f5ee1120164808feb83eb0d2`.
 - The user confirmed the original command flows work. Visual release `8324c12b935eb4210080506e21c9f299138f2fae` then changed `/song pattern` to five jacket-backed embeds per page with first/previous/next/last buttons and gave `/song random` a jacket-backed detail embed. All 119 tests passed on the remote host before restart; the bot returned active with zero restarts and loaded all 709 pattern records.
+- Successful `/song pattern` and `/song random` results are public channel replies. Errors and attempts by another user to operate the requester's pagination remain private.
 
 ## Completed deploy procedure
 

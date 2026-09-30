@@ -107,6 +107,7 @@ const songFeatureHandlers = createSongFeatureHandlers({
   songCatalog,
   store,
   replyPayload,
+  replyPublicPayload,
   replySafely,
   resolveArtworkAttachment
 });
