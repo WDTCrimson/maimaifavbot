@@ -61,3 +61,7 @@ PLANNING.local.md
 !maimai-recommendation-worker.service
 !maimai-catalog-refresh.service
 list.html
+
+# Local planning notes (not tracked)
+docs/plans/
+TODOS.md
