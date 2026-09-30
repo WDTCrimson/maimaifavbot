@@ -36,3 +36,16 @@ journalctl -u maimai-history-collector.service -n 50 --no-pager
 Keep `QUIET_READS_ENABLED=false` for the first deployment. After the dedicated secret is installed and linked auth has been rekeyed, switch it to `true`, restart the bot, opt in one test profile, and run the service once manually. Confirm `/account settings` shows a last background read while `/account status` still reports the prior full-sync timestamp.
 
 Emergency stop: set `QUIET_READS_ENABLED=false`. The timer can remain installed; disabled runs make no network requests.
+
+### User-service fallback
+
+On hosts where the deploy account cannot write `/etc/systemd/system`, use the persistent user manager instead (`loginctl show-user "$USER" -p Linger` must report `yes`):
+
+```sh
+mkdir -p ~/.config/systemd/user
+install -m 0644 maimai-history-collector.user.service ~/.config/systemd/user/maimai-history-collector.service
+install -m 0644 maimai-history-collector.timer ~/.config/systemd/user/maimai-history-collector.timer
+systemctl --user daemon-reload
+systemctl --user enable --now maimai-history-collector.timer
+systemctl --user start maimai-history-collector.service
+```
