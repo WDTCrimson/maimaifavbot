@@ -15,7 +15,7 @@ GRAPHIC_THEME_DIR=./data/theme/tomomai
 Then restart bot and run:
 
 ```text
-/loadout graphic name:<your_loadout>
+/playlist graphic name:<your_playlist>
 ```
 
 ## Main mapped files

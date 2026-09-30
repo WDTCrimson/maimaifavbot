@@ -1,6 +1,6 @@
 # Loadout Graphic Theme Assets
 
-Place custom files here to change `/loadout graphic` visuals.
+Place custom files here to change `/playlist graphic` visuals.
 
 ## Supported image formats
 

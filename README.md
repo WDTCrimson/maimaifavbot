@@ -74,6 +74,8 @@ npm run import:tags
 
 The importer uses conditional requests, stores derived tag names only, and never redistributes chart files or simai. `data/reference/pattern-labels.json` contains the reviewed English labels.
 
+Production rollout details and the remaining Discord smoke checks are recorded in [docs/deploy/phase-1-chart-facts.md](docs/deploy/phase-1-chart-facts.md).
+
 To review generic labels against playable examples from mai-notes:
 
 ```bash
@@ -92,7 +94,7 @@ The skill model is kept as pure, side-effect-free functions. Run its determinist
 npm run backtest -- --fixture
 ```
 
-This writes `data/reports/skill-model-backtest.md`. To test local SQLite account data instead, use `npm run backtest -- --db ./data/loadouts.sqlite`; add `--json` for machine-readable output. A fixture pass only validates the pipeline—it does not establish real-player accuracy or odds calibration. Numeric odds stay disabled until a history replay has at least 500 usable plays and meets the reliability criteria; until then the UI uses odds bands.
+This writes `data/reports/skill-model-backtest.md`. To test local SQLite account data instead, use `npm run backtest -- --db ./data/loadouts.sqlite`; add `--json` for machine-readable output. A fixture pass only validates the pipeline—it does not establish real-player accuracy or odds calibration. The model is not connected to Discord commands yet: its first real-data held-out run failed the Phase 2 acceptance gate. Future estimator surfaces will use odds bands until a history replay has at least 500 usable plays and meets the reliability criteria; numeric odds remain disabled until then.
 
 ## Song aliases
 
@@ -469,7 +471,7 @@ systemctl list-timers maimai-catalog-refresh.timer
 journalctl -u maimai-catalog-refresh.service -n 100 --no-pager
 ```
 
-Change the bot-side file polling interval with `CATALOG_RELOAD_INTERVAL_MINUTES`. The timer imports both International and JP-only entries from the upstream datasets, then refreshes aliases from Yuzu and GCM. No bot restart is required after a successful refresh.
+Change the bot-side file polling interval with `CATALOG_RELOAD_INTERVAL_MINUTES`. The timer imports both International and JP-only entries from the upstream datasets, refreshes aliases from Yuzu and GCM, then performs the approved chart-tag import as a best-effort step. A tag-source failure cannot fail the required catalog and alias refresh. No bot restart is required after a successful refresh.
 
 ## Customize graphic assets
 
