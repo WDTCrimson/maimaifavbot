@@ -25,6 +25,28 @@ The feature stays inert until all of these are true:
 
 Do not enable the collector with the legacy shared encryption/signing secret. Complete the Phase 0 rekey first.
 
+## Rekey and activate
+
+The rekey command defaults to a read-only dry run. Keep the generated secret in a mode-`600` file outside the repository; the command never prints it.
+
+```sh
+umask 077
+secret_file="$(mktemp)"
+openssl rand -base64 48 > "$secret_file"
+npm run rekey:linked-auth -- --new-secret-file="$secret_file"
+```
+
+After the dry run validates every linked profile, stop the bot and apply. `--activate-collector` backs up `.env`, writes the new `ACCOUNT_LINK_DATA_SECRET`, and sets `QUIET_READS_ENABLED=true`. The command also creates an online SQLite backup before changing any rows.
+
+```sh
+systemctl stop maimaifavbot
+npm run rekey:linked-auth -- --new-secret-file="$secret_file" --apply --activate-collector
+systemctl start maimaifavbot
+rm -f "$secret_file"
+```
+
+Then enable one test profile with `/account settings history:true` and run the user collector service once. The profile owner must perform this opt-in; the migration does not grant consent on anyone's behalf.
+
 ## Install and verify
 
 ```sh
