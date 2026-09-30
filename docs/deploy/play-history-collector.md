@@ -2,6 +2,10 @@
 
 Implemented 2026-09-30. This collector grows the timestamped play corpus needed by the Phase 2 backtest without doing a full score sync every day.
 
+## Production status
+
+Deployed 2026-09-30 at `12b7d93`. The global commands are registered, the bot is running with the additive SQLite tables, and the collector timer is enabled through the persistent user systemd manager. The pre-migration backup is `backups/loadouts-pre-collector-20260930-215820.sqlite` on the host. The timer's canary run exited successfully without reading any accounts because `QUIET_READS_ENABLED` remains unset. Activation is intentionally pending the dedicated-secret rekey.
+
 ## What is built
 
 - `/account settings [history:true|false]` stores consent per profile and shows continuous replayable progress toward 500 plays.
