@@ -1126,6 +1126,40 @@ async function handleAccountCommand(interaction) {
       return;
     }
 
+    case 'settings': {
+      const requestedHistory = interaction.options.getBoolean('history');
+      let status = store.getPlayCollectionStatus(userId);
+      if (!status.available) {
+        await replySafely(interaction, 'Automatic play-history collection requires `DATA_BACKEND=sqlite` on the bot host.');
+        return;
+      }
+      if (requestedHistory != null) {
+        try {
+          status = await store.setPlayHistoryEnabled(userId, requestedHistory);
+        } catch (error) {
+          await replySafely(interaction, error?.message || String(error));
+          return;
+        }
+      }
+
+      const hostReady = config.quietReadsEnabled && config.accountLinkDataSecretDedicated;
+      const lines = [
+        `Automatic history: **${status.historyEnabled ? 'on' : 'off'}**`,
+        `Collector host: **${hostReady ? 'running' : 'paused'}**`,
+        `Replayable continuous plays: **${status.continuousPlays || 0} / 500**`,
+        `Detected gaps: **${status.gapsDetected || 0}**`,
+        status.quietReadAt ? `Last background read: <t:${Math.floor(Date.parse(status.quietReadAt) / 1000)}:R>` : 'Last background read: never'
+      ];
+      if (requestedHistory === true) {
+        lines.push('', 'By enabling this, the bot will sign in to maimai DX NET with your saved link about once a day to read recent plays. You can turn it off at any time.');
+      }
+      if (status.historyEnabled && !hostReady) {
+        lines.push('', 'Your preference is saved, but collection will not run until the host kill switch and dedicated data-encryption secret are configured.');
+      }
+      await replySafely(interaction, lines.join('\n'));
+      return;
+    }
+
     case 'sync': {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await measureUsage(
@@ -1238,8 +1272,13 @@ async function handleAccountCommand(interaction) {
             linkedAuth: account.linkedAuth
           });
 
+          const collection = store.getPlayCollectionStatus(userId);
+          const collectionLine = collection.available
+            ? `\nReplayable continuous plays: **${collection.continuousPlays || 0} / 500**${collection.lastOutcome === 'gap' ? ' — a collection gap was detected, so the continuous window restarted.' : ''}`
+            : '';
+
           await interaction.editReply({
-            content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.`,
+            content: `Synced **${stored.player?.name || 'linked account'}** from maimai DX NET.${collectionLine}`,
             embeds: [buildAccountStatusEmbed(stored, store.getAccountRecentSessions(userId))]
           });
 

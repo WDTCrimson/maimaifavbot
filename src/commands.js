@@ -504,6 +504,17 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('settings')
+      .setDescription('View or change automatic play-history collection')
+      .addBooleanOption((option) =>
+        option
+          .setName('history')
+          .setDescription('Allow one background recent-play read about once per day')
+          .setRequired(false)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('top')
       .setDescription('Generate a top-score graphic from your linked account snapshot')
   )

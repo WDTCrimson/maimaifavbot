@@ -1,0 +1,12 @@
+[Unit]
+Description=Check for due maimai play-history reads every 15 minutes
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=15min
+Persistent=true
+RandomizedDelaySec=2min
+Unit=maimai-history-collector.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=maimai opt-in recent-play history collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=crimson
+Group=crimson
+WorkingDirectory=/home/crimson/PersonalProjects/maimaifavbot
+Environment=NODE_ENV=production
+EnvironmentFile=/home/crimson/PersonalProjects/maimaifavbot/.env
+ExecStart=/usr/bin/env node /home/crimson/PersonalProjects/maimaifavbot/scripts/sync-accounts.js --quiet --delay-ms=1000
+TimeoutStartSec=15min
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/crimson/PersonalProjects/maimaifavbot/data /home/crimson/PersonalProjects/maimaifavbot/logs
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

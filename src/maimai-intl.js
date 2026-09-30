@@ -2415,6 +2415,26 @@ export async function fetchIntlAccountSnapshotFromClal(rawToken, songCatalog = n
   };
 }
 
+// Narrow read used by the opt-in history collector. It deliberately avoids all
+// score-list and score-detail pages; callers persist only the recent rows and
+// collection state, never the account snapshot.
+export async function fetchIntlRecentPlayCollectionFromClal(rawToken, songCatalog = null) {
+  const clalToken = normalizeIntlClalToken(rawToken);
+  const validation = await validateInternationalCookie(clalToken);
+  const cookies = await getCookiesFromRedirect(validation.redirectUrl, clalToken);
+  const [playerDataHtml, recentPlays] = await Promise.all([
+    fetchPlayerDataHtml(cookies, validation.redirectUrl),
+    fetchRecentPlays(cookies)
+  ]);
+  const profile = await extractPlayerSnapshot(playerDataHtml);
+  return {
+    token: clalToken,
+    collectedAt: new Date().toISOString(),
+    playCount: profile?.metrics?.playCount ?? null,
+    recentSessions: enrichRecentPlays(recentPlays, songCatalog)
+  };
+}
+
 export async function applyIntlFavoritesFromClal(rawToken, desiredSongs) {
   if (!Array.isArray(desiredSongs)) {
     throw new Error('Desired songs must be an array.');

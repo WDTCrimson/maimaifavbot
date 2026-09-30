@@ -43,6 +43,14 @@ function parseOptionalPositiveNumber(name, fallback = null) {
   return parsed;
 }
 
+function parseOptionalBoolean(name, fallback = false) {
+  const value = optionalEnv(name);
+  if (value == null) return fallback;
+  if (['1', 'true', 'yes', 'on'].includes(value.toLowerCase())) return true;
+  if (['0', 'false', 'no', 'off'].includes(value.toLowerCase())) return false;
+  throw new Error(`Environment variable ${name} must be true or false.`);
+}
+
 function parseDataBackend() {
   const value = process.env.DATA_BACKEND?.trim().toLowerCase() || 'json';
   if (value !== 'json' && value !== 'sqlite') {
@@ -58,6 +66,10 @@ function resolveDefaultGraphicThemeDir() {
   }
   return './data/theme';
 }
+
+const explicitAccountLinkDataSecret = optionalEnv('ACCOUNT_LINK_DATA_SECRET');
+const effectiveAccountLinkSigningSecret =
+  optionalEnv('ACCOUNT_LINK_SIGNING_SECRET') || optionalEnv('ACCOUNT_LINK_SHARED_SECRET');
 
 export const config = {
   token: requireEnv('DISCORD_TOKEN'),
@@ -89,11 +101,19 @@ export const config = {
   accountLinkCallbackPort: parseOptionalInteger('ACCOUNT_LINK_CALLBACK_PORT'),
   accountLinkSharedSecret: optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
   accountLinkSigningSecret:
-    optionalEnv('ACCOUNT_LINK_SIGNING_SECRET') || optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
+    effectiveAccountLinkSigningSecret,
   accountLinkDataSecret:
-    optionalEnv('ACCOUNT_LINK_DATA_SECRET') || optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
+    explicitAccountLinkDataSecret || optionalEnv('ACCOUNT_LINK_SHARED_SECRET'),
+  accountLinkDataSecretDedicated: Boolean(
+    explicitAccountLinkDataSecret
+      && explicitAccountLinkDataSecret !== effectiveAccountLinkSigningSecret
+      && explicitAccountLinkDataSecret !== optionalEnv('ACCOUNT_LINK_SHARED_SECRET')
+  ),
   accountLinkTtlMinutes: parseOptionalInteger('ACCOUNT_LINK_TTL_MINUTES', 15),
-  accountPublicBaseUrl: optionalEnv('ACCOUNT_PUBLIC_BASE_URL')
+  accountPublicBaseUrl: optionalEnv('ACCOUNT_PUBLIC_BASE_URL'),
+  quietReadsEnabled: parseOptionalBoolean('QUIET_READS_ENABLED', false),
+  quietReadMinIntervalHours: Math.max(20, parseOptionalInteger('QUIET_READ_MIN_INTERVAL_H', 20)),
+  quietReadMaxAccountsPerRun: Math.min(2, parseOptionalInteger('QUIET_READ_MAX_ACCOUNTS', 2))
 };
 
 export const limits = {

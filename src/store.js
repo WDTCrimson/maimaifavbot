@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import { createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
+import { applyPlayCollectionObservation, defaultPlayCollectionState } from './play-collection.js';
 
 const LOADOUT_SCHEMA_VERSION = 2;
 const DEFAULT_PROFILE = 'default';
@@ -661,6 +662,7 @@ class SqliteStoreBackend {
     await mkdir(dirname(this.filePath), { recursive: true });
     this.db = new Database(this.filePath);
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('busy_timeout = 5000');
     this.db.pragma('foreign_keys = ON');
     this.initializeSchema();
   }
@@ -758,6 +760,37 @@ class SqliteStoreBackend {
       );
       CREATE INDEX IF NOT EXISTS idx_account_recent_history_user_profile_played
         ON account_recent_history(user_id, profile_name, played_at_iso DESC);
+
+      CREATE TABLE IF NOT EXISTS quiet_read_state (
+        user_id TEXT NOT NULL,
+        profile_name TEXT NOT NULL,
+        history_enabled INTEGER NOT NULL DEFAULT 0,
+        quiet_read_at TEXT,
+        collection_started_at TEXT,
+        last_play_count INTEGER,
+        continuous_plays INTEGER NOT NULL DEFAULT 0,
+        total_captured_plays INTEGER NOT NULL DEFAULT 0,
+        gaps_detected INTEGER NOT NULL DEFAULT 0,
+        last_gap_at TEXT,
+        backoff_until TEXT,
+        lease_until TEXT,
+        last_outcome TEXT,
+        PRIMARY KEY (user_id, profile_name)
+      );
+
+      CREATE TABLE IF NOT EXISTS account_collection_gaps (
+        gap_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT NOT NULL,
+        profile_name TEXT NOT NULL,
+        detected_at TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        previous_play_count INTEGER,
+        current_play_count INTEGER,
+        newly_captured INTEGER NOT NULL,
+        missing_plays INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_account_collection_gaps_user_profile
+        ON account_collection_gaps(user_id, profile_name, detected_at DESC);
 
       CREATE TABLE IF NOT EXISTS account_best_timed_plays (
         user_id TEXT NOT NULL,
@@ -1506,6 +1539,102 @@ class SqliteStoreBackend {
     return written;
   }
 
+  readPlayCollectionState(userId, profileName) {
+    const row = this.db.prepare(
+      `SELECT history_enabled, quiet_read_at, collection_started_at, last_play_count,
+              continuous_plays, total_captured_plays, gaps_detected, last_gap_at,
+              backoff_until, lease_until, last_outcome
+       FROM quiet_read_state WHERE user_id = ? AND profile_name = ?`
+    ).get(userId, profileName);
+    if (!row) return defaultPlayCollectionState();
+    return {
+      historyEnabled: Boolean(row.history_enabled),
+      quietReadAt: row.quiet_read_at,
+      collectionStartedAt: row.collection_started_at,
+      lastPlayCount: row.last_play_count,
+      continuousPlays: row.continuous_plays,
+      totalCapturedPlays: row.total_captured_plays,
+      gapsDetected: row.gaps_detected,
+      lastGapAt: row.last_gap_at,
+      backoffUntil: row.backoff_until,
+      leaseUntil: row.lease_until,
+      lastOutcome: row.last_outcome
+    };
+  }
+
+  writePlayCollectionState(userId, profileName, state) {
+    const value = { ...defaultPlayCollectionState(), ...(state || {}) };
+    this.db.prepare(
+      `INSERT INTO quiet_read_state (
+         user_id, profile_name, history_enabled, quiet_read_at, collection_started_at,
+         last_play_count, continuous_plays, total_captured_plays, gaps_detected,
+         last_gap_at, backoff_until, lease_until, last_outcome
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, profile_name) DO UPDATE SET
+         history_enabled = excluded.history_enabled,
+         quiet_read_at = excluded.quiet_read_at,
+         collection_started_at = excluded.collection_started_at,
+         last_play_count = excluded.last_play_count,
+         continuous_plays = excluded.continuous_plays,
+         total_captured_plays = excluded.total_captured_plays,
+         gaps_detected = excluded.gaps_detected,
+         last_gap_at = excluded.last_gap_at,
+         backoff_until = excluded.backoff_until,
+         lease_until = excluded.lease_until,
+         last_outcome = excluded.last_outcome`
+    ).run(
+      userId, profileName, value.historyEnabled ? 1 : 0, value.quietReadAt,
+      value.collectionStartedAt, value.lastPlayCount, value.continuousPlays,
+      value.totalCapturedPlays, value.gapsDetected, value.lastGapAt,
+      value.backoffUntil, value.leaseUntil, value.lastOutcome
+    );
+    return this.readPlayCollectionState(userId, profileName);
+  }
+
+  recordPlayCollectionObservation(userId, profileName, observation) {
+    const result = applyPlayCollectionObservation(
+      this.readPlayCollectionState(userId, profileName),
+      observation
+    );
+    const persist = this.db.transaction(() => {
+      this.writePlayCollectionState(userId, profileName, result.state);
+      if (result.gap) {
+        this.db.prepare(
+          `INSERT INTO account_collection_gaps (
+             user_id, profile_name, detected_at, reason, previous_play_count,
+             current_play_count, newly_captured, missing_plays
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        ).run(
+          userId, profileName, result.gap.detectedAt, result.gap.reason,
+          result.gap.previousPlayCount, result.gap.currentPlayCount,
+          result.gap.newlyCaptured, result.gap.missingPlays
+        );
+      }
+    });
+    persist();
+    return { ...result, state: this.readPlayCollectionState(userId, profileName) };
+  }
+
+  tryAcquireQuietReadLease(userId, profileName, nowIso, leaseUntilIso) {
+    const current = this.readPlayCollectionState(userId, profileName);
+    this.writePlayCollectionState(userId, profileName, current);
+    return this.db.prepare(
+      `UPDATE quiet_read_state SET lease_until = ?
+       WHERE user_id = ? AND profile_name = ?
+         AND (lease_until IS NULL OR lease_until <= ?)`
+    ).run(leaseUntilIso, userId, profileName, nowIso).changes === 1;
+  }
+
+  recordCollectionGapBackoff(userId, profileName, backoffUntil, outcome) {
+    const current = this.readPlayCollectionState(userId, profileName);
+    return this.writePlayCollectionState(userId, profileName, {
+      ...current,
+      backoffUntil,
+      leaseUntil: null,
+      lastOutcome: outcome
+    });
+  }
+
   listRecentHistory(userId, profileName, { date = null, limit = 500 } = {}) {
     const safeLimit = Math.max(1, Math.min(5000, Number(limit) || 500));
     const rows = date
@@ -1540,6 +1669,8 @@ class SqliteStoreBackend {
     this.db.prepare('DELETE FROM account_snapshots WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
     this.db.prepare('DELETE FROM account_recent_history WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
     this.db.prepare('DELETE FROM account_best_timed_plays WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
+    this.db.prepare('DELETE FROM quiet_read_state WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
+    this.db.prepare('DELETE FROM account_collection_gaps WHERE user_id = ? AND profile_name = ?').run(userId, profileName);
   }
 
   readActiveProfileName(userId) {
@@ -2478,6 +2609,91 @@ export class LoadoutStore {
       .slice(0, Math.max(1, Math.min(5000, Number(options.limit) || 500)));
   }
 
+  getPlayCollectionStatus(userId, profileName = this.getActiveProfileName(userId)) {
+    if (this.backendName !== 'sqlite') {
+      return { ...defaultPlayCollectionState(), available: false };
+    }
+    return {
+      ...this.backend.readPlayCollectionState(userId, profileName),
+      available: true
+    };
+  }
+
+  getQuietReadGlobalBackoff() {
+    if (this.backendName !== 'sqlite') return null;
+    const row = this.backend.db.prepare(
+      "SELECT value FROM metadata WHERE key = 'quietReadBackoffUntil'"
+    ).get();
+    return parseNullableJson(row?.value);
+  }
+
+  setQuietReadGlobalBackoff(value) {
+    if (this.backendName !== 'sqlite') return;
+    this.backend.db.prepare(
+      `INSERT INTO metadata (key, value) VALUES ('quietReadBackoffUntil', ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    ).run(JSON.stringify(value || null));
+    this.state.metadata.quietReadBackoffUntil = value || null;
+  }
+
+  async setPlayHistoryEnabled(userId, enabled, profileName = this.getActiveProfileName(userId)) {
+    if (this.backendName !== 'sqlite') {
+      throw new Error('Automatic play-history collection requires DATA_BACKEND=sqlite.');
+    }
+    const account = this.getAccount(userId, profileName);
+    if (!account) throw new Error('Link an account before changing play-history collection.');
+    if (enabled && !account.linkedAuth) {
+      throw new Error('Re-link this profile with the International web flow before enabling collection.');
+    }
+    const current = this.backend.readPlayCollectionState(userId, profileName);
+    const now = new Date().toISOString();
+    return this.backend.writePlayCollectionState(userId, profileName, {
+      ...current,
+      historyEnabled: Boolean(enabled),
+      collectionStartedAt: enabled ? (current.collectionStartedAt || now) : current.collectionStartedAt,
+      lastPlayCount: enabled && current.lastPlayCount == null
+        ? account?.metrics?.playCount ?? null
+        : current.lastPlayCount,
+      leaseUntil: enabled ? current.leaseUntil : null,
+      lastOutcome: enabled ? current.lastOutcome : 'disabled'
+    });
+  }
+
+  tryAcquireQuietReadLease(userId, profileName, now = new Date()) {
+    if (this.backendName !== 'sqlite') return false;
+    const nowIso = now.toISOString();
+    const leaseUntil = new Date(now.getTime() + 10 * 60 * 1000).toISOString();
+    return this.backend.tryAcquireQuietReadLease(userId, profileName, nowIso, leaseUntil);
+  }
+
+  recordQuietReadFailure(userId, profileName, outcome, backoffUntil = null) {
+    if (this.backendName !== 'sqlite') return null;
+    return this.backend.recordCollectionGapBackoff(userId, profileName, backoffUntil, outcome);
+  }
+
+  recordQuietPlayCollection(userId, profileName, {
+    playCount,
+    recentSessions,
+    collectedAt = new Date().toISOString()
+  }) {
+    if (this.backendName !== 'sqlite') {
+      throw new Error('Automatic play-history collection requires DATA_BACKEND=sqlite.');
+    }
+    const written = this.backend.recordRecentHistory(
+      userId,
+      profileName,
+      Array.isArray(recentSessions) ? recentSessions : [],
+      collectedAt
+    );
+    const result = this.backend.recordPlayCollectionObservation(userId, profileName, {
+      playCount,
+      newlyCaptured: written,
+      observedAt: collectedAt,
+      quiet: true
+    });
+    return { written, ...result };
+  }
+
   getAccountBestTimedPlays(userId, profileName = this.getActiveProfileName(userId)) {
     if (this.backendName === 'sqlite') {
       return this.backend.listBestTimedPlays(userId, profileName);
@@ -2632,7 +2848,13 @@ export class LoadoutStore {
     await this.saveUser(userId);
     if (this.backendName === 'sqlite') {
       this.backend.recordAccountSnapshot(userId, profileName, nextAccount, historyScores);
-      this.backend.recordRecentHistory(userId, profileName, historyRecent, nextAccount.updatedAt);
+      const written = this.backend.recordRecentHistory(userId, profileName, historyRecent, nextAccount.updatedAt);
+      this.backend.recordPlayCollectionObservation(userId, profileName, {
+        playCount: nextAccount?.metrics?.playCount,
+        newlyCaptured: written,
+        observedAt: nextAccount.sourceFetchedAt || nextAccount.updatedAt,
+        quiet: false
+      });
     }
     if (this.backendName === 'sqlite' && user.profiles[profileName].account) {
       delete user.profiles[profileName].account.allScores;

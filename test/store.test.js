@@ -242,6 +242,47 @@ for (const backend of ['json', 'sqlite']) {
   });
 }
 
+test('sqlite quiet collection writes history and collection state without changing the snapshot', async () => {
+  await withStore('sqlite', async (store) => {
+    const base = {
+      provider: 'manual',
+      player: { name: 'Collector' },
+      metrics: { playCount: 100 },
+      sourceFetchedAt: '2026-09-01T00:00:00.000Z',
+      linkedAuth: { encrypted: 'opaque' },
+      recentSessions: []
+    };
+    await store.setAccount('user', base);
+    await store.setPlayHistoryEnabled('user', true);
+    assert.equal(store.tryAcquireQuietReadLease('user', 'default', new Date('2026-09-01T00:00:00.000Z')), true);
+    assert.equal(store.tryAcquireQuietReadLease('user', 'default', new Date('2026-09-01T00:05:00.000Z')), false);
+    assert.equal(store.tryAcquireQuietReadLease('user', 'default', new Date('2026-09-01T00:11:00.000Z')), true);
+    store.recordQuietReadFailure('user', 'default', 'released');
+    const snapshotBefore = JSON.stringify(store.getAccount('user'));
+    const result = store.recordQuietPlayCollection('user', 'default', {
+      playCount: 102,
+      collectedAt: '2026-09-02T00:00:00.000Z',
+      recentSessions: [
+        { title: 'Alpha', difficulty: 'master', type: 'dx', achievement: 990000, playedAtIso: '2026-09-01T10:00:00+09:00' },
+        { title: 'Beta', difficulty: 'expert', type: 'std', achievement: 995000, playedAtIso: '2026-09-01T10:03:00+09:00' }
+      ]
+    });
+    assert.equal(result.written, 2);
+    assert.equal(result.gap, null);
+    assert.equal(result.state.continuousPlays, 2);
+    assert.equal(store.getAccountRecentHistory('user').length, 2);
+    assert.equal(JSON.stringify(store.getAccount('user')), snapshotBefore);
+
+    const overflow = store.recordQuietPlayCollection('user', 'default', {
+      playCount: 120,
+      collectedAt: '2026-09-03T00:00:00.000Z',
+      recentSessions: []
+    });
+    assert.equal(overflow.gap.missingPlays, 18);
+    assert.equal(overflow.state.continuousPlays, 0);
+  });
+});
+
 test('legacy JSON state migrates account shape and stored song IDs', async () => {
   const initial = {
     users: { user: { account: { player: { name: 'Legacy' } }, loadouts: {
