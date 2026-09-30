@@ -7,16 +7,16 @@ Wants=network-online.target
 Type=oneshot
 User=crimson
 Group=crimson
-WorkingDirectory=/home/crimson/PersonalProjects/maimaifavbot
+WorkingDirectory=/home/crimson/maimaifavbot
 Environment=NODE_ENV=production
-EnvironmentFile=/home/crimson/PersonalProjects/maimaifavbot/.env
-ExecStart=/usr/bin/env node /home/crimson/PersonalProjects/maimaifavbot/scripts/sync-accounts.js --quiet --delay-ms=1000
+EnvironmentFile=/home/crimson/maimaifavbot/.env
+ExecStart=/home/crimson/.nvm/versions/node/v24.10.0/bin/node /home/crimson/maimaifavbot/scripts/sync-accounts.js --quiet --delay-ms=1000
 TimeoutStartSec=15min
 PrivateTmp=true
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/crimson/PersonalProjects/maimaifavbot/data /home/crimson/PersonalProjects/maimaifavbot/logs
+ReadWritePaths=/home/crimson/maimaifavbot/data /home/crimson/maimaifavbot/logs
 StandardOutput=journal
 StandardError=journal
 
