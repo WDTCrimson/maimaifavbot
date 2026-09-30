@@ -6,7 +6,9 @@ Implemented 2026-09-30. This collector grows the timestamped play corpus needed 
 
 Deployed 2026-09-30. The global commands are registered, the bot is running with the additive SQLite tables, and the collector timer is enabled through the persistent user systemd manager. The pre-migration backup is `backups/loadouts-pre-collector-20260930-215820.sqlite` on the host.
 
-The dedicated-secret migration shipped at `c396fba` and rekeyed all four linked profiles. Production backups are `backups/loadouts-pre-linked-auth-rekey-20260930T151430Z.sqlite` and `backups/env-pre-linked-auth-rekey-20260930T151430Z`. All four payloads were verified with the new key, the bot logged back into Discord, `QUIET_READS_ENABLED=true`, and the collector canary completed with zero reads because no profile has opted in yet. The only remaining activation step is for a profile owner to run `/account settings history:true`.
+The dedicated-secret migration shipped at `c396fba` and rekeyed all four linked profiles. Production backups are `backups/loadouts-pre-linked-auth-rekey-20260930T151430Z.sqlite` and `backups/env-pre-linked-auth-rekey-20260930T151430Z`. All four payloads were verified with the new key, the bot logged back into Discord, and `QUIET_READS_ENABLED=true`.
+
+One profile opted in and completed its first supervised read on 2026-09-30. The read succeeded with zero gaps, preserved the account snapshot byte-for-byte, preserved `sourceFetchedAt`, and found no rows beyond the 56 plays already stored. This established the collection baseline; future newly captured plays count toward the continuous 500-play gate.
 
 ## What is built
 
