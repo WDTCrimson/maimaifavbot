@@ -94,7 +94,24 @@ The skill model is kept as pure, side-effect-free functions. Run its determinist
 npm run backtest -- --fixture
 ```
 
-This writes `data/reports/skill-model-backtest.md`. To test local SQLite account data instead, use `npm run backtest -- --db ./data/loadouts.sqlite`; add `--json` for machine-readable output. A fixture pass only validates the pipeline—it does not establish real-player accuracy or odds calibration. The model is not connected to Discord commands yet: its first real-data held-out run failed the Phase 2 acceptance gate. Future estimator surfaces will use odds bands until a history replay has at least 500 usable plays and meets the reliability criteria; numeric odds remain disabled until then.
+This writes `data/reports/skill-model-backtest.md`. To test local SQLite account data instead, use `npm run backtest -- --db ./data/loadouts.sqlite`; add `--json` for machine-readable output. During parameter work, add `--tune-only` to evaluate the tuning split without computing or exposing held-out metrics.
+
+Freeze a candidate before obtaining external validation data:
+
+```bash
+npm run backtest -- --db ./data/loadouts.sqlite --tune-only \
+  --parameters-out ./data/reports/skill-model-parameters.json
+```
+
+Evaluate it later without retuning:
+
+```bash
+npm run backtest -- --db ./data/loadouts.sqlite \
+  --parameters ./data/reports/skill-model-parameters.json \
+  --output ./data/reports/skill-model-external-validation.md
+```
+
+The parameter artifact contains salted profile fingerprints and automatically excludes the tuning cohort, even when old and fresh profiles share one database. It does not contain Discord IDs or profile names, and evaluation fails closed when no eligible fresh profile remains. A fixture pass only validates the pipeline—it does not establish real-player accuracy or odds calibration. The model is not connected to Discord commands yet: its first real-data held-out run failed the Phase 2 acceptance gate. Future estimator surfaces will use odds bands until a history replay has at least 500 usable plays and meets the reliability criteria; numeric odds remain disabled until then.
 
 ## Song aliases
 

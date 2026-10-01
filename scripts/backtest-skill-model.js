@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { createHash } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Database from 'better-sqlite3';
@@ -8,6 +8,8 @@ import { fromLatent, rankForAchievement, toLatent } from '../src/skill-model.js'
 import { SongCatalog } from '../src/song-catalog.js';
 
 const DEFAULT_REPORT = './data/reports/skill-model-backtest.md';
+const PARAMETER_ARTIFACT_VERSION = 1;
+const PARAMETER_ARTIFACT_KIND = 'maideck-skill-model-parameters';
 const PERCENTILE_GRID = [
   { thickPercentile: 0.40, thinPercentile: 0.40 },
   { thickPercentile: 0.50, thinPercentile: 0.50 },
@@ -29,6 +31,11 @@ function usage() {
 Options:
   --fixture        Run the deterministic synthetic fixture (works on a fresh clone)
   --db <path>      Read account bests from a SQLite database
+  --tune-only      Select parameters and report training metrics without evaluating held-out charts
+  --parameters-out <path>
+                   Freeze tuned parameters and the private training-cohort fingerprints
+  --parameters <path>
+                   Evaluate frozen parameters on profiles outside the frozen training cohort
   --catalog <path> Resolve legacy score rows with this song catalog
                    (default: ./data/import/songs.normalized.json)
   --json           Print machine-readable JSON instead of writing Markdown
@@ -42,6 +49,9 @@ History replay remains uncalibrated until at least 500 replayable plays exist.`;
 function parseArgs(argv) {
   const options = {
     fixture: false,
+    tuneOnly: false,
+    parametersOut: null,
+    parameters: null,
     db: null,
     catalog: './data/import/songs.normalized.json',
     json: false,
@@ -51,17 +61,29 @@ function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === '--fixture') options.fixture = true;
+    else if (argument === '--tune-only') options.tuneOnly = true;
     else if (argument === '--json') options.json = true;
     else if (argument === '--help' || argument === '-h') options.help = true;
-    else if (argument === '--db' || argument === '--catalog' || argument === '--output') {
+    else if (argument === '--db' || argument === '--catalog' || argument === '--output'
+      || argument === '--parameters-out' || argument === '--parameters') {
       const value = argv[index + 1];
       if (!value || value.startsWith('--')) throw new Error(`${argument} requires a value.`);
-      options[argument.slice(2)] = value;
+      const optionName = {
+        '--parameters-out': 'parametersOut',
+        '--parameters': 'parameters'
+      }[argument] || argument.slice(2);
+      options[optionName] = value;
       index += 1;
     } else throw new Error(`Unknown option: ${argument}`);
   }
   if (!options.help && options.fixture === Boolean(options.db)) {
     throw new Error('Choose exactly one input: --fixture or --db <path>.');
+  }
+  if (!options.help && options.parametersOut && !options.tuneOnly) {
+    throw new Error('--parameters-out requires --tune-only.');
+  }
+  if (!options.help && options.parameters && options.tuneOnly) {
+    throw new Error('--parameters cannot be combined with --tune-only.');
   }
   return options;
 }
@@ -69,6 +91,75 @@ function parseArgs(argv) {
 function hashFraction(value) {
   const bytes = createHash('sha256').update(String(value)).digest();
   return bytes.readUInt32BE(0) / 0x100000000;
+}
+
+function playerIdentity(player) {
+  return String(player.sourceIdentity || player.id);
+}
+
+function cohortFingerprint(salt, player) {
+  return createHash('sha256').update(`${salt}\u0000${playerIdentity(player)}`).digest('hex');
+}
+
+function datasetFingerprint(players) {
+  const normalized = players.map((player) => ({
+    player: player.id,
+    scores: player.scores.map((score) => ({
+      key: score.key,
+      achievement: Number(score.achievement),
+      constant: Number(score.constant ?? score.internalLevelValue),
+      playCount: Number(score.playCount) || 0
+    })).sort((left, right) => left.key.localeCompare(right.key))
+  })).sort((left, right) => left.player.localeCompare(right.player));
+  return createHash('sha256').update(JSON.stringify(normalized)).digest('hex');
+}
+
+function validateFrozenParameters(value) {
+  const fields = ['thickPercentile', 'thinPercentile', 'playCountPenalty', 'curveWeight'];
+  if (!value || typeof value !== 'object' || fields.some((field) => !Number.isFinite(value[field]))) {
+    throw new Error('The parameter artifact has invalid model parameters.');
+  }
+  if (value.thickPercentile < 0 || value.thickPercentile > 1
+    || value.thinPercentile < 0 || value.thinPercentile > 1
+    || value.playCountPenalty < 0
+    || value.curveWeight < 0 || value.curveWeight > 1) {
+    throw new Error('The parameter artifact has out-of-range model parameters.');
+  }
+  return Object.fromEntries(fields.map((field) => [field, value[field]]));
+}
+
+function buildParameterArtifact(players, tuningResult, salt = randomBytes(32).toString('hex')) {
+  const playerHashes = players.map((player) => cohortFingerprint(salt, player)).sort();
+  return {
+    schemaVersion: PARAMETER_ARTIFACT_VERSION,
+    kind: PARAMETER_ARTIFACT_KIND,
+    generatedAt: tuningResult.generatedAt,
+    parameters: validateFrozenParameters(tuningResult.selected),
+    training: {
+      playerCount: players.length,
+      resolvedChartCount: players.reduce((sum, player) => sum + player.scores.length, 0),
+      datasetSha256: datasetFingerprint(players),
+      cohortSalt: salt,
+      playerHashes
+    },
+    tuning: {
+      count: tuningResult.tuning.count,
+      mae: tuningResult.tuning.mae,
+      baselineMae: tuningResult.tuning.baselineMae,
+      rankHitRate: tuningResult.tuning.rankHitRate,
+      baselineRankHitRate: tuningResult.tuning.baselineRankHitRate
+    }
+  };
+}
+
+function parseParameterArtifact(value) {
+  if (value?.schemaVersion !== PARAMETER_ARTIFACT_VERSION || value?.kind !== PARAMETER_ARTIFACT_KIND) {
+    throw new Error('Unsupported skill-model parameter artifact.');
+  }
+  if (!value.training?.cohortSalt || !Array.isArray(value.training?.playerHashes)) {
+    throw new Error('The parameter artifact has no training-cohort fingerprints.');
+  }
+  return { ...value, parameters: validateFrozenParameters(value.parameters) };
 }
 
 function fixturePlayers() {
@@ -89,7 +180,7 @@ function fixturePlayers() {
         playCount: 4 + (index % 12)
       };
     });
-    return { id: playerId, scores };
+    return { id: playerId, sourceIdentity: playerId, scores };
   });
 }
 
@@ -124,7 +215,7 @@ async function loadDatabasePlayers(path, catalogPath) {
       const constant = Number(row.internal_level_value ?? chart?.internalLevelValue);
       if (!Number.isFinite(constant)) continue;
       const id = `${row.user_id}/${row.profile_name}`;
-      const player = players.get(id) || { id: `Player ${players.size + 1}`, scores: [] };
+      const player = players.get(id) || { id: `Player ${players.size + 1}`, sourceIdentity: id, scores: [] };
       player.scores.push({
         key: `${row.song_id || song?.songId || row.favorite_id || row.title}::${type}::${difficulty}`,
         title: row.title,
@@ -369,9 +460,13 @@ function splitPlayer(player) {
   return { ...player, tuning, heldOut };
 }
 
-function runBacktest(players, source) {
+function prepareSplit(players) {
   const split = players.map(splitPlayer).filter((player) => player.tuning.length >= 2 && player.heldOut.length >= 2);
   if (!split.length) throw new Error('No player has enough resolved charts for an 80/20 split.');
+  return split;
+}
+
+function tuningCandidates(split) {
   const candidates = PARAMETER_GRID.map((params) => {
     const rows = split.map((player) => evaluatePartition(player.tuning, params));
     return { params, metrics: aggregate(rows) };
@@ -384,6 +479,24 @@ function runBacktest(players, source) {
     || left.metrics.mae - right.metrics.mae
     || right.metrics.rankHitRate - left.metrics.rankHitRate
   );
+  return candidates;
+}
+
+function runTuning(players, source) {
+  const candidates = tuningCandidates(prepareSplit(players));
+  return {
+    generatedAt: new Date().toISOString(),
+    source,
+    split: 'deterministic chart-level 80/20 per player; held-out 20% not evaluated',
+    selected: candidates[0].params,
+    tuning: candidates[0].metrics,
+    candidates
+  };
+}
+
+function runBacktest(players, source) {
+  const split = prepareSplit(players);
+  const candidates = tuningCandidates(split);
   const selected = candidates[0].params;
   const perPlayer = split.map((player) => ({
     player: player.id,
@@ -412,6 +525,54 @@ function runBacktest(players, source) {
     heldOut,
     perPlayer,
     pass,
+    calibration: {
+      replayablePlays: 0,
+      numericOddsEnabled: false,
+      statement: 'No calibration claim: best-score leave-one-out does not measure single-run odds.'
+    }
+  };
+}
+
+function runFrozenEvaluation(players, source, artifactValue) {
+  const artifact = parseParameterArtifact(artifactValue);
+  const frozenCohort = new Set(artifact.training.playerHashes);
+  const freshPlayers = players.filter((player) =>
+    !frozenCohort.has(cohortFingerprint(artifact.training.cohortSalt, player))
+  );
+  const excludedPlayerCount = players.length - freshPlayers.length;
+  if (!freshPlayers.length) {
+    throw new Error('No fresh profiles remain after excluding the frozen training cohort.');
+  }
+  const split = prepareSplit(freshPlayers);
+  const selected = artifact.parameters;
+  const perPlayer = split.map((player) => ({
+    player: player.id,
+    totalBests: player.scores.length,
+    tuning: evaluatePartition(player.tuning, selected),
+    heldOut: evaluateHeldOut(player.tuning, player.heldOut, selected)
+  }));
+  const tuning = aggregate(perPlayer.map((row) => row.tuning));
+  const heldOut = aggregate(perPlayer.map((row) => row.heldOut));
+  const eligiblePlayers = perPlayer.filter((row) => row.totalBests >= 100);
+  const pass = eligiblePlayers.length > 0
+    && heldOut.mae < heldOut.baselineMae
+    && heldOut.rankHitRate > heldOut.baselineRankHitRate
+    && eligiblePlayers.every((row) =>
+      row.heldOut.mae < row.heldOut.baselineMae
+      && row.heldOut.rankHitRate > row.heldOut.baselineRankHitRate
+    );
+  return {
+    generatedAt: new Date().toISOString(),
+    source,
+    selected,
+    split: `external validation with frozen parameters; ${excludedPlayerCount} training-cohort profile(s) excluded`,
+    evaluationStatus: `External validation using parameters frozen ${artifact.generatedAt}.`,
+    tuning,
+    heldOut,
+    perPlayer,
+    pass,
+    frozenParametersGeneratedAt: artifact.generatedAt,
+    excludedPlayerCount,
     calibration: {
       replayablePlays: 0,
       numericOddsEnabled: false,
@@ -483,7 +644,15 @@ ${result.calibration.statement} Numeric odds remain disabled; surfaces must use 
 `;
 }
 
-export { evaluatePartition, fixturePlayers, runBacktest };
+export {
+  buildParameterArtifact,
+  evaluatePartition,
+  fixturePlayers,
+  parseParameterArtifact,
+  runBacktest,
+  runFrozenEvaluation,
+  runTuning
+};
 
 const invokedDirectly = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) {
@@ -494,15 +663,31 @@ if (invokedDirectly) {
       process.exit(0);
     }
     const players = options.fixture ? fixturePlayers() : await loadDatabasePlayers(options.db, options.catalog);
-    const result = runBacktest(players, options.fixture ? 'deterministic synthetic fixture' : resolve(options.db));
+    const source = options.fixture ? 'deterministic synthetic fixture' : resolve(options.db);
+    const artifact = options.parameters
+      ? parseParameterArtifact(JSON.parse(readFileSync(resolve(options.parameters), 'utf8')))
+      : null;
+    const result = artifact
+      ? runFrozenEvaluation(players, source, artifact)
+      : options.tuneOnly ? runTuning(players, source) : runBacktest(players, source);
+    if (options.parametersOut) {
+      const output = resolve(options.parametersOut);
+      mkdirSync(dirname(output), { recursive: true });
+      writeFileSync(output, `${JSON.stringify(buildParameterArtifact(players, result), null, 2)}\n`);
+      console.error(`Froze parameters and ${players.length} training-cohort fingerprint(s) in ${output}.`);
+    }
     if (options.json) console.log(JSON.stringify(result, null, 2));
+    else if (options.tuneOnly) {
+      console.log(`Selected ${JSON.stringify(result.selected)} from training data only.`);
+      console.log(`MAE ${number(result.tuning.mae)} vs ${number(result.tuning.baselineMae)} baseline; rank hit ${percent(result.tuning.rankHitRate)} vs ${percent(result.tuning.baselineRankHitRate)} baseline.`);
+    }
     else {
       const output = resolve(options.output);
       mkdirSync(dirname(output), { recursive: true });
       writeFileSync(output, markdown(result));
       console.log(`${result.pass ? 'PASS' : 'FAIL'}: wrote ${output}`);
     }
-    process.exitCode = result.pass ? 0 : 1;
+    process.exitCode = options.tuneOnly || result.pass ? 0 : 1;
   } catch (error) {
     console.error(error.message);
     console.error('Run with --help for usage.');

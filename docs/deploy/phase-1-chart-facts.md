@@ -15,6 +15,7 @@ Deployed on 2026-09-30 at commit `5dabcd7fc05670d07410878f2f5485563beb3efb`.
 - Rollback revision: `0a1e31151e195b03f5ee1120164808feb83eb0d2`.
 - The user confirmed the original command flows work. Visual release `8324c12b935eb4210080506e21c9f299138f2fae` then changed `/song pattern` to five jacket-backed embeds per page with first/previous/next/last buttons and gave `/song random` a jacket-backed detail embed. All 119 tests passed on the remote host before restart; the bot returned active with zero restarts and loaded all 709 pattern records.
 - Successful `/song pattern` and `/song random` results are public channel replies. Errors and attempts by another user to operate the requester's pagination remain private.
+- The user completed the post-visual-release Discord smoke test on 2026-09-30 and confirmed the commands look correct.
 
 ## Completed deploy procedure
 
@@ -25,7 +26,7 @@ Deployed on 2026-09-30 at commit `5dabcd7fc05670d07410878f2f5485563beb3efb`.
 
 The release was fast-forwarded on the remote host, checked, registered, imported, and restarted in that order. `maimai-catalog-refresh.service` was reinstalled before the restart.
 
-## Post-visual-release Discord checks
+## Completed post-visual-release Discord checks
 
 - `/song info` shows a Patterns line for every chart, or the dated unavailable message.
 - `/song pattern tag:トリル` returns five jacket-backed cards per page with linked scores and working first/previous/next/last buttons.
