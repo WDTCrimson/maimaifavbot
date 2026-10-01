@@ -302,6 +302,14 @@ node scripts/restore-loadouts.js --input=./backups/loadouts-export-YYYYMMDD-HHMM
 
 By default this writes a pre-restore backup into `./backups/` before it overwrites the active store.
 
+To inspect SQLite growth without modifying anything:
+
+```bash
+npm run storage:report
+```
+
+The report shows allocated and reclaimable database space, profile and row counts, snapshot/history payload sizes, free disk, and an observed twelve-month payload-growth projection. It warns at 1 GiB, 250 profiles, or less than 20% free disk. These warnings do not compact or delete data; compaction remains deferred until the model and calibration gates are complete.
+
 ### Rebuild extension CSS (Tailwind)
 
 - Source: `extension/popup.tailwind.css`
