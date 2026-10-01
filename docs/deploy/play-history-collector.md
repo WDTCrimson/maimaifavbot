@@ -10,6 +10,8 @@ The dedicated-secret migration shipped at `c396fba` and rekeyed all four linked 
 
 One profile opted in and completed its first supervised read on 2026-09-30. The read succeeded with zero gaps, preserved the account snapshot byte-for-byte, preserved `sourceFetchedAt`, and found no rows beyond the 56 plays already stored. This established the collection baseline; future newly captured plays count toward the continuous 500-play gate.
 
+Read-only storage monitoring shipped on 2026-10-01. The first production `npm run storage:report` showed 2.0 MiB allocated, four profiles, 890 score rows, 15 snapshots containing 1.0 MiB of JSON, 99 history rows containing 89.6 KiB, an observed payload-growth projection of 2.6 MiB/year, and 270 GiB free. No warning threshold was active. The command warns at 1 GiB, 250 profiles, or less than 20% free disk; it never compacts or deletes data.
+
 ## What is built
 
 - `/account settings [history:true|false]` stores consent per profile and shows continuous replayable progress toward 500 plays.
