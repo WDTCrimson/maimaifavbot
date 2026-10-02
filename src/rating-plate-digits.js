@@ -8,8 +8,8 @@ const GLYPHS = '0123456789+-';
 // Slot geometry measured on the 296x86 tomomai rating plates.
 const PLATE_W = 296;
 const PLATE_H = 86;
-const SLOT_CENTERS_X = [140, 170.5, 202.5, 233, 264];
-const SLOT_CENTER_Y = 40.5;
+const SLOT_CENTERS_X = [140.75, 171, 202, 233, 263.75];
+const SLOT_CENTER_Y = 41.5;
 const CELL_H = 40;
 const OUTLINE = '#1a1a28';
 
