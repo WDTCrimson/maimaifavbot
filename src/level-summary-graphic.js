@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 import { drawMaiDeckWatermark } from './graphic-watermark.js';
+import { drawRatingPlateDigits } from './rating-plate-digits.js';
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
 
@@ -404,18 +405,7 @@ async function drawPlayerHeader(ctx, account, v) {
     rx -= fw;
     const fy = (PLAYER_H - fh) / 2;
     ctx.drawImage(frameImg, rx, fy, fw, fh);
-    ctx.save();
-    ctx.font = `600 ${Math.round(fh * 0.53)}px ${FONT_MONO}`;
-    ctx.fillStyle = '#f9f0f4';
-    ctx.textBaseline = 'alphabetic';
-    ctx.shadowColor = 'rgba(0,0,0,0.8)'; ctx.shadowBlur = 3;
-    let dx = rx + fw * 0.43;
-    const dy = fy + fh * 0.19 + fh * 0.53;
-    for (const ch of String(rating)) {
-      ctx.fillText(ch, dx, dy);
-      dx += 23 * FRAME_SCALE / 0.75;
-    }
-    ctx.restore();
+    await drawRatingPlateDigits(ctx, rating, rx, fy, fw, fh);
   }
 }
 

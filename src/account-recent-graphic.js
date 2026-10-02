@@ -2,6 +2,7 @@ import { stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Canvas, FontLibrary, loadImage } from 'skia-canvas';
 import { drawMaiDeckWatermark } from './graphic-watermark.js';
+import { drawRatingPlateDigits } from './rating-plate-digits.js';
 
 const CANVAS_WIDTH = 1200;
 const TARGET_HEIGHT = 156;
@@ -573,15 +574,7 @@ async function renderHeader(ctx, snapshot) {
     const fw = ratingFrame.width * rs, fh = ratingFrame.height * rs;
     rx -= fw;
     ctx.drawImage(ratingFrame, rx, headerMid - fh / 2, fw, fh);
-    ctx.font = font(600, Math.round(fh * 0.53), true);
-    ctx.fillStyle = '#f9f0f4';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'alphabetic';
-    let dx = rx + fw * 0.43;
-    for (const char of String(snapshot.rating || 0)) {
-      ctx.fillText(char, dx, headerMid - fh / 2 + fh * 0.72);
-      dx += 23;
-    }
+    await drawRatingPlateDigits(ctx, snapshot.rating || 0, rx, headerMid - fh / 2, fw, fh);
   }
 
   return createOverlayRect(ctx.canvas.height);
