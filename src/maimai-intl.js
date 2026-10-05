@@ -438,6 +438,20 @@ const INTL_VERSION_RELEASES = [
   { id: 13, releaseDate: '2026/07/23' }
 ];
 
+const INTL_VERSION_NAME_BY_ID = new Map([
+  [-13, 'maimai'], [-12, 'maimai PLUS'], [-11, 'GreeN'], [-10, 'GreeN PLUS'],
+  [-9, 'ORANGE'], [-8, 'ORANGE PLUS'], [-7, 'PiNK'], [-6, 'PiNK PLUS'],
+  [-5, 'MURASAKi'], [-4, 'MURASAKi PLUS'], [-3, 'MiLK'], [-2, 'MiLK PLUS'],
+  [-1, 'FiNALE'], [0, 'maimaiでらっくす'], [1, 'maimaiでらっくす PLUS'],
+  [2, 'Splash'], [3, 'Splash PLUS'], [4, 'UNiVERSE'], [5, 'UNiVERSE PLUS'],
+  [6, 'FESTiVAL'], [7, 'FESTiVAL PLUS'], [8, 'BUDDiES'], [9, 'BUDDiES PLUS'],
+  [10, 'PRiSM'], [11, 'PRiSM PLUS'], [12, 'CiRCLE'], [13, 'CiRCLE PLUS']
+]);
+
+export function intlVersionNameForId(value) {
+  return INTL_VERSION_NAME_BY_ID.get(Number(value)) || null;
+}
+
 function normalizeVersionName(version) {
   return String(version || '')
     .normalize('NFKC')

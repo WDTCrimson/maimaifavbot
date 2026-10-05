@@ -3,7 +3,12 @@ import assert from 'node:assert/strict';
 import { renderPlayCountGraphic } from '../src/playcount-graphic.js';
 import { renderPlaylistTargetGraphic } from '../src/playlist-target-graphic.js';
 import { renderSongScoreGraphic } from '../src/song-score-graphic.js';
-import { renderSongInfoGraphic, resolveSongInfoVersion, songInfoVersionFile } from '../src/song-info-graphic.js';
+import {
+  buildConstantHistoryMilestones,
+  renderSongInfoGraphic,
+  resolveSongInfoVersion,
+  songInfoVersionFile
+} from '../src/song-info-graphic.js';
 import { renderAccountB50Graphic } from '../src/account-b50-graphic.js';
 import { renderAccountRecentGraphic } from '../src/account-recent-graphic.js';
 
@@ -66,7 +71,20 @@ test('song-info renderer produces a chart reference PNG', async () => {
       category: 'ゲーム＆バラエティ', regions: { jp: true, intl: true }, jacket: {},
       aliases: ['lumi'], displayAliases: ['Lumi'],
       difficultyLevels: [{
-        type: 'dx', difficulty: 'master', level: '13+', internalLevelValue: 13.8,
+        type: 'dx', difficulty: 'master', level: '13+', internalLevelValue: 13.7,
+        regionalLevels: {
+          jp: { level: '13+', internalLevelValue: 13.8 },
+          intl: { level: '13+', internalLevelValue: 13.7 }
+        },
+        internalLevelHistory: {
+          region: 'intl',
+          entries: [
+            { version: 'UNiVERSE', internalLevelValue: 13.4 },
+            { version: 'BUDDiES', internalLevelValue: 13.7 },
+            { version: 'PRiSM PLUS', internalLevelValue: 13.8 },
+            { version: 'CiRCLE PLUS', internalLevelValue: 13.7 }
+          ]
+        },
         noteDesigner: 'Jack', version: 'PRiSM PLUS',
         noteCounts: { total: 882, tap: 599, hold: 40, slide: 72, touch: 129, break: 42 }
       }]
@@ -74,6 +92,24 @@ test('song-info renderer produces a chart reference PNG', async () => {
   });
   assertPng(result, 'Luminescence-info.png');
   assert.equal(result.chartCount, 1);
+});
+
+test('song-info history keeps changes and the latest unchanged observation', () => {
+  const milestones = buildConstantHistoryMilestones({
+    internalLevelHistory: { entries: [
+      { version: 'maimaiでらっくす PLUS', internalLevelValue: 13.9 },
+      { version: 'Splash', internalLevelValue: 14.1 },
+      { version: 'UNiVERSE', internalLevelValue: 14.1 },
+      { version: 'FESTiVAL', internalLevelValue: 14.4 },
+      { version: 'CiRCLE PLUS', internalLevelValue: 14.4 }
+    ] }
+  });
+  assert.deepEqual(milestones, [
+    { version: 'maimaiでらっくす PLUS', internalLevelValue: 13.9, direction: null },
+    { version: 'Splash', internalLevelValue: 14.1, direction: 'up' },
+    { version: 'FESTiVAL', internalLevelValue: 14.4, direction: 'up' },
+    { version: 'CiRCLE PLUS', internalLevelValue: 14.4, direction: 'same' }
+  ]);
 });
 
 test('playlist target renderer produces a themed PNG without requiring a jacket', async () => {

@@ -1,0 +1,104 @@
+{
+  "schema_version": "1.0.0",
+  "document_id": "maideck-song-info-constant-history",
+  "revision": 1,
+  "coordinate_system": "normalized_top_left_xywh",
+  "provenance": {
+    "kind": "image_analysis",
+    "note": "Observed from the 2560x1440 saltbot MYTHOS reference supplied in chat; bounds are visual estimates from the clean displayed image."
+  },
+  "intent": {
+    "task": "remix",
+    "purpose": "Reuse the reference's per-difficulty version timeline in the existing MaiDeck song-info graphic without copying its overall skin.",
+    "exactness": "semantic",
+    "exactness_note": "Version identity, constants, and direction indicators must be exact; composition and styling should follow MaiDeck.",
+    "output": { "width_px": 1000, "height_px": 1600, "format": "png", "crop_policy": "pad" }
+  },
+  "coverage": {
+    "status": "complete_visible_inventory",
+    "granularity": "Major layout regions and the reusable constant-history unit; repeated micro-decoration is grouped.",
+    "excluded_regions": [],
+    "notes": ["The reference's exact fonts and source layers are unknown."]
+  },
+  "source_images": [
+    {
+      "id": "A",
+      "path": null,
+      "version": "chat-reference-2026-10-05",
+      "width_px": 2560,
+      "height_px": 1440,
+      "dimensions_basis": "user_supplied",
+      "role": "reference",
+      "selected_for_use": false,
+      "allowed_roles": ["layout", "content"],
+      "scope_note": "Use only the history strip's information hierarchy; do not reproduce saltbot branding, player identity, background artwork, or full composition."
+    },
+    {
+      "id": "B",
+      "path": null,
+      "version": "planned-maideck-canvas-v1",
+      "width_px": 1000,
+      "height_px": 1600,
+      "dimensions_basis": "user_supplied",
+      "role": "target",
+      "selected_for_use": false,
+      "allowed_roles": ["content", "layout", "style", "palette", "typography", "background"],
+      "scope_note": "Planned deterministic output canvas implemented by the existing song-info renderer."
+    }
+  ],
+  "scene": {
+    "composition": { "value": "Wide game-themed information card with a player banner at top, stacked difficulty rows at left, and a jacket panel at right.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "The MaiDeck remix keeps its existing vertical song-info composition instead." },
+    "palette": { "value": "Bright sky background, mint panels, and difficulty-coded green, orange, red, and purple bands.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "Only difficulty color semantics carry over; MaiDeck retains its dark translucent palette." },
+    "medium": { "value": "Deterministic raster UI graphic with logos and exact typography.", "status": "inferred", "basis": "visual_estimate", "confidence": "high", "note": "Exact text and badges favor canvas composition over generative reconstruction." }
+  },
+  "groups": [
+    { "id": "A-G01", "source_id": "A", "parent_id": null, "name": "header and identity", "bbox": [0.05, 0.03, 0.45, 0.13], "geometry_basis": "visual_estimate", "note": "Player portrait, name, and rating." },
+    { "id": "A-G02", "source_id": "A", "parent_id": null, "name": "difficulty stack", "bbox": [0.04, 0.18, 0.64, 0.73], "geometry_basis": "visual_estimate", "note": "Four large difficulty rows." },
+    { "id": "A-G03", "source_id": "A", "parent_id": null, "name": "song identity card", "bbox": [0.72, 0.39, 0.25, 0.52], "geometry_basis": "visual_estimate", "note": "Jacket, title, artist, ID, BPM, and region flags." },
+    { "id": "B-G01", "source_id": "B", "parent_id": null, "name": "MaiDeck difficulty row extension", "bbox": [0.03, 0.74, 0.94, 0.07], "geometry_basis": "user_supplied", "note": "Planned history panel beneath existing chart facts." }
+  ],
+  "elements": [
+    { "id": "A-01", "source_id": "A", "parent_id": null, "name": "game landscape background", "kind": "background", "bbox": [0, 0, 1, 1], "geometry_basis": "visual_estimate", "count": 1, "description": { "value": "Colorful fantasy landscape behind all information panels.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "Not reused." }, "appearance": { "color": { "value": "cyan sky, green landscape, rainbow accents", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "" } }, "text": null, "occlusion": { "boundary": "partly_occluded", "occluded_by": ["A-02", "A-03", "A-06"], "hidden_content": "unknown", "note": "Mostly covered by panels." }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "" }, "editable_properties": ["appearance"], "locked_properties": [] },
+    { "id": "A-02", "source_id": "A", "parent_id": "A-G01", "name": "player banner", "kind": "object", "bbox": [0.06, 0.03, 0.44, 0.12], "geometry_basis": "visual_estimate", "count": 1, "description": { "value": "Portrait, rating badge, player name, and character art.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "Not reused." }, "appearance": {}, "text": { "transcript": "Seiba", "certainty": "exact", "uncertain_spans": [], "line_breaks_preserved": false }, "occlusion": { "boundary": "complete", "occluded_by": [], "hidden_content": "not_applicable", "note": "" }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "" }, "editable_properties": [], "locked_properties": [] },
+    { "id": "A-03", "source_id": "A", "parent_id": "A-G02", "name": "difficulty rows", "kind": "repeated_detail", "bbox": [0.06, 0.23, 0.60, 0.64], "geometry_basis": "visual_estimate", "count": 4, "description": { "value": "Stacked BASIC, ADVANCED, EXPERT, and MASTER rows with constant, score, note counts, and history.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "Difficulty-coded row structure matches an existing MaiDeck concept." }, "appearance": { "color": { "value": "green, orange, red, and purple difficulty bands", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "" } }, "text": null, "occlusion": { "boundary": "complete", "occluded_by": [], "hidden_content": "not_applicable", "note": "" }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "" }, "editable_properties": ["appearance", "bbox"], "locked_properties": [] },
+    { "id": "A-04", "source_id": "A", "parent_id": "A-G02", "name": "chart facts columns", "kind": "text", "bbox": [0.22, 0.24, 0.08, 0.61], "geometry_basis": "visual_estimate", "count": 4, "description": { "value": "Tap, Hold, Slide, Touch, and Break counts arranged vertically per difficulty.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "MaiDeck keeps its existing horizontal chart-facts panel." }, "appearance": {}, "text": { "transcript": "Tap / Hold / Slide / Touch / Break", "certainty": "exact", "uncertain_spans": [], "line_breaks_preserved": false }, "occlusion": { "boundary": "complete", "occluded_by": [], "hidden_content": "not_applicable", "note": "" }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "" }, "editable_properties": ["bbox"], "locked_properties": [] },
+    { "id": "A-05", "source_id": "A", "parent_id": "A-G02", "name": "version constant timeline", "kind": "repeated_detail", "bbox": [0.28, 0.25, 0.37, 0.59], "geometry_basis": "visual_estimate", "count": 4, "description": { "value": "A horizontal sequence of game-version logos with decimal constants and up, down, or unchanged arrows.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "This is the selected reusable idea." }, "appearance": { "layout": { "value": "left-to-right chronological strip", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "" }, "hierarchy": { "value": "version logo above, arrow and constant below", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "" } }, "text": null, "occlusion": { "boundary": "complete", "occluded_by": [], "hidden_content": "not_applicable", "note": "" }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "Existing MaiDeck version-logo assets are used." }, "editable_properties": ["appearance", "bbox"], "locked_properties": [] },
+    { "id": "A-06", "source_id": "A", "parent_id": "A-G03", "name": "song card", "kind": "object", "bbox": [0.73, 0.42, 0.23, 0.48], "geometry_basis": "visual_estimate", "count": 1, "description": { "value": "Large jacket above song title, artist, song number, BPM, and region flags.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "MaiDeck retains its own header arrangement." }, "appearance": {}, "text": { "transcript": "MYTHOS", "certainty": "exact", "uncertain_spans": [], "line_breaks_preserved": false }, "occlusion": { "boundary": "complete", "occluded_by": [], "hidden_content": "not_applicable", "note": "" }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "" }, "editable_properties": [], "locked_properties": [] },
+    { "id": "A-07", "source_id": "A", "parent_id": null, "name": "source watermark", "kind": "text", "bbox": [0.52, 0.95, 0.43, 0.04], "geometry_basis": "visual_estimate", "count": 1, "description": { "value": "Generator and service watermark.", "status": "observed", "basis": "visual_observation", "confidence": "high", "note": "Must not be reused." }, "appearance": {}, "text": { "transcript": "Generated by saltbot | maimaidx.cab/discord | maimaidx.cab/invite", "certainty": "exact", "uncertain_spans": [], "line_breaks_preserved": false }, "occlusion": { "boundary": "complete", "occluded_by": [], "hidden_content": "not_applicable", "note": "" }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "" }, "editable_properties": [], "locked_properties": ["description"] },
+    { "id": "B-01", "source_id": "B", "parent_id": "B-G01", "name": "MaiDeck constant history panel", "kind": "object", "bbox": [0.06, 0.745, 0.88, 0.055], "geometry_basis": "user_supplied", "count": 1, "description": { "value": "A planned dark translucent panel containing an International history label and compact version milestones.", "status": "inferred", "basis": "user_supplied", "confidence": "high", "note": "Implemented deterministically in the song-info renderer." }, "appearance": { "style": { "value": "dark translucent rounded MaiDeck panel", "status": "inferred", "basis": "user_supplied", "confidence": "high", "note": "" } }, "text": null, "occlusion": { "boundary": "complete", "occluded_by": [], "hidden_content": "not_applicable", "note": "" }, "asset": { "kind": "none", "path": null, "alpha_verified": false, "note": "Version logos are existing source layers loaded by code." }, "editable_properties": ["appearance", "bbox"], "locked_properties": [] }
+  ],
+  "relations": [
+    { "id": "R-01", "from_id": "A-05", "to_id": "A-03", "kind": "contains", "status": "observed", "confidence": "high", "note": "Each difficulty row contains its own timeline." },
+    { "id": "R-02", "from_id": "A-04", "to_id": "A-05", "kind": "left_of", "status": "observed", "confidence": "high", "note": "Chart facts precede the timeline in each row." }
+  ],
+  "selections": [{
+    "target_id": "B-01",
+    "action": "restyle",
+    "properties": ["appearance"],
+    "instruction": "Rebuild the constant timeline as a compact dark translucent MaiDeck panel: exact version logos, chronological change points, green up arrows, red down arrows, gray unchanged arrows, and one-decimal constants.",
+    "destination_bbox": null,
+    "reference_ids": [],
+    "preserve": ["chronological reading order", "version logo above its constant", "direction indicator tied to the prior recorded value"],
+    "allow": ["collapse consecutive equal constants", "increase a MaiDeck difficulty row's height", "use text when a version logo is unavailable"]
+  }],
+  "invariants": [
+    { "id": "I-01", "target_ids": ["B-01"], "description": "Never infer or fabricate a missing historical constant.", "origin": "reconstruction_brief" },
+    { "id": "I-02", "target_ids": ["B-01"], "description": "International history must stop at the current International release; later JP-only releases must not appear.", "origin": "reconstruction_brief" },
+    { "id": "I-03", "target_ids": ["A-07"], "description": "Do not reproduce source branding or watermark text.", "origin": "reconstruction_brief" }
+  ],
+  "unknowns": [
+    { "target_id": "B-01", "property": "complete historical coverage", "reason": "The upstream metadata does not contain every early-version constant for every chart.", "resolution": "leave_unspecified" },
+    { "target_id": "B-01", "property": "exact source font", "reason": "The font cannot be established from pixels alone and is irrelevant to the MaiDeck restyle.", "resolution": "leave_unspecified" }
+  ],
+  "criteria": {
+    "hard": [
+      { "id": "C-01", "description": "Every displayed constant and version comes from normalized source data.", "target_ids": ["B-01"], "depends_on": [], "check": "Compare rendered milestones with the chart's normalized history entries." },
+      { "id": "C-02", "description": "Direction arrows correctly compare each displayed change with its prior recorded value.", "target_ids": ["B-01"], "depends_on": ["C-01"], "check": "Exercise increases, decreases, and unchanged latest values in unit tests." },
+      { "id": "C-03", "description": "The timeline is visibly labeled International and excludes releases newer than the current International version.", "target_ids": ["B-01"], "depends_on": [], "check": "Import a fixture containing a later JP release and verify it is absent." }
+    ],
+    "soft": [
+      { "id": "S-01", "description": "The history reads left to right without crowding the existing chart facts.", "target_ids": ["B-01"], "depends_on": ["C-01"], "check": "Inspect the rendered fixture at full size.", "weight": 1 },
+      { "id": "S-02", "description": "The new panel feels native to MaiDeck's dark translucent visual system.", "target_ids": ["B-01"], "depends_on": [], "check": "Compare panel radius, opacity, typography, and spacing with adjacent MaiDeck panels.", "weight": 0.8 }
+    ]
+  }
+}

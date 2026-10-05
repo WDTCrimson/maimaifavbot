@@ -1,5 +1,11 @@
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+import {
+  getCurrentIntlVersionId,
+  intlVersionNameForId,
+  resolveChartVersionId
+} from '../src/maimai-intl.js';
 
 const OTOGE_MUSIC_EX_URL =
   'https://raw.githubusercontent.com/zvuc/otoge-db/master/maimai/data/music-ex.json';
@@ -194,6 +200,46 @@ function getOtogeInternalLevelValue(song, type, difficulty) {
   return parseInternalLevelValue(song?.[`${prefix}lev_${suffix}_i`]);
 }
 
+function normalizeRegionalLevels(sheet) {
+  const output = {};
+
+  for (const [region, available] of Object.entries(sheet?.regions || {})) {
+    if (!available) continue;
+    const override = sheet?.regionOverrides?.[region] || {};
+    const internalLevelValue = parseInternalLevelValue(
+      override.internalLevelValue ?? override.levelValue ?? override.internalLevel ?? sheet.internalLevelValue
+    );
+    output[region] = {
+      level: String(override.level ?? sheet.level ?? '').trim() || null,
+      internalLevelValue
+    };
+  }
+
+  return output;
+}
+
+function normalizeIntlLevelHistory({ multiverValues, currentValue, currentVersion, currentVersionId }) {
+  if (currentValue == null || !currentVersion) return null;
+  const limitId = Number(currentVersionId);
+  const byVersionId = new Map();
+
+  for (const [version, rawValue] of Object.entries(multiverValues || {})) {
+    const versionId = resolveChartVersionId(version);
+    const internalLevelValue = parseInternalLevelValue(rawValue);
+    if (versionId == null || versionId > limitId || internalLevelValue == null) continue;
+    byVersionId.set(versionId, { version: intlVersionNameForId(versionId) || version, internalLevelValue });
+  }
+
+  // The regional override is authoritative for the release International is
+  // currently running. Later JP releases are deliberately excluded above.
+  byVersionId.set(limitId, { version: currentVersion, internalLevelValue: currentValue });
+  const entries = [...byVersionId.entries()]
+    .sort(([left], [right]) => left - right)
+    .map(([, entry]) => entry);
+
+  return { region: 'intl', entries };
+}
+
 function normalizeDxNoteCounts(noteCounts) {
   if (!noteCounts || typeof noteCounts !== 'object') {
     return null;
@@ -326,7 +372,11 @@ async function downloadAssets({ list, kind, concurrency, force, retries }) {
   };
 }
 
-function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
+export function buildNormalizedDataset({
+  otogeMusicEx,
+  dxratingData,
+  currentIntlVersionId = getCurrentIntlVersionId()
+}) {
   const otogeByKey = new Map();
 
   for (const song of otogeMusicEx) {
@@ -339,6 +389,7 @@ function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
 
   const mergedSongs = [];
   const usedOtogeSortIds = new Set();
+  const currentIntlVersion = intlVersionNameForId(currentIntlVersionId);
 
   for (const dxSong of dxratingData.songs || []) {
     const key = songMatchKey(dxSong.title, dxSong.artist);
@@ -370,11 +421,22 @@ function buildNormalizedDataset({ otogeMusicEx, dxratingData }) {
           normalizeDxNoteCounts(sheet.noteCounts) ||
           (matchedOtoge ? getOtogeNoteCounts(matchedOtoge, sheet.type, sheet.difficulty) : null);
 
+        const regionalLevels = normalizeRegionalLevels(sheet);
+        const intlLevel = regionalLevels.intl || null;
+        const internalLevelHistory = normalizeIntlLevelHistory({
+          multiverValues: sheet.multiverInternalLevelValue,
+          currentValue: intlLevel?.internalLevelValue ?? null,
+          currentVersion: currentIntlVersion,
+          currentVersionId: currentIntlVersionId
+        });
         return {
           type: sheet.type,
           difficulty: sheet.difficulty,
-          level: sheet.level,
-          internalLevelValue: otogeInternalLevelValue ?? sheet.internalLevelValue,
+          level: intlLevel?.level ?? sheet.level,
+          internalLevelValue: intlLevel?.internalLevelValue
+            ?? otogeInternalLevelValue ?? sheet.internalLevelValue,
+          regionalLevels,
+          ...(internalLevelHistory ? { internalLevelHistory } : {}),
           noteDesigner: sheet.noteDesigner || null,
           noteCounts,
           version: sheet.version,
@@ -493,7 +555,6 @@ async function main() {
   await mkdir(logoDir, { recursive: true });
 
   const startTime = Date.now();
-
   let otogeMusicEx = null;
   let otogeMaimaiSongs = null;
   let dxratingData = null;
@@ -631,7 +692,9 @@ async function main() {
   console.log(`Report: ${reportFile}`);
 }
 
-main().catch((error) => {
-  console.error('Import failed:', error);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    console.error('Import failed:', error);
+    process.exitCode = 1;
+  });
+}

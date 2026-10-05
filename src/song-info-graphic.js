@@ -8,6 +8,7 @@ const W = 1000;
 const MARGIN = 26;
 const HEADER_H = 400;
 const ROW_H = 225;
+const HISTORY_H = 102;
 const GAP = 22;
 const BOTTOM_PAD = 42;
 const FONT = 'Inter, Murecho, "Noto Sans JP", sans-serif';
@@ -162,6 +163,61 @@ function formatConstant(chart) {
   return String(chart?.level || '?');
 }
 
+function regionalConstant(chart, region) {
+  const value = Number(chart?.regionalLevels?.[region]?.internalLevelValue);
+  return Number.isFinite(value) ? value : null;
+}
+
+function primaryChartRegion(chart) {
+  const levels = chart?.regionalLevels || {};
+  if (levels.intl) return 'INTL';
+  if (levels.jp) return 'JP';
+  if (levels.usa) return 'USA';
+  if (levels.cn) return 'CN';
+  return null;
+}
+
+export function buildConstantHistoryMilestones(chart, maxEntries = 6) {
+  const entries = Array.isArray(chart?.internalLevelHistory?.entries)
+    ? chart.internalLevelHistory.entries
+      .map((entry) => ({
+        version: String(entry?.version || '').trim(),
+        internalLevelValue: Number(entry?.internalLevelValue)
+      }))
+      .filter((entry) => entry.version && Number.isFinite(entry.internalLevelValue))
+    : [];
+  if (entries.length < 2) return [];
+
+  const milestones = [];
+  let previousValue = null;
+  for (const entry of entries) {
+    const changed = previousValue == null || entry.internalLevelValue !== previousValue;
+    if (changed) {
+      milestones.push({
+        ...entry,
+        direction: previousValue == null ? null : entry.internalLevelValue > previousValue ? 'up' : 'down'
+      });
+    }
+    previousValue = entry.internalLevelValue;
+  }
+
+  const latest = entries.at(-1);
+  if (milestones.at(-1)?.version !== latest.version) {
+    milestones.push({ ...latest, direction: 'same' });
+  }
+
+  const limit = Math.max(2, Math.floor(Number(maxEntries) || 6));
+  if (milestones.length <= limit) return milestones;
+  return [milestones[0], ...milestones.slice(-(limit - 1))].map((entry, index) => ({
+    ...entry,
+    omittedBefore: index === 1
+  }));
+}
+
+function chartRowHeight(chart) {
+  return ROW_H + (buildConstantHistoryMilestones(chart).length ? HISTORY_H : 0);
+}
+
 function dxThresholds(totalNotes) {
   const maximum = Number(totalNotes) * 3;
   if (!Number.isFinite(maximum) || maximum <= 0) return [];
@@ -299,18 +355,84 @@ async function drawHeader(ctx, song, charts, y, jacket, version) {
   }
 }
 
-function drawChartRow(ctx, chart, y, gameVersion) {
+async function loadVersionLogo(version) {
+  const themed = resolveSongInfoVersion(version).logoFile;
+  if (themed) return image(join(TOMOMAI, 'logo', themed));
+  const legacy = songInfoVersionFile(version);
+  return legacy ? image(join(VERSION_ASSET, legacy)) : null;
+}
+
+async function drawConstantHistory(ctx, chart, x, y, width) {
+  const milestones = buildConstantHistoryMilestones(chart);
+  if (!milestones.length) return;
+
+  const panelX = x + 28;
+  const panelY = y + ROW_H + 4;
+  const panelW = width - 56;
+  const panelH = HISTORY_H - 18;
+  ctx.fillStyle = 'rgba(4,7,16,0.72)';
+  roundRect(ctx, panelX, panelY, panelW, panelH, 18);
+  ctx.fill();
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.62)';
+  ctx.font = `800 13px ${FONT}`;
+  ctx.fillText(`${String(chart.internalLevelHistory?.region || 'intl').toUpperCase()} CONSTANT`, panelX + 16, panelY + 28);
+  ctx.font = `600 12px ${FONT}`;
+  ctx.fillText('RECORDED CHANGES', panelX + 16, panelY + 48);
+
+  const labelW = 155;
+  const timelineX = panelX + labelW;
+  const timelineW = panelW - labelW - 12;
+  const cellW = timelineW / milestones.length;
+  const logos = await Promise.all(milestones.map((entry) => loadVersionLogo(entry.version)));
+
+  milestones.forEach((entry, index) => {
+    const cellX = timelineX + index * cellW;
+    const cx = cellX + cellW / 2;
+    const logo = logos[index];
+    if (entry.omittedBefore) {
+      ctx.fillStyle = 'rgba(255,255,255,0.42)';
+      ctx.font = `800 18px ${FONT}`;
+      ctx.textAlign = 'left';
+      ctx.fillText('…', cellX - 5, panelY + 48);
+    }
+    if (logo) {
+      const scale = Math.min(84 / logo.width, 27 / logo.height);
+      ctx.drawImage(logo, cx - logo.width * scale / 2, panelY + 9, logo.width * scale, logo.height * scale);
+    } else {
+      ctx.fillStyle = 'rgba(255,255,255,0.74)';
+      ctx.font = `700 11px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(fitText(ctx, entry.version, Math.max(46, cellW - 10)), cx, panelY + 28);
+    }
+
+    const arrow = entry.direction === 'up' ? '↑' : entry.direction === 'down' ? '↓' : entry.direction === 'same' ? '→' : '';
+    ctx.fillStyle = entry.direction === 'up'
+      ? '#48dc78'
+      : entry.direction === 'down'
+        ? '#ff6680'
+        : 'rgba(255,255,255,0.92)';
+    ctx.font = `900 21px ${FONT}`;
+    ctx.textAlign = 'center';
+    ctx.fillText(`${arrow}${entry.internalLevelValue.toFixed(1)}`, cx, panelY + 67);
+  });
+  ctx.textAlign = 'left';
+}
+
+async function drawChartRow(ctx, chart, y, gameVersion) {
   const x = MARGIN;
   const width = W - MARGIN * 2;
+  const rowHeight = chartRowHeight(chart);
   const leftW = 245;
   const difficulty = String(chart.difficulty || '').toLowerCase();
   const color = DIFF_COLOR[difficulty] || '#64748b';
 
   ctx.save();
-  roundRect(ctx, x, y, width, ROW_H, 32);
+  roundRect(ctx, x, y, width, rowHeight, 32);
   ctx.clip();
   ctx.fillStyle = 'rgba(18, 17, 31, 0.89)';
-  ctx.fillRect(x, y, width, ROW_H);
+  ctx.fillRect(x, y, width, rowHeight);
 
   ctx.fillStyle = 'rgba(5,8,18,0.67)';
   roundRect(ctx, x + 28, y + 76, 102, 61, 15);
@@ -320,18 +442,25 @@ function drawChartRow(ctx, chart, y, gameVersion) {
   ctx.textAlign = 'center';
   ctx.fillText(formatConstant(chart), x + 79, y + 117);
 
-  const typeLabel = String(chart.type || '').toLowerCase() === 'dx' ? 'DX' : 'STD';
+  const chartType = String(chart.type || '').toLowerCase() === 'dx' ? 'DX' : 'STD';
+  const primaryRegion = primaryChartRegion(chart);
+  const typeLabel = primaryRegion ? `${chartType} · ${primaryRegion}` : chartType;
   ctx.fillStyle = 'rgba(5,8,18,0.67)';
-  roundRect(ctx, x + 143, y + 82, 72, 31, 15);
+  roundRect(ctx, x + 136, y + 82, 86, 31, 15);
   ctx.fill();
   ctx.fillStyle = '#ffffff';
-  ctx.font = `800 15px ${FONT}`;
+  ctx.font = `800 13px ${FONT}`;
   ctx.fillText(typeLabel, x + 179, y + 103);
 
+  const intlConstant = regionalConstant(chart, 'intl');
+  const primaryConstant = Number(chart.internalLevelValue);
+  const levelFallback = Number.parseFloat(chart.level);
+  const ratingConstant = intlConstant
+    ?? (Number.isFinite(primaryConstant) ? primaryConstant : Number.isFinite(levelFallback) ? levelFallback : 0);
   const rating = calculateChartRating({
     achievement: 1_005_000,
     fc: null,
-    internalLevelValue: Number(chart.internalLevelValue) || Number.parseFloat(chart.level) || 0,
+    internalLevelValue: ratingConstant,
     gameVersion
   });
   ctx.fillStyle = 'rgba(5,8,18,0.67)';
@@ -339,7 +468,7 @@ function drawChartRow(ctx, chart, y, gameVersion) {
   ctx.fill();
   ctx.fillStyle = '#ffffff';
   ctx.font = `700 15px ${FONT}`;
-  ctx.fillText(`SSS+ RATING  »  ${rating}`, x + 121.5, y + 168);
+  ctx.fillText(`${intlConstant != null ? 'INTL ' : ''}SSS+  »  ${rating}`, x + 121.5, y + 168);
   ctx.textAlign = 'left';
 
   const bodyX = x + leftW + 16;
@@ -413,7 +542,8 @@ function drawChartRow(ctx, chart, y, gameVersion) {
   const patterns = Array.isArray(chart.patternLabels) && chart.patternLabels.length
     ? chart.patternLabels.join(' · ')
     : 'None listed';
-  ctx.fillText(fitText(ctx, `Patterns: ${patterns}`, width - 56), x + 28, y + 207);
+  ctx.fillText(fitText(ctx, `Patterns: ${patterns}`, bodyW), bodyX, y + 207);
+  await drawConstantHistory(ctx, chart, x, y, width);
   ctx.restore();
 }
 
@@ -424,7 +554,9 @@ export async function renderSongInfoGraphic({ song, chartFacts = null }) {
 
   const version = charts.find((chart) => chart.version)?.version || null;
   const gameVersion = getCurrentIntlVersionId() ?? 13;
-  const totalH = MARGIN + HEADER_H + GAP + charts.length * ROW_H + Math.max(0, charts.length - 1) * GAP + BOTTOM_PAD;
+  const totalH = MARGIN + HEADER_H + GAP
+    + charts.reduce((sum, chart) => sum + chartRowHeight(chart), 0)
+    + Math.max(0, charts.length - 1) * GAP + BOTTOM_PAD;
   const canvas = new Canvas(W, totalH);
   const ctx = canvas.getContext('2d');
   const jacket = await image(resolveJacket(song));
@@ -433,8 +565,8 @@ export async function renderSongInfoGraphic({ song, chartFacts = null }) {
   await drawHeader(ctx, song, charts, MARGIN, jacket, version);
   let y = MARGIN + HEADER_H + GAP;
   for (const chart of charts) {
-    drawChartRow(ctx, chart, y, gameVersion);
-    y += ROW_H + GAP;
+    await drawChartRow(ctx, chart, y, gameVersion);
+    y += chartRowHeight(chart) + GAP;
   }
   drawMaiDeckWatermark(ctx, { width: W, height: totalH, fontFamily: FONT });
 
