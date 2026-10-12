@@ -37,13 +37,12 @@ import {
   filterRatingRecommendations
 } from './account-insights.js';
 import { applyIntlFavoritesFromClal, buildBest50, calculateChartRating, computeRatingRecommendations, fetchIntlAccountSnapshotFromClal, fetchSongPlayCounts, getCurrentIntlVersionId, resolveChartVersionId } from './maimai-intl.js';
-import { RecommendationCatalog } from './recommendation-catalog.js';
 import { buildPublicProfilePayload } from './public-profile.js';
-import { accountSnapshotAge, inferSuggestionRange, recommendCharts, resolveSuggestionAccess } from './recommendation-engine.js';
 import { SongCatalog } from './song-catalog.js';
 import { ChartFacts } from './chart-facts.js';
 import { createSongFeatureHandlers } from './song-feature-handlers.js';
 import { LoadoutStore } from './store.js';
+import { buildHelpEmbed } from './help.js';
 
 const store = new LoadoutStore(
   {
@@ -98,8 +97,6 @@ if (loadoutStorageStatus.legacySongIdsRemaining > 0) {
   );
 }
 
-const recommendationCatalog = new RecommendationCatalog(config.recommendationFile, songCatalog);
-await recommendationCatalog.ensureReady();
 const gapRecommendationSessions = new GapRecommendationSessions();
 const recentCreditSessions = new RecentCreditSessions();
 const songFeatureHandlers = createSongFeatureHandlers({
@@ -181,11 +178,6 @@ client.once(Events.ClientReady, (readyClient) => {
     console.warn(`Song catalog unavailable at ${config.songCatalogFile}`);
   }
 
-  if (recommendationCatalog.available) {
-    console.log(`Loaded recommendation catalog: ${recommendationCatalog.entries.length} entries`);
-  } else {
-    console.warn(`Recommendation catalog unavailable at ${config.recommendationFile}`);
-  }
   if (chartFacts.available) {
     console.log(`Loaded chart pattern facts: ${chartFacts.byChartKey.size} charts`);
   } else {
@@ -197,12 +189,6 @@ const catalogReloadTimer = setInterval(async () => {
   const result = await songCatalog.reloadIfChanged();
   if (result.reloaded) {
     console.log(`Reloaded song catalog: ${result.count} songs`);
-    const recommendationsReloaded = await recommendationCatalog.load();
-    if (!recommendationsReloaded) {
-      console.warn('Song catalog reloaded, but the recommendation catalog could not be rebound.', {
-        error: recommendationCatalog.error?.message || String(recommendationCatalog.error || 'unknown error')
-      });
-    }
   } else if (result.error) {
     console.warn('Song catalog refresh detected an unusable update; keeping the last known-good catalog.', {
       error: result.error.message || String(result.error),
@@ -274,6 +260,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   try {
     switch (interaction.commandName) {
+      case 'help':
+        await replyPayload(interaction, { embeds: [buildHelpEmbed()] });
+        return;
       case 'account':
         await handleAccountCommand(interaction);
         return;
@@ -1521,54 +1510,6 @@ async function handleAccountCommand(interaction) {
       return;
     }
 
-    case 'gap': {
-      const account = store.getAccount(userId);
-      if (!account) {
-        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
-        return;
-      }
-
-      const allScores = store.getAccountScores(userId);
-      const b50Entries = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
-      const scores = allScores.length > 0 ? allScores : b50Entries;
-
-      if (scores.length === 0) {
-        await replySafely(interaction, 'No score data available. Run `/account sync` first.');
-        return;
-      }
-
-      const suggestions = computeRatingRecommendations(scores, songCatalog);
-
-      if (suggestions.length === 0) {
-        await replySafely(interaction, 'No played charts currently have an achievable target that would increase your B15/B35 rating.');
-        return;
-      }
-
-      const filtered = filterRatingRecommendations(suggestions, {
-        bucket: interaction.options.getString('bucket') || 'all',
-        difficulty: interaction.options.getString('difficulty'),
-        level: interaction.options.getString('level'),
-        type: interaction.options.getString('type'),
-        sort: interaction.options.getString('sort') || 'efficiency',
-        count: interaction.options.getInteger('count') || 10
-      });
-      if (filtered.shown.length === 0) {
-        await replySafely(interaction, 'No rating recommendations match those filters.');
-        return;
-      }
-
-      const sessionId = randomBytes(9).toString('base64url');
-      const session = gapRecommendationSessions.create(sessionId, {
-        ownerId: interaction.user.id,
-        playerName: account?.player?.name || 'your account',
-        suggestions: filtered.shown,
-        total: filtered.total,
-        sort: filtered.sort
-      });
-      await replyPayload(interaction, await buildGapRecommendationPayload(sessionId, session));
-      return;
-    }
-
     case 'progress': {
       const account = store.getAccount(userId);
       if (!account) {
@@ -1739,6 +1680,54 @@ async function handleSongCommand(interaction) {
   }
 
   switch (subcommand) {
+    case 'suggest': {
+      const userId = interaction.user.id;
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+
+      const allScores = store.getAccountScores(userId);
+      const b50Entries = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
+      const scores = allScores.length > 0 ? allScores : b50Entries;
+
+      if (scores.length === 0) {
+        await replySafely(interaction, 'No score data available. Run `/account sync` first.');
+        return;
+      }
+
+      const suggestions = computeRatingRecommendations(scores, songCatalog);
+      if (suggestions.length === 0) {
+        await replySafely(interaction, 'No played charts currently have an achievable target that would increase your B15/B35 rating.');
+        return;
+      }
+
+      const filtered = filterRatingRecommendations(suggestions, {
+        bucket: interaction.options.getString('bucket') || 'all',
+        difficulty: interaction.options.getString('difficulty'),
+        level: interaction.options.getString('level'),
+        type: interaction.options.getString('type'),
+        sort: interaction.options.getString('sort') || 'efficiency',
+        count: interaction.options.getInteger('count') || 10
+      });
+      if (filtered.shown.length === 0) {
+        await replySafely(interaction, 'No rating recommendations match those filters.');
+        return;
+      }
+
+      const sessionId = randomBytes(9).toString('base64url');
+      const session = gapRecommendationSessions.create(sessionId, {
+        ownerId: interaction.user.id,
+        playerName: account?.player?.name || 'your account',
+        suggestions: filtered.shown,
+        total: filtered.total,
+        sort: filtered.sort
+      });
+      await replyPayload(interaction, await buildGapRecommendationPayload(sessionId, session));
+      return;
+    }
+
     case 'search': {
       const query = interaction.options.getString('query', true);
       const constantSearch = parseConstantSearchQuery(query);
@@ -1772,73 +1761,6 @@ async function handleSongCommand(interaction) {
       }
 
       await replyChartSearchResults(interaction, constantSearch, matches);
-      return;
-    }
-
-    case 'suggest': {
-      await recommendationCatalog.reloadIfChanged();
-      const rawRange = interaction.options.getString('range') || '';
-      const focus = interaction.options.getString('focus') || '';
-      const count = interaction.options.getInteger('count') || 5;
-      const requestedMode = interaction.options.getString('mode') || 'balanced';
-      const account = store.getAccount(interaction.user.id);
-      const linked = Boolean(account);
-      const snapshotAge = linked ? accountSnapshotAge(account) : null;
-      const access = resolveSuggestionAccess({ linked, mode: requestedMode, hasExplicitRange: Boolean(rawRange), snapshotAge });
-      if (access.reason === 'link_required') {
-        await replySafely(interaction, 'Improvement suggestions require a linked account. Use `/account link`, or choose discovery with an explicit range.');
-        return;
-      }
-      if (access.reason === 'range_or_link_required') {
-        await replySafely(interaction, 'Provide `range` (for example `12.3-12.8`) or link an account so I can infer one.');
-        return;
-      }
-      if (access.reason === 'snapshot_expired') {
-        await replySafely(interaction, 'Your linked score snapshot is over 90 days old. Sync it again or provide `range` explicitly.');
-        return;
-      }
-
-      const storedScores = linked ? store.getAccountScores(interaction.user.id) : [];
-      const fallbackScores = storedScores.length
-        ? storedScores
-        : [...(account?.best50?.b15 || []), ...(account?.best50?.b35 || []), ...(account?.best50?.top50 || [])];
-      let range;
-      if (rawRange) {
-        range = parseSuggestionRange(rawRange);
-      } else {
-        range = inferSuggestionRange(fallbackScores, songCatalog);
-      }
-
-      const effectiveMode = access.effectiveMode;
-      const suggestions = recommendCharts({
-        catalog: recommendationCatalog.available ? recommendationCatalog : null,
-        songCatalog,
-        scores: fallbackScores,
-        range,
-        focus,
-        mode: effectiveMode,
-        limit: count
-      });
-
-      if (!suggestions.length) {
-        const focusSuffix = focus ? ` with focus "${focus}"` : '';
-        await replySafely(
-          interaction,
-          `No ${effectiveMode} suggestions found for ${formatSuggestionRange(range)}${focusSuffix}.`
-        );
-        return;
-      }
-
-      const embed = buildSongSuggestionEmbed({
-        range,
-        focus,
-        mode: effectiveMode,
-        suggestions,
-        catalogAvailable: recommendationCatalog.available,
-        stale: Boolean(snapshotAge?.stale)
-      });
-
-      await replyPayload(interaction, { embeds: [embed] });
       return;
     }
 
@@ -2764,40 +2686,6 @@ function formatConstantSearchRange(search) {
     return formatInternalLevel(search.minConstant);
   }
   return `${formatInternalLevel(search.minConstant)}-${formatInternalLevel(search.maxConstant)}`;
-}
-
-function parseSuggestionRange(rawRange) {
-  const input = String(rawRange || '').trim();
-  if (!input) {
-    throw new Error('Range cannot be empty.');
-  }
-
-  const exactMatch = input.match(/^(\d{1,2}\.\d)$/);
-  if (exactMatch) {
-    const value = Number.parseFloat(exactMatch[1]);
-    return { minConstant: value, maxConstant: value };
-  }
-
-  const rangeMatch = input.match(/^(\d{1,2}\.\d)\s*-\s*(\d{1,2}\.\d)$/);
-  if (!rangeMatch) {
-    throw new Error('Range must look like `12.7` or `12.3-12.8`.');
-  }
-
-  const minConstant = Number.parseFloat(rangeMatch[1]);
-  const maxConstant = Number.parseFloat(rangeMatch[2]);
-  if (minConstant > maxConstant) {
-    throw new Error('Range start cannot be greater than range end.');
-  }
-
-  return { minConstant, maxConstant };
-}
-
-function formatSuggestionRange(range) {
-  if (sameConstant(range.minConstant, range.maxConstant)) {
-    return formatInternalLevel(range.minConstant);
-  }
-
-  return `${formatInternalLevel(range.minConstant)}-${formatInternalLevel(range.maxConstant)}`;
 }
 
 function normalizeChartText(value) {
@@ -3962,7 +3850,7 @@ async function handleGapRecommendationButton(interaction, { sessionId, action })
   const session = gapRecommendationSessions.get(sessionId);
   if (!session) {
     await interaction.reply({
-      content: 'These recommendation controls have expired. Run `/account gap` again.',
+      content: 'These recommendation controls have expired. Run `/song suggest` again.',
       flags: MessageFlags.Ephemeral
     });
     return;
@@ -4332,65 +4220,6 @@ function buildPlaylistStatsEmbed(playlist, songs, missingCount) {
         value: formatTopCounts(versionCounts, { limit: 6, maxLabelLength: 26 })
       }
     );
-
-  return embed;
-}
-
-function formatSuggestionChartList(charts, limit = 3) {
-  const rows = charts.slice(0, limit).map((chart) => {
-    const type = String(chart.type || 'UNK').toUpperCase();
-    const difficulty = formatDifficultyShort(chart.difficulty);
-    return `${type} ${difficulty} ${chart.level} [${formatInternalLevel(chart.constant)}]`;
-  });
-
-  if (charts.length > limit) {
-    rows.push(`+${charts.length - limit} more chart(s)`);
-  }
-
-  return rows.join(', ');
-}
-
-function buildSongSuggestionEmbed({ range, focus, mode, suggestions, catalogAvailable, stale }) {
-  const description = suggestions
-    .map((entry, index) => {
-      const type = String(entry.type || 'UNK').toUpperCase();
-      const difficulty = formatDifficultyShort(entry.difficulty);
-      const chart = `${type} ${difficulty} ${entry.chart?.level || '?'} [${formatInternalLevel(entry.constant)}]`;
-      const tags = entry.evidence?.tags?.length ? `Tags: ${entry.evidence.tags.join(', ')}` : null;
-      const provenance = entry.evidence
-        ? `Evidence: ${entry.evidence.evidence.filter((item) => item.status === 'active').map((item) => item.source).join(', ')}`
-        : 'Evidence: score-only';
-
-      return [
-        `**${index + 1}. ${entry.song.title}** - ${entry.song.artist} · ${entry.lane}`,
-        chart,
-        tags,
-        `Reason: ${truncateText(entry.reason, 180)}`,
-        provenance
-      ]
-        .filter(Boolean)
-        .join('\n');
-    })
-    .join('\n\n');
-
-  const embed = new EmbedBuilder()
-    .setColor(0x16a34a)
-    .setTitle(`Song Suggestions · ${formatSuggestionRange(range)}`)
-    .setDescription(truncateText(description, 4000));
-
-  const summary = [
-    `Returned: ${suggestions.length}`,
-    `Mode: ${mode}`,
-    range.inferred ? `Range: inferred from ${range.sampleSize} top charts (median ${formatInternalLevel(range.median)})` : 'Range: explicit',
-    focus ? `Focus: ${focus}` : 'Focus: any',
-    catalogAvailable ? 'Community catalog: active' : 'Community catalog: unavailable; score-only fallback',
-    stale ? 'Score snapshot: over 30 days old; sync recommended' : null
-  ].filter(Boolean);
-
-  embed.addFields({
-    name: 'Summary',
-    value: summary.join('\n')
-  });
 
   return embed;
 }

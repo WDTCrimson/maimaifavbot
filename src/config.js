@@ -91,8 +91,6 @@ export const config = {
     minTotalBests: parseOptionalInteger('MODEL_MIN_TOTAL_BESTS', 50),
     nearbyConstantWindow: parseOptionalPositiveNumber('MODEL_NEARBY_WINDOW', 1.0)
   },
-  recommendationFile:
-    process.env.RECOMMENDATION_FILE?.trim() || './data/recommendations/community.json',
   graphicThemeDir: process.env.GRAPHIC_THEME_DIR?.trim() || resolveDefaultGraphicThemeDir(),
   accountLinkBaseUrl: optionalEnv('ACCOUNT_LINK_BASE_URL'),
   accountLinkClientId: optionalEnv('ACCOUNT_LINK_CLIENT_ID'),

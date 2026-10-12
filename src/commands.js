@@ -1,5 +1,9 @@
 import { SlashCommandBuilder } from 'discord.js';
 
+export const helpCommand = new SlashCommandBuilder()
+  .setName('help')
+  .setDescription('Show every MaiDeck feature and how to get started');
+
 export const playlistCommand = new SlashCommandBuilder()
   .setName('playlist')
   .setDescription('Manage maimai favorite-song playlists')
@@ -199,7 +203,7 @@ export const playlistCommand = new SlashCommandBuilder()
 
 export const songCommand = new SlashCommandBuilder()
   .setName('song')
-  .setDescription('Search song metadata and curated recommendations')
+  .setDescription('Search songs, inspect charts, and calculate rating')
   .addSubcommand((subcommand) =>
     subcommand
       .setName('search')
@@ -215,37 +219,39 @@ export const songCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName('suggest')
-      .setDescription('Suggest personalized discovery and improvement charts')
+      .setDescription('Recommend score targets that increase your B15/B35 rating')
       .addStringOption((option) =>
-        option
-          .setName('range')
-          .setDescription('Optional exact constant or range like 12.7 or 12.3-12.8')
-          .setRequired(false)
+        option.setName('bucket').setDescription('Limit results to a rating bucket').setRequired(false).addChoices(
+          { name: 'All', value: 'all' },
+          { name: 'Current B15/B35', value: 'best' },
+          { name: 'New charts', value: 'new' },
+          { name: 'Old charts', value: 'old' }
+        )
       )
       .addStringOption((option) =>
-        option
-          .setName('mode')
-          .setDescription('Mix discoveries and improvements, or select one lane')
-          .setRequired(false)
-          .addChoices(
-            { name: 'Balanced', value: 'balanced' },
-            { name: 'Discovery', value: 'discovery' },
-            { name: 'Improvement', value: 'improvement' }
-          )
+        option.setName('difficulty').setDescription('Chart difficulty').setRequired(false).addChoices(
+          { name: 'BASIC', value: 'basic' },
+          { name: 'ADVANCED', value: 'advanced' },
+          { name: 'EXPERT', value: 'expert' },
+          { name: 'MASTER', value: 'master' },
+          { name: 'Re:MASTER', value: 'remaster' }
+        )
       )
       .addStringOption((option) =>
-        option
-          .setName('focus')
-          .setDescription('Optional recommendation tag like entry, tech, stamina, accuracy')
-          .setRequired(false)
+        option.setName('level').setDescription('Displayed or precise level, such as 13+ or 13.7').setRequired(false)
+      )
+      .addStringOption((option) =>
+        option.setName('type').setDescription('Chart type').setRequired(false).addChoices(
+          { name: 'DX', value: 'dx' }, { name: 'STD', value: 'std' }
+        )
+      )
+      .addStringOption((option) =>
+        option.setName('sort').setDescription('How to rank matching targets').setRequired(false).addChoices(
+          { name: 'Efficiency', value: 'efficiency' }, { name: 'Largest rating gain', value: 'gain' }
+        )
       )
       .addIntegerOption((option) =>
-        option
-          .setName('count')
-          .setDescription('How many suggestions to return')
-          .setRequired(false)
-          .setMinValue(1)
-          .setMaxValue(10)
+        option.setName('count').setDescription('Number of targets to show (default 10)').setRequired(false).setMinValue(1).setMaxValue(20)
       )
   )
   .addSubcommand((subcommand) =>
@@ -554,44 +560,6 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
-      .setName('gap')
-      .setDescription('Recommend achievable score targets that increase your B15/B35 rating')
-      .addStringOption((option) =>
-        option.setName('bucket').setDescription('Limit results to a rating bucket').setRequired(false).addChoices(
-          { name: 'All', value: 'all' },
-          { name: 'Current B15/B35', value: 'best' },
-          { name: 'New charts', value: 'new' },
-          { name: 'Old charts', value: 'old' }
-        )
-      )
-      .addStringOption((option) =>
-        option.setName('difficulty').setDescription('Chart difficulty').setRequired(false).addChoices(
-          { name: 'BASIC', value: 'basic' },
-          { name: 'ADVANCED', value: 'advanced' },
-          { name: 'EXPERT', value: 'expert' },
-          { name: 'MASTER', value: 'master' },
-          { name: 'Re:MASTER', value: 'remaster' }
-        )
-      )
-      .addStringOption((option) =>
-        option.setName('level').setDescription('Displayed or precise level, such as 13+ or 13.7').setRequired(false)
-      )
-      .addStringOption((option) =>
-        option.setName('type').setDescription('Chart type').setRequired(false).addChoices(
-          { name: 'DX', value: 'dx' }, { name: 'STD', value: 'std' }
-        )
-      )
-      .addStringOption((option) =>
-        option.setName('sort').setDescription('How to rank matching targets').setRequired(false).addChoices(
-          { name: 'Efficiency', value: 'efficiency' }, { name: 'Largest rating gain', value: 'gain' }
-        )
-      )
-      .addIntegerOption((option) =>
-        option.setName('count').setDescription('Number of targets to show (default 10)').setRequired(false).setMinValue(1).setMaxValue(20)
-      )
-  )
-  .addSubcommand((subcommand) =>
-    subcommand
       .setName('progress')
       .setDescription('Show version completion and plate progress')
       .addStringOption((option) =>
@@ -681,4 +649,9 @@ export const accountCommand = new SlashCommandBuilder()
       )
   );
 
-export const commands = [playlistCommand.toJSON(), songCommand.toJSON(), accountCommand.toJSON()];
+export const commands = [
+  helpCommand.toJSON(),
+  playlistCommand.toJSON(),
+  songCommand.toJSON(),
+  accountCommand.toJSON()
+];

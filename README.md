@@ -7,12 +7,12 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - Create, list, show, and delete per-user playlists.
 - Add/remove songs per playlist (max 30).
 - Generate a compact payload string for a playlist.
-- Suggest songs from a curated community recommendation dataset.
 - Provide a bookmarklet installer string.
 - Include a Chrome-compatible extension (`extension/`) that applies payloads on maimai pages.
 
 ## Bot commands
 
+- `/help`
 - `/playlist create name:<text>`
 - `/playlist delete name:<text>`
 - `/playlist list`
@@ -29,7 +29,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/playlist clear-target name:<text> song_query:<text>`
 - `/playlist bookmarklet`
 - `/song search query:<internal-level-or-range>`
-- `/song suggest range:<text> [focus:<text>] [count:<1-10>]`
+- `/song suggest [bucket] [difficulty] [level] [type] [sort] [count]`
 - `/song info query:<text>`
 - `/song pattern tag:<text> [level] [difficulty]`
 - `/song random [level] [difficulty] [unplayed]`
@@ -40,7 +40,6 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/account sync`
 - `/account top`
 - `/account recent`
-- `/account gap [bucket] [difficulty] [level] [type] [sort] [count]`
 - `/account progress [version] [plate] [difficulty]`
 - `/account history [count]`
 - `/account daily [date]`
@@ -204,7 +203,6 @@ npm run check
 - `MODEL_MIN_NEARBY_BESTS` (optional, default `20`)
 - `MODEL_MIN_TOTAL_BESTS` (optional, default `50`)
 - `MODEL_NEARBY_WINDOW` (optional, default `1.0` internal-level points)
-- `RECOMMENDATION_FILE` (optional, default `./data/recommendations/community.json`)
 - `GRAPHIC_THEME_DIR` (optional, default `./data/theme/tomomai` when present, else `./data/theme`)
 - `ACCOUNT_LINK_BASE_URL` (optional, external web service start URL for `/account link`)
 - `ACCOUNT_LINK_CALLBACK_PUBLIC_URL` (optional, public callback URL the external service posts snapshots to)
@@ -413,38 +411,6 @@ The external service is responsible for obtaining maimai session data, transform
 
 The public `/account link` URL is now signed. The callback URL is no longer exposed in the browser query string.
 Raw imported account payloads are no longer persisted in the bot state file.
-
-## Community recommendations
-
-`/song suggest` reads a local dataset, but that dataset can now be generated automatically from public discussion sources.
-
-Bootstrap the source config:
-
-```bash
-mkdir -p data/recommendations
-cp data/recommendations/sources.example.json data/recommendations/sources.json
-```
-
-Generate the recommendation dataset:
-
-```bash
-npm run import:recommendations
-```
-
-This writes:
-- `data/recommendations/community.json`
-- `data/recommendations/import-report.json`
-
-The importer prefers `data/recommendations/sources.json` when present, and otherwise falls back to the tracked `data/recommendations/sources.example.json`.
-
-GitHub Actions:
-
-- Workflow file: [.github/workflows/import-recommendations.yml](/home/crimson/PersonalProjects/maimaifavbot/.github/workflows/import-recommendations.yml)
-- Trigger: manual or daily schedule
-- Behavior: first builds a transient song catalog with `npm run import:data -- --skip-jackets --skip-logos`, then runs the recommendation importer and commits updated `community.json` and `import-report.json` back into the repo
-- If Reddit public endpoints return `403`, set GitHub Actions secrets `REDDIT_CLIENT_ID`, `REDDIT_CLIENT_SECRET`, and `REDDIT_USER_AGENT` so the importer can use Reddit OAuth instead
-
-You can still hand-edit `community.json` if you want, but the intended path is to tune the tracked source config and rerun the importer. See [data/recommendations/README.md](/home/crimson/PersonalProjects/maimaifavbot/data/recommendations/README.md) for the schema.
 
 ## Import song data + logos + jackets
 
