@@ -18,6 +18,7 @@ Before publishing them:
 - [x] Handle data-export and access requests through the published Discord/email contact for now; a self-service export command is not required for launch.
 - [x] Verify that public-profile fields match `src/public-profile.js` and remain opt-in.
 - [x] Verify that automatic history collection remains opt-in and its command wording matches this Policy.
+- [ ] Before enabling user-facing predictions, state in the Privacy Policy and prediction/help surfaces that MaiDeck computes them on the operator-controlled server using statistical/machine-learning models and does not send linked player data to an external LLM, generative-AI provider, or third-party model API. Preserve the separate disclosure that catalog-only AI processing may receive song metadata but never Discord identifiers or linked player data.
 - [ ] Confirm every infrastructure provider has suitable data-processing and security terms.
 - [x] Make both documents publicly reachable from the website and `/help`.
 - [ ] Enter and visually verify `https://maideck.xyz/privacy` and `https://maideck.xyz/terms` in the Discord Developer Portal. Discord's bot-authenticated application API ignored both fields, so this remains a manual Portal check.
