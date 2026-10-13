@@ -1,0 +1,11 @@
+[Unit]
+Description=Seal the MaiDeck vault recovery key to this server TPM
+ConditionPathExists=/run/user/1000/maideck-vault.pass
+ConditionPathExists=!/home/crimson/.maideck-vault-password.cred
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemd-creds encrypt --name=maideck-vault-password --with-key=tpm2 --tpm2-device=auto /run/user/1000/maideck-vault.pass /home/crimson/.maideck-vault-password.cred
+ExecStartPost=/usr/bin/chown root:root /home/crimson/.maideck-vault-password.cred
+ExecStartPost=/usr/bin/chmod 0600 /home/crimson/.maideck-vault-password.cred
+ExecStartPost=/usr/bin/rm -f /run/user/1000/maideck-vault.pass
