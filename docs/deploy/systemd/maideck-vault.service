@@ -6,6 +6,7 @@ Before=maimaifavbot.service maimaifavbot-linker.service
 [Service]
 Type=simple
 LoadCredentialEncrypted=maideck-vault-password:/home/crimson/.maideck-vault-password.cred
+ExecStartPre=/usr/bin/sed -i s/^#user_allow_other/user_allow_other/ /etc/fuse.conf
 ExecStartPre=/usr/bin/test -f /home/crimson/.maideck-vault.cipher/gocryptfs.conf
 ExecStartPre=/usr/bin/test -d /home/crimson/.maideck-vault.plain
 ExecStart=/home/crimson/.local/bin/gocryptfs -fg -nosyslog -allow_other -passfile %d/maideck-vault-password /home/crimson/.maideck-vault.cipher /home/crimson/.maideck-vault.plain
