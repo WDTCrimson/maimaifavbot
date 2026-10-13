@@ -8,16 +8,16 @@ Before publishing them:
 - [x] Add a preferred Discord contact (`@wdtcrimson`) and monitored email fallback (`wdtcrimson@gmail.com`).
 - [ ] Have local counsel confirm whether `WDT Crimson` plus the listed Discord/email contacts sufficiently identifies the controller, or whether additional legal identity/contact details are required.
 - [x] Choose an effective date: October 13, 2026.
-- [ ] Have local counsel choose the governing law, venue, and appropriate liability cap.
+- [x] Publish an Indonesia-law clause, competent-court wording, mandatory consumer-law savings clause, and IDR 1,000,000 liability cap. Local-counsel review remains recommended.
 - [x] Identify personal-data infrastructure: operator-controlled server, Playit.gg public tunnel, Tailscale private administration, Discord, and SEGA/maimai DX NET. The server is primarily in Indonesia and may temporarily operate from the United States.
 - [x] Confirm web access logging: Caddy has no access-log directive. Bot and linker operational logs are documented separately.
-- [ ] Confirm the production volumes and backups provide encryption at rest for Discord API data, as required by Discord's Developer Terms; application-level encryption currently covers the reusable maimai token specifically.
+- [x] Confirm production personal data, secrets, operational logs, and backups are stored in a TPM-unlocked gocryptfs vault; reusable maimai tokens also retain application-level AES-256-GCM encryption.
 - [x] Set and document a 30-day usage/linker-log retention period with automatic pruning.
 - [x] Set and document a 30-day local-backup retention period and automatic pruning.
 - [x] Provide `/account delete-data` for full live-data and matching usage-log deletion.
 - [ ] Decide whether to implement a user-facing data export command.
-- [ ] Verify that public-profile fields still match `src/public-profile.js`.
-- [ ] Verify that automatic history collection remains opt-in and its command wording matches this Policy.
+- [x] Verify that public-profile fields match `src/public-profile.js` and remain opt-in.
+- [x] Verify that automatic history collection remains opt-in and its command wording matches this Policy.
 - [ ] Confirm every infrastructure provider has suitable data-processing and security terms.
 - [ ] Put a public Privacy Policy URL in the Discord Developer Portal and make both documents easy to reach from the bot or its support page.
 - [ ] Review the current Discord Developer Terms and Developer Policy before launch and after material platform changes.

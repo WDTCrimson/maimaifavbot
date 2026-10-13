@@ -1,6 +1,6 @@
 # MaiDeck Terms of Service
 
-**Effective date:** [INSERT EFFECTIVE DATE]
+**Effective date:** October 13, 2026
 
 **Operator:** WDT Crimson ("MaiDeck," "we," "us," or "our")  
 **Website:** https://maideck.xyz  
@@ -8,8 +8,6 @@
 **Email fallback:** wdtcrimson@gmail.com
 
 These Terms of Service ("Terms") govern your use of the MaiDeck Discord bot, its account-linking website, public profile pages, browser helpers, and related services (together, the "Service"). By using the Service, you agree to these Terms. If you do not agree, do not use the Service.
-
-These Terms are a project-specific draft and are not legal advice. The bracketed details must be completed before publication.
 
 ## 1. Eligibility
 
@@ -89,7 +87,7 @@ You may stop using MaiDeck at any time.
 
 `/account unlink` removes the selected linked maimai profile and its associated stored authentication, score records, snapshots, recent-play history, collection state, and public-profile link. It does not remove your separately saved playlists or operational usage logs.
 
-To request deletion of all personal data associated with your Discord account, contact `@wdtcrimson` on Discord or email wdtcrimson@gmail.com. We may ask you to verify control of the relevant Discord account. Additional details are in the Privacy Policy.
+`/account delete-data` removes all live MaiDeck data associated with your Discord account, including profiles, stored authentication, scores and history, playlists, targets, settings, pending link sessions, public-profile settings, and matching usage-log events. Encrypted backup copies expire through the normal 30-day rotation. You can also request deletion by contacting `@wdtcrimson` on Discord or emailing wdtcrimson@gmail.com. Additional details are in the Privacy Policy.
 
 We may terminate or restrict access for a material or repeated violation of these Terms, a security risk, a legal requirement, or discontinuation of the Service. Where reasonable, we will provide notice and an opportunity to export or request deletion of your data.
 
@@ -105,13 +103,13 @@ Some jurisdictions do not allow certain warranty exclusions, so some of these ex
 
 To the fullest extent permitted by law, MaiDeck and its operator will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for lost data, lost profits, loss of account access, or interruption of service arising from your use of or inability to use the Service.
 
-To the fullest extent permitted by law, our total liability for claims relating to the Service will not exceed the greater of (a) the amount you paid us for the Service during the 12 months before the claim or (b) [INSERT REASONABLE LOCAL-CURRENCY CAP]. MaiDeck currently does not charge users.
+To the fullest extent permitted by law, our total liability for claims relating to the Service will not exceed the greater of (a) the amount you paid us for the Service during the 12 months before the claim or (b) IDR 1,000,000. MaiDeck currently does not charge users.
 
 These limitations do not exclude liability that cannot lawfully be excluded or limited.
 
 ## 12. Governing law and disputes
 
-These Terms are governed by the laws of [INSERT COUNTRY/STATE], without regard to conflict-of-law rules. Courts located in [INSERT CITY/COUNTRY] will have jurisdiction, except where applicable consumer law gives you the right to bring a claim elsewhere.
+These Terms are governed by the laws of the Republic of Indonesia, without regard to conflict-of-law rules. Disputes are subject to the competent courts of Indonesia, except where mandatory consumer or other applicable law gives you the right to bring a claim elsewhere or requires a different law or forum.
 
 Before filing a formal claim, you and MaiDeck agree to try in good faith to resolve the issue by contacting the other party. This does not limit either party's right to seek urgent relief or use a process that cannot legally be waived.
 

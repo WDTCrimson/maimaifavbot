@@ -1,6 +1,6 @@
 # MaiDeck encrypted production storage
 
-Production personal data is stored in a gocryptfs vault on the server. The vault password is sealed to the server TPM with `systemd-creds`; the only plaintext recovery copy is kept off-host by the operator.
+Production personal data is stored in a gocryptfs vault on the server. The vault password is sealed to the server TPM with `systemd-creds`; the only plaintext recovery copy is kept off-host by the operator. The deployment was activated and verified on October 13, 2026.
 
 ## Protected paths
 

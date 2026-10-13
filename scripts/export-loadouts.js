@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { chmod, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
-import { basename, dirname, resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { LoadoutStore } from '../src/store.js';
 
 dotenv.config({ quiet: true });
@@ -67,26 +67,27 @@ async function cleanupOldExports(outputPath, retentionDays) {
   }
 
   const directory = dirname(outputPath);
-  const currentFile = basename(outputPath);
+  const currentFile = resolve(outputPath);
   const cutoffMs = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
   let removed = 0;
 
-  for (const entry of await readdir(directory)) {
-    if (entry === currentFile || !/^loadouts-export-\d{8}-\d{6}\.json$/.test(entry)) {
-      continue;
-    }
-
-    const entryPath = resolve(directory, entry);
-    const entryStat = await stat(entryPath);
-    if (!entryStat.isFile()) {
-      continue;
-    }
-
-    if (entryStat.mtimeMs < cutoffMs) {
-      await rm(entryPath, { force: true });
-      removed += 1;
+  async function visit(currentDirectory) {
+    for (const entry of await readdir(currentDirectory, { withFileTypes: true })) {
+      const entryPath = resolve(currentDirectory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(entryPath);
+        continue;
+      }
+      if (!entry.isFile() || entryPath === currentFile) continue;
+      const entryStat = await stat(entryPath);
+      if (entryStat.mtimeMs < cutoffMs) {
+        await rm(entryPath, { force: true });
+        removed += 1;
+      }
     }
   }
+
+  await visit(directory);
 
   return removed;
 }
@@ -132,7 +133,7 @@ async function main() {
 
   console.log(`Exported ${users} users and ${loadouts} loadouts from ${backend} storage to ${outputPath}`);
   if (args.retentionDays) {
-    console.log(`Removed ${removedBackups} old backup(s) older than ${args.retentionDays} day(s).`);
+    console.log(`Removed ${removedBackups} backup file(s) older than ${args.retentionDays} day(s).`);
   }
 }
 
