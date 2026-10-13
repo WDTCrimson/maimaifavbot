@@ -15,8 +15,6 @@ ExecStop=/usr/bin/fusermount3 -u /home/crimson/.maideck-vault.plain
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
-StandardOutput=append:/home/crimson/.maideck-vault-startup.log
-StandardError=inherit
 
 [Install]
 WantedBy=multi-user.target

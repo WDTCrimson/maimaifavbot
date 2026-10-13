@@ -1,8 +1,10 @@
 [Unit]
 Description=maimai Favorite Loadout Discord Bot
 Requires=maideck-vault.service
+BindsTo=maideck-vault.service
 After=network-online.target maideck-vault.service
 Wants=network-online.target
+ConditionPathIsMountPoint=/home/crimson/.maideck-vault.plain
 
 [Service]
 Type=simple
