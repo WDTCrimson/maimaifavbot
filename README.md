@@ -85,6 +85,14 @@ Open `data/reports/pattern-translation-review.html`, use **Watch pattern** to la
 
 These features were inspired by Rasmai and rebuilt independently without using its source code. MaiDeck will have no paid features, ever.
 
+## Legal documents
+
+- [Terms of Service](docs/legal/terms-of-service.md)
+- [Privacy Policy](docs/legal/privacy-policy.md)
+- [Legal operations checklist](docs/legal/publishing-checklist.md)
+
+The published documents are available at [maideck.xyz/terms](https://maideck.xyz/terms) and [maideck.xyz/privacy](https://maideck.xyz/privacy). The checklist records operational controls, external-platform issues, and items that still require qualified legal advice.
+
 ## Skill model backtest
 
 The skill model is kept as pure, side-effect-free functions. Run its deterministic fixture backtest on any checkout with:
@@ -212,7 +220,7 @@ npm run check
 - `ACCOUNT_LINK_SIGNING_SECRET` (optional, defaults to `ACCOUNT_LINK_SHARED_SECRET`)
 - `ACCOUNT_LINK_DATA_SECRET` (optional, encrypts saved sync auth, defaults to `ACCOUNT_LINK_SHARED_SECRET`)
 - `ACCOUNT_LINK_TTL_MINUTES` (optional, default `15`)
-- `ACCOUNT_PUBLIC_BASE_URL` (optional, public linker profile base URL, for example `https://link.example.com/p`)
+- `ACCOUNT_PUBLIC_BASE_URL` (optional, public linker profile base URL; production uses `https://maideck.xyz/p`)
 
 ## Using bookmarklet flow
 

@@ -73,7 +73,7 @@ The Service interacts with services operated by others, including Discord and SE
 
 MaiDeck is an independent community project. It is not affiliated with, sponsored by, endorsed by, or operated by Discord, SEGA, or the maintainers of third-party data sources.
 
-Use of automated account or favorites features may carry risks under a third party's rules. You should review those rules before using the features. We do not promise that a third party will permit or continue to permit any integration.
+SEGA's current maimai DX NET terms prohibit automated tools or programs that SEGA has not approved. MaiDeck does not claim to have SEGA approval. Do not use account-linking, synchronization, or favorites automation unless SEGA permits your use. We may disable these features while their status is unresolved. We do not promise that a third party will permit or continue to permit any integration.
 
 ## 8. Availability and changes
 

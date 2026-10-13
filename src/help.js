@@ -34,7 +34,9 @@ export function buildHelpEmbed() {
     .setDescription([
       'Tools for maimai DX International songs, linked-account progress, and favorite-song playlists.',
       '',
-      '**Start here:** use `/account link` to connect your account, `/song info` to inspect a chart, or `/playlist create` to build a practice list.'
+      '**Start here:** use `/account link` to connect your account, `/song info` to inspect a chart, or `/playlist create` to build a practice list.',
+      '',
+      '[Terms of Service](https://maideck.xyz/terms) · [Privacy Policy](https://maideck.xyz/privacy)'
     ].join('\n'));
 
   for (const command of commands.filter((entry) => entry.name !== 'help')) {

@@ -54,5 +54,7 @@ test('/help lists every registered feature without Reddit sourcing', () => {
     }
   }
   assert.doesNotMatch(helpText, /reddit/i);
+  assert.match(json.description, /https:\/\/maideck\.xyz\/terms/);
+  assert.match(json.description, /https:\/\/maideck\.xyz\/privacy/);
   assert.ok(json.fields.every((field) => field.value.length <= 1024));
 });
