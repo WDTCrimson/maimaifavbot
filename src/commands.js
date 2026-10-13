@@ -543,6 +543,18 @@ export const accountCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('delete-data')
+      .setDescription('Permanently delete all of your MaiDeck data')
+      .addStringOption((option) =>
+        option
+          .setName('confirm')
+          .setDescription('Confirm permanent deletion')
+          .setRequired(true)
+          .addChoices({ name: 'Delete all my MaiDeck data', value: 'DELETE' })
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('profiles')
       .setDescription('List your account profiles')
   )

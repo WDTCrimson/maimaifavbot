@@ -30,6 +30,9 @@ test('critical Discord options retain bounds, choices, and autocomplete contract
   const account = commands.find((command) => command.name === 'account');
   assert.ok(account.options.some((option) => option.name === 'link'));
   assert.ok(account.options.some((option) => option.name === 'unlink'));
+  const deleteData = account.options.find((option) => option.name === 'delete-data');
+  assert.ok(deleteData);
+  assert.equal(deleteData.options.find((option) => option.name === 'confirm')?.required, true);
   assert.equal(account.options.find((option) => option.name === 'settings').options.find((option) => option.name === 'history').type, 5);
   const publicProfile = account.options.find((option) => option.name === 'public');
   assert.deepEqual(publicProfile.options.find((option) => option.name === 'action').choices.map((choice) => choice.value), ['enable', 'view', 'disable']);

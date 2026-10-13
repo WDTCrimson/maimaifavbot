@@ -43,6 +43,7 @@ import { ChartFacts } from './chart-facts.js';
 import { createSongFeatureHandlers } from './song-feature-handlers.js';
 import { LoadoutStore } from './store.js';
 import { buildHelpEmbed } from './help.js';
+import { pruneUsageLogs, removeUserFromUsageLogs, usageLogRetentionDays } from './log-retention.js';
 
 const store = new LoadoutStore(
   {
@@ -53,6 +54,12 @@ const store = new LoadoutStore(
   limits
 );
 await store.ensureReady();
+
+const usageRetentionDays = usageLogRetentionDays();
+const prunedUsageLogs = await pruneUsageLogs(config.usageLogDir, { retentionDays: usageRetentionDays });
+if (prunedUsageLogs > 0) {
+  console.log(`Removed ${prunedUsageLogs} usage log file(s) older than ${usageRetentionDays} days.`);
+}
 
 const accountLinkStateScrub = await store.scrubAccountLinkState();
 if (accountLinkStateScrub.changed) {
@@ -321,7 +328,7 @@ async function logUsageEvent(event) {
   try {
     const filePath = buildUsageLogFilePath();
     await mkdir(config.usageLogDir, { recursive: true });
-    await appendFile(filePath, `${JSON.stringify(event)}\n`, 'utf8');
+    await appendFile(filePath, `${JSON.stringify(event)}\n`, { encoding: 'utf8', mode: 0o600 });
   } catch (error) {
     console.error('Failed to write usage log event', {
       errorMessage: error instanceof Error ? error.message : String(error),
@@ -1474,6 +1481,22 @@ async function handleAccountCommand(interaction) {
             : `No linked account was found in **${targetProfile}** profile.`
         );
       }
+      return;
+    }
+
+    case 'delete-data': {
+      const confirmation = interaction.options.getString('confirm', true);
+      if (confirmation !== 'DELETE') {
+        await replySafely(interaction, 'Deletion was not confirmed. No data was changed.');
+        return;
+      }
+
+      await store.deleteUserData(userId);
+      await removeUserFromUsageLogs(config.usageLogDir, userId);
+      await replySafely(
+        interaction,
+        `Deleted all MaiDeck data associated with your Discord account from live storage and usage logs. Existing backup copies expire within ${usageRetentionDays} days.`
+      );
       return;
     }
 

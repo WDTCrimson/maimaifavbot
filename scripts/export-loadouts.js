@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
 import { LoadoutStore } from '../src/store.js';
 
@@ -111,7 +111,7 @@ async function main() {
   );
 
   await store.ensureReady();
-  await mkdir(dirname(outputPath), { recursive: true });
+  await mkdir(dirname(outputPath), { recursive: true, mode: 0o700 });
 
   const snapshot = {
     exportedAt: new Date().toISOString(),
@@ -120,7 +120,8 @@ async function main() {
     state: store.getExportState()
   };
 
-  await writeFile(outputPath, JSON.stringify(snapshot, null, 2), 'utf8');
+  await writeFile(outputPath, JSON.stringify(snapshot, null, 2), { encoding: 'utf8', mode: 0o600 });
+  await chmod(outputPath, 0o600);
   const removedBackups = await cleanupOldExports(outputPath, args.retentionDays);
 
   const users = Object.keys(store.state.users || {}).length;

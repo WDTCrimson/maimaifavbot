@@ -1,53 +1,46 @@
 # MaiDeck Privacy Policy
 
-**Effective date:** [INSERT EFFECTIVE DATE]
+**Effective date:** October 13, 2026
 
-**Data controller/operator:** WDT Crimson ("MaiDeck," "we," "us," or "our")  
+**Operator:** MaiDeck, independently operated under the name WDT Crimson
 **Website:** https://maideck.xyz  
 **Preferred privacy contact:** `@wdtcrimson` on Discord  
 **Email fallback:** wdtcrimson@gmail.com
 
 This Privacy Policy explains how MaiDeck collects, uses, shares, retains, and deletes personal data when you use the MaiDeck Discord bot, account-linking website, public profiles, browser helpers, and related services (together, the "Service").
 
-This is a project-specific draft, not legal advice. The bracketed details must be completed before publication.
-
 ## 1. Data we collect
-
-We collect only the data needed to provide and maintain MaiDeck's features.
 
 ### Discord data
 
-- Your Discord user ID, used to associate stored data with you.
-- Server and channel IDs for commands whose operation or diagnostic logs need that context.
-- Command names, subcommands, timestamps, duration, success or error status, and limited feature-specific details such as a playlist name, item counts, provider/region, or error message.
-- Discord profile information made available with an interaction when needed to respond to it. MaiDeck does not intentionally store ordinary Discord message content.
+- Your Discord user ID, which associates stored data with you.
+- Server and channel IDs in operational command logs.
+- Command name, timestamp, duration, result, and limited feature details needed to diagnose and measure the Service. This can include item counts, provider or region, a playlist name, or an error message.
+- Discord profile information supplied with an interaction when needed to respond.
 
-### Data you create or submit
+MaiDeck does not intentionally store ordinary Discord message content, your Discord password, or your Discord authentication token.
 
-- Playlist names, playlist songs, targets, settings, and profile-slot names.
-- Account snapshots or exports that you submit through an import command or account-link flow.
-- Choices such as whether automatic play-history collection or public sharing is enabled.
+### Data you provide or create
+
+- Playlist names and contents, targets, profile-slot names, and settings.
+- Account snapshots or exports you submit through an import or link flow.
+- Your choices about automatic history collection and public sharing.
 
 ### Linked maimai data
 
-Depending on what the linked source provides, this may include:
+Depending on what the linked source provides, MaiDeck may store your player name, region, title, supported avatar, rating, game version, play count, song and chart scores, achievements, DX scores, difficulty and chart type, combo and sync status, chart play counts, rating contribution, recent plays and timestamps, fast and late counts, periodic snapshots, collection status, and detected history gaps.
 
-- player name, region, title, avatar URL, rating, game version, and play count;
-- song and chart scores, achievement values, DX scores, chart type and difficulty;
-- full-combo and full-sync status, per-chart play counts, rating contribution, and similar game statistics;
-- recent plays and their timestamps, track number, fast/late counts, and rating changes;
-- periodic account snapshots, collection status, and detected gaps in play history; and
-- a reusable maimai DX NET session token for supported International accounts.
+For supported International accounts, MaiDeck also stores a reusable maimai DX NET session token so it can perform syncs or other actions you request. The token is encrypted with AES-256-GCM before it is written to storage. MaiDeck does not ask for or store your maimai password. Raw account-import command payloads are processed into a normalized snapshot and are not intentionally retained as raw payloads.
 
-MaiDeck does not ask for or store your Discord password or maimai password. Raw account-import command payloads are processed to create a normalized snapshot and are not intentionally retained as raw payloads.
+### Public profiles
 
-### Public profile data
+Public profiles are off by default. If you enable one, anyone with its link can view the maimai player name, region, title, supported avatar, rating, play count, update time, recent plays, scores, chart progress, fast and late counts where available, and related song or chart information shown on the page. The public-profile response does not include your Discord user ID.
 
-Public profiles are off by default. If you enable one, anyone with the link can view the maimai player name, region, title, supported avatar, rating, play count, update time, recent plays, scores, chart progress, fast/late counts where available, and related song or chart information shown on that page. A public profile does not expose your Discord user ID through the public-profile payload.
+### Technical data
 
-### Technical and security data
+The Discord bot retains daily operational logs containing the Discord identifiers and command details described above. The account linker retains daily event and error logs that can include request identifiers, client identifier, region, and error details. MaiDeck's Caddy web server is not configured to retain access logs.
 
-Our hosting systems may process IP addresses, request timestamps, user-agent information, error logs, and similar technical data needed to serve web requests, prevent abuse, and diagnose failures. [CONFIRM THE HOSTING/PROXY LOGS AND THEIR RETENTION BEFORE PUBLICATION.]
+Playit.gg carries public HTTPS traffic to the operator-controlled server and may process network data such as IP addresses and connection metadata under its own privacy policy. Tailscale is used for private operator administration and may process administrative connection metadata; it is not the public MaiDeck website path.
 
 ## 2. How we collect data
 
@@ -61,65 +54,49 @@ We receive data:
 
 ## 3. Why we use data
 
-We use personal data to:
+We use personal data to provide requested features; authenticate account-link callbacks; maintain linked sessions; collect recent plays when enabled; save your content and preferences; operate, secure, debug, and measure the Service; prevent abuse; comply with legal obligations; and test or improve MaiDeck's chart, skill, and recommendation features.
 
-- respond to commands and provide playlists, account views, syncs, graphics, recommendations, public profiles, and other requested features;
-- authenticate account-link callbacks and maintain linked sessions;
-- perform periodic recent-play collection when enabled;
-- save your preferences and content between sessions;
-- operate, secure, debug, and measure the Service;
-- prevent abuse and enforce the Terms of Service;
-- comply with legal obligations; and
-- test and improve MaiDeck's own chart, skill, and recommendation features.
+When play data is used to evaluate or improve MaiDeck's models, model artifacts are designed not to contain Discord IDs or profile names. They may use salted profile fingerprints to keep training and validation groups separate. MaiDeck does not use Discord message content to train machine-learning or AI models and does not use your data to train a general-purpose AI model. Aggregated or de-identified results that can no longer reasonably identify you may be retained after deletion.
 
-When play data is used to evaluate or improve MaiDeck's models, model artifacts are designed not to contain Discord IDs or profile names. They may contain salted profile fingerprints needed to keep training and validation groups separate. We do not use Discord message content to train machine-learning or AI models, and we do not use your data to train a general-purpose AI model.
-
-Where laws such as the GDPR require a legal basis, the basis will generally be:
-
-- performance of our agreement with you for features you request;
-- your consent for optional automatic history collection and public sharing;
-- our legitimate interests in securing, maintaining, and improving the Service, balanced against your rights; or
-- compliance with a legal obligation.
-
-You can withdraw consent for an optional feature at any time. Withdrawal does not make earlier lawful processing unlawful.
+Where applicable law requires a legal basis, MaiDeck generally relies on performance of the agreement for features you request, consent for optional history collection and public sharing, legitimate interests in securing and improving the Service, or compliance with law. You can withdraw consent for an optional feature at any time.
 
 ## 4. How we share data
 
-We do not sell your personal data, share it with data brokers, or use it for targeted advertising.
+MaiDeck does not sell personal data, share it with data brokers, or use it for targeted advertising. Data may be shared or transmitted as follows:
 
-We may share or transmit data in these circumstances:
+- **Discord:** transmits commands and responses under Discord's own privacy policy.
+- **MaiDeck account linker:** connects a short-lived link session to the bot through an authenticated callback.
+- **SEGA and maimai DX NET:** receives the requests needed when you link, sync, collect history, or apply a playlist.
+- **Playit.gg:** provides the public network tunnel to the operator-controlled server.
+- **Tailscale:** provides private remote administration of the server.
+- **Public visitors:** receive the public-profile fields described above only when you enable sharing.
+- **Legal and safety disclosures:** may receive information where reasonably necessary to comply with law, protect rights or safety, investigate abuse, or defend a claim.
+- **A future service operator:** may receive data if operation of MaiDeck is transferred, subject to this Policy and applicable law.
 
-- **Discord:** Commands and responses are transmitted through Discord. Discord processes that data under its own privacy policy.
-- **Account-linking service:** A one-time link session uses an external web service to connect the result to your Discord account. The service sends the normalized account snapshot and supported authentication data to MaiDeck through an authenticated callback.
-- **SEGA/maimai DX NET:** When you link, sync, collect history, or apply a playlist, the Service sends requests needed to perform that action to maimai DX NET.
-- **Hosting and infrastructure providers:** MaiDeck is primarily hosted on operator-controlled hardware in Indonesia. The same hardware may temporarily be operated from the United States when the operator travels. Network, proxy, domain, or backup providers may also process limited data on our behalf. [LIST THOSE ACTUAL PROVIDERS BEFORE PUBLICATION.]
-- **Public profile visitors:** If you enable public sharing, the public profile data described above is shared at your direction.
-- **Legal and safety reasons:** We may disclose information when reasonably necessary to comply with law, protect rights or safety, investigate abuse, or defend legal claims.
-- **Service transfer:** If operation of MaiDeck is transferred, data may be transferred with the Service, subject to this Policy and applicable law.
-
-MaiDeck uses third-party catalog and community sources for song, artwork, alias, chart, and recommendation data. Those sources are not intended to receive your linked personal account data. Any catalog-only AI-assisted process receives song metadata rather than Discord account data or linked player data.
+Third-party catalog and community sources provide song, artwork, alias, chart, and recommendation information but are not intended to receive linked account data. Catalog-only AI-assisted processing receives song metadata, not Discord identifiers or linked player data.
 
 ## 5. Storage, retention, and deletion
 
-MaiDeck stores bot data in an operator-controlled database and local operational files. Current account snapshots and collected play history are retained without a fixed automatic expiry while they remain needed to provide history features and evaluate the developing models. We will review and reduce that retention as the Service matures. This Policy will be updated before a new retention schedule takes effect.
+MaiDeck stores production data and backups on operator-controlled hardware. Production personal-data storage is encrypted at rest and is restricted to the operator and the service processes that need it.
 
-Current retention behavior is:
+Current retention periods are:
 
-- pending account-link sessions expire after approximately 15 minutes by default and are cleaned up;
-- linked profile data, scores, snapshots, recent-play history, collection state, saved authentication, and public-sharing settings remain until you unlink that profile, request deletion, or they are no longer needed;
-- playlists and targets remain until you delete them or request full deletion;
-- operational usage logs are stored as daily files and currently have no automated expiry; and
-- backups may retain a copy until they expire under the operator's backup rotation or are securely overwritten. [INSERT THE ACTUAL BACKUP RETENTION PERIOD BEFORE PUBLICATION.]
+- pending account-link sessions expire after approximately 15 minutes and are cleaned up;
+- linked profiles, scores, snapshots, recent-play history, collection state, saved authentication, sharing settings, playlists, and targets remain until you delete them or they are no longer needed to provide the Service;
+- Discord bot usage logs and account-linker operational logs are automatically removed after 30 days; and
+- local backups are automatically removed after 30 days.
 
-Using `/account unlink` deletes the selected linked maimai profile and its associated authentication, score records, snapshots, recent-play history, collection state, and public-profile link from the live bot database. It does not delete separately saved playlists or operational usage logs.
+`/account unlink` removes only the selected linked maimai profile and its associated authentication, score records, snapshots, recent-play history, collection state, and public-profile link. It does not remove separately saved playlists or operational usage logs.
 
-To request deletion of all personal data associated with your Discord account, contact `@wdtcrimson` on Discord or email wdtcrimson@gmail.com and include your Discord user ID. Discord is the preferred contact method. We may ask you to verify control of that account. We will delete or de-identify the data unless retention is required by law, needed to protect the Service or others, or permitted for legal claims. Residual copies may remain temporarily in backups until the normal backup cycle completes.
+`/account delete-data` permanently removes all live data associated with your Discord user ID, including every profile, saved authentication token, scores, snapshots and history, collection state, public-profile settings, pending link sessions, playlists, targets, preferences, and matching Discord bot usage-log events. Copies can remain in encrypted backups until their 30-day rotation expires. Aggregated or de-identified information that can no longer reasonably identify you may remain.
+
+You can also request access, correction, export, restriction, objection, or deletion by contacting `@wdtcrimson` on Discord or wdtcrimson@gmail.com. Discord is preferred. MaiDeck may ask you to verify control of the relevant Discord account and may retain information where required by law or reasonably needed to protect the Service or defend legal claims.
 
 ## 6. Security
 
-Reusable maimai DX NET session tokens are encrypted at the application level using AES-256-GCM. Account-link callbacks use a shared secret, public-profile callback responses are not cached, and access controls are intended to restrict production storage to the operator and authorized infrastructure.
+MaiDeck uses transport encryption for the public website, encrypted production storage, owner-restricted files, AES-256-GCM encryption for reusable maimai DX NET session tokens, short-lived signed link sessions, authenticated callbacks, and no-cache public-profile responses. Access to production administration is restricted.
 
-No system is completely secure. You should promptly unlink your profile and contact us if you believe your linked session, Discord account, or public-profile link has been compromised.
+No system is completely secure. Promptly unlink or delete your data and contact us if you believe your linked session, Discord account, or public-profile link has been compromised.
 
 ## 7. Your choices and rights
 
@@ -127,32 +104,32 @@ You can:
 
 - disable automatic history collection through `/account settings`;
 - disable a public profile through `/account public action:Disable`;
-- unlink a selected maimai profile through `/account unlink`;
-- delete individual playlists with the relevant playlist command; and
-- contact us to request access, correction, export, restriction, objection, or deletion where applicable.
+- unlink one maimai profile through `/account unlink`;
+- delete individual playlists through the relevant playlist command;
+- delete all MaiDeck data associated with your Discord account through `/account delete-data`; and
+- contact MaiDeck to exercise privacy rights that apply where you live.
 
-Depending on where you live, you may have additional rights, including the right to complain to a data-protection authority. These rights may have legal exceptions. We will not discriminate against you for exercising a privacy right.
+Depending on where you live, you may have rights to access, correct, receive, restrict, object to, or delete personal data and to complain to a data-protection authority. Legal exceptions may apply. MaiDeck will not discriminate against you for exercising a privacy right.
 
 ## 8. International processing
 
-MaiDeck's primary server location is Indonesia. The operator sometimes travels with and temporarily operates the server from the United States. As a result, your data may be processed in Indonesia and the United States, as well as in countries where the Service's network or infrastructure providers operate. Where required, we will use an approved transfer mechanism and appropriate safeguards. [LIST THE ACTUAL INFRASTRUCTURE PROVIDERS AND ANY REQUIRED TRANSFER SAFEGUARDS BEFORE PUBLICATION.]
+MaiDeck's primary server location is Indonesia. The operator sometimes travels with and temporarily operates that server from the United States. Data may therefore be processed in Indonesia and the United States, as well as in locations where Discord, Playit.gg, Tailscale, SEGA, or their infrastructure providers operate.
 
 ## 9. Children
 
-MaiDeck is not intended for anyone under 13 or below the minimum age required to use Discord in their country, whichever is higher. We do not knowingly collect personal data from a person who cannot lawfully use the Service. If you believe this has happened, contact `@wdtcrimson` on Discord or email wdtcrimson@gmail.com so we can investigate and delete the data as appropriate.
+MaiDeck is not intended for anyone under 13 or below the minimum age required to use Discord in their country, whichever is higher. If you believe MaiDeck collected data from someone who cannot lawfully use the Service, contact `@wdtcrimson` on Discord or wdtcrimson@gmail.com.
 
 ## 10. Third-party services and links
 
-Discord, maimai DX NET, public links, and other third-party services have their own privacy practices. This Policy covers MaiDeck's processing, not how those third parties process data independently.
+Discord, Playit.gg, Tailscale, SEGA, maimai DX NET, and linked websites have their own privacy practices. This Policy covers MaiDeck's processing, not independent processing by those third parties.
 
 ## 11. Changes to this Policy
 
-We may update this Policy as the Service changes or legal requirements develop. We will update the effective date and, for material changes, provide reasonable notice through the Service, its support server, or another appropriate channel.
+MaiDeck may update this Policy as the Service or legal requirements change. The effective date will be updated and reasonable notice will be provided for material changes through the Service, its support server, or another appropriate channel.
 
 ## 12. Contact
 
-For privacy questions or requests, contact:
+For privacy questions or requests:
 
-WDT Crimson  
 Discord: `@wdtcrimson` (preferred)  
 Email: wdtcrimson@gmail.com

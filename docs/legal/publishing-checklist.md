@@ -7,14 +7,14 @@ Before publishing them:
 - [x] Add the public operator identity (`WDT Crimson`). The legal name is intentionally not published.
 - [x] Add a preferred Discord contact (`@wdtcrimson`) and monitored email fallback (`wdtcrimson@gmail.com`).
 - [ ] Have local counsel confirm whether `WDT Crimson` plus the listed Discord/email contacts sufficiently identifies the controller, or whether additional legal identity/contact details are required.
-- [ ] Choose an effective date.
+- [x] Choose an effective date: October 13, 2026.
 - [ ] Have local counsel choose the governing law, venue, and appropriate liability cap.
-- [ ] Identify the web-link host, reverse proxy/CDN, network, domain, and backup providers. The operator-controlled server is primarily in Indonesia and may temporarily operate from the United States.
-- [ ] Confirm web access-log fields and retention.
+- [x] Identify personal-data infrastructure: operator-controlled server, Playit.gg public tunnel, Tailscale private administration, Discord, and SEGA/maimai DX NET. The server is primarily in Indonesia and may temporarily operate from the United States.
+- [x] Confirm web access logging: Caddy has no access-log directive. Bot and linker operational logs are documented separately.
 - [ ] Confirm the production volumes and backups provide encryption at rest for Discord API data, as required by Discord's Developer Terms; application-level encryption currently covers the reusable maimai token specifically.
-- [ ] Set and document a concrete usage-log retention period; there is currently no automatic expiry.
-- [ ] Set and document a concrete backup retention period and deletion process.
-- [ ] Provide an accessible full-account deletion route. `/account unlink` deletes linked profile data but not playlists or usage logs.
+- [x] Set and document a 30-day usage/linker-log retention period with automatic pruning.
+- [x] Set and document a 30-day local-backup retention period and automatic pruning.
+- [x] Provide `/account delete-data` for full live-data and matching usage-log deletion.
 - [ ] Decide whether to implement a user-facing data export command.
 - [ ] Verify that public-profile fields still match `src/public-profile.js`.
 - [ ] Verify that automatic history collection remains opt-in and its command wording matches this Policy.

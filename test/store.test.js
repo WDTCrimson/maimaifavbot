@@ -93,6 +93,43 @@ for (const backend of ['json', 'sqlite']) {
     });
   });
 
+  test(`${backend} store deletes every record associated with a user`, async () => {
+    await withStore(backend, async (store) => {
+      await store.createLoadout('delete-me', 'Private');
+      await store.addSong('delete-me', 'Private', SONG_A);
+      await store.setAccount('delete-me', {
+        provider: 'manual',
+        player: { name: 'Delete Me' },
+        allScores: [{ title: 'Private Song', difficulty: 'master', type: 'dx' }],
+        recentSessions: [{ title: 'Private Recent', difficulty: 'master', type: 'dx' }]
+      });
+      await store.createAccountLinkSession('delete-me', {
+        token: 'delete-token',
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 60_000).toISOString()
+      });
+      await store.createLoadout('keep-me', 'Public');
+
+      const result = await store.deleteUserData('delete-me');
+      assert.equal(result.existed, true);
+      assert.equal(store.state.users['delete-me'], undefined);
+      assert.equal(store.getAccountLinkSession('delete-token'), null);
+      assert.equal(store.hasLoadout('keep-me', 'Public'), true);
+
+      if (backend === 'sqlite') {
+        for (const table of [
+          'users', 'account_profiles', 'user_settings', 'loadouts', 'playlist_songs',
+          'playlist_targets', 'account_link_sessions', 'account_snapshots',
+          'account_recent_history', 'quiet_read_state', 'account_collection_gaps',
+          'account_best_timed_plays', 'account_score_charts', 'account_recent_plays'
+        ]) {
+          const count = store.backend.db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE user_id = ?`).get('delete-me').count;
+          assert.equal(count, 0, `${table} retained deleted user data`);
+        }
+      }
+    });
+  });
+
   test(`${backend} store keeps public profiles opt-in, revocable, and stable across sync`, async () => {
     await withStore(backend, async (store) => {
       await assert.rejects(() => store.enablePublicProfile('missing'), /Link an account/);

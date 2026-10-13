@@ -645,6 +645,10 @@ class JsonStoreBackend {
   async deleteSession(_token, state) {
     await this.saveState(state);
   }
+
+  async deleteUserData(_userId, state) {
+    await this.saveState(state);
+  }
 }
 
 class SqliteStoreBackend {
@@ -2109,6 +2113,30 @@ class SqliteStoreBackend {
     await this.ensureReady();
     this.db.prepare('DELETE FROM account_link_sessions WHERE token = ?').run(token);
   }
+
+  async deleteUserData(userId) {
+    await this.ensureReady();
+    const tables = [
+      'account_link_sessions',
+      'account_snapshots',
+      'account_recent_history',
+      'quiet_read_state',
+      'account_collection_gaps',
+      'account_best_timed_plays',
+      'account_score_charts',
+      'account_recent_plays',
+      'account_profiles',
+      'user_settings',
+      'loadouts',
+      'users'
+    ];
+    const remove = this.db.transaction(() => {
+      for (const table of tables) {
+        this.db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).run(userId);
+      }
+    });
+    remove();
+  }
 }
 
 export class LoadoutStore {
@@ -2176,6 +2204,23 @@ export class LoadoutStore {
 
   async deleteSession(token) {
     await this.backend.deleteSession(token, this.state);
+  }
+
+  async deleteUserData(userId) {
+    const target = String(userId);
+    const existed = Object.prototype.hasOwnProperty.call(this.state.users || {}, target);
+    delete this.state.users[target];
+
+    const sessions = this.getAccountLinkSessions();
+    let deletedSessions = 0;
+    for (const [token, session] of Object.entries(sessions)) {
+      if (String(session?.userId ?? '') !== target) continue;
+      delete sessions[token];
+      deletedSessions += 1;
+    }
+
+    await this.backend.deleteUserData(target, this.state);
+    return { existed, deletedSessions };
   }
 
   async ensureReady() {
