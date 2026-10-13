@@ -1,0 +1,8 @@
+[Unit]
+Description=Install the validated MaiDeck Caddy configuration
+
+[Service]
+Type=oneshot
+ExecStartPre=/usr/bin/caddy validate --config /home/crimson/Caddyfile.maideck
+ExecStart=/usr/bin/install -m 644 /home/crimson/Caddyfile.maideck /etc/caddy/Caddyfile
+ExecStartPost=/usr/bin/systemctl reload caddy.service
