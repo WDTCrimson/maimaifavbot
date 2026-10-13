@@ -22,7 +22,7 @@ Before publishing them:
 - [x] Make both documents publicly reachable from the website and `/help`.
 - [ ] Enter and visually verify `https://maideck.xyz/privacy` and `https://maideck.xyz/terms` in the Discord Developer Portal. Discord's bot-authenticated application API ignored both fields, so this remains a manual Portal check.
 - [x] Review the current Discord Developer Terms and Developer Policy (reviewed October 13, 2026); repeat after material platform changes.
-- [ ] Resolve the SEGA/maimai DX NET automation restriction before offering linking, automatic synchronization, or favorites automation publicly. The current Terms reviewed October 13, 2026 prohibit automated tools and programs not approved by SEGA; obtain written approval or disable those features for public users.
+- [x] Record the operator's October 13, 2026 decision to accept the platform-enforcement risk of a limited launch despite the SEGA/maimai DX NET restriction on unapproved automation. The published Terms disclose the restriction, require user-directed access to an authorized account, and permit immediate suspension. Comparable community tools demonstrate common practice, not SEGA permission; written approval remains preferable.
 - [ ] Arrange legal review for the countries in which the operator is established or actively offers the Service.
 
 Primary references used for this draft:
