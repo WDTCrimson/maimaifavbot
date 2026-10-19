@@ -649,9 +649,10 @@ export const accountCommand = new SlashCommandBuilder()
       .addStringOption((option) =>
         option
           .setName('difficulty')
-          .setDescription('Chart difficulty')
-          .setRequired(true)
+          .setDescription('Chart difficulty (default: all difficulties)')
+          .setRequired(false)
           .addChoices(
+            { name: 'All difficulties', value: 'all'       },
             { name: 'BASIC',     value: 'basic'    },
             { name: 'ADVANCED',  value: 'advanced' },
             { name: 'EXPERT',    value: 'expert'   },

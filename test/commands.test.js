@@ -42,6 +42,9 @@ test('critical Discord options retain bounds, choices, and autocomplete contract
   assert.equal(account.options.some((option) => option.name === 'gap'), false);
   assert.equal(account.options.find((option) => option.name === 'progress').options.find((option) => option.name === 'version').autocomplete, true);
   assert.equal(account.options.find((option) => option.name === 'daily').options.find((option) => option.name === 'date').autocomplete, true);
+  const summaryDifficulty = account.options.find((option) => option.name === 'summary').options.find((option) => option.name === 'difficulty');
+  assert.equal(summaryDifficulty.required, false);
+  assert.deepEqual(summaryDifficulty.choices.map((choice) => choice.value), ['all', 'basic', 'advanced', 'expert', 'master', 'remaster']);
 });
 
 test('/help lists every registered feature without Reddit sourcing', () => {

@@ -1666,7 +1666,7 @@ async function handleAccountCommand(interaction) {
       }
 
       const levelBracket = interaction.options.getString('level', true);
-      const difficulty   = interaction.options.getString('difficulty', true);
+      const difficulty   = interaction.options.getString('difficulty') ?? 'all';
 
       const allScores  = store.getAccountScores(userId);
       const b50Entries = [...(account.best50?.b15 ?? []), ...(account.best50?.b35 ?? [])];
@@ -1681,7 +1681,7 @@ async function handleAccountCommand(interaction) {
       const attachment = new AttachmentBuilder(graphic.buffer, { name: graphic.fileName });
 
       await replyPayload(interaction, {
-        content: `Level **${levelBracket}** summary (${difficulty.toUpperCase()}) for **${account.player?.name || 'linked account'}**.`,
+        content: `Level **${levelBracket}** summary (${difficulty === 'all' ? 'all difficulties' : difficulty.toUpperCase()}) for **${account.player?.name || 'linked account'}**.`,
         files: [attachment]
       });
       return;

@@ -45,7 +45,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/account daily [date]`
 - `/account roast`
 - `/account plays [count]`
-- `/account summary level:<level> difficulty:<difficulty>`
+- `/account summary level:<level> [difficulty:<difficulty>]` (defaults to every standard difficulty with a chart in that level bracket)
 - `/account unlink`
 
 `/song search` searches internal chart levels only. Examples: `12.3`, `13.7 mas`, `11.8 dx`, `12.3-12.8`, `12.0-12.4 dx`.

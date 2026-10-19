@@ -41,9 +41,12 @@ const DIFF_COLOR = {
 };
 
 const DIFF_LABEL = {
+  all: 'ALL DIFFICULTIES',
   basic: 'BASIC', advanced: 'ADVANCED', expert: 'EXPERT',
   master: 'MASTER', remaster: 'Re:MASTER',
 };
+
+const DIFF_ORDER = ['basic', 'advanced', 'expert', 'master', 'remaster'];
 
 // ─── Rank tiers ───────────────────────────────────────────────────────────────
 
@@ -430,6 +433,22 @@ function drawDiffBar(ctx, y, difficulty, count) {
   ctx.font = `500 13px ${FONT}`; ctx.fillStyle = 'rgba(255,255,255,0.40)';
   ctx.textAlign = 'right';
   ctx.fillText(`${count} song${count !== 1 ? 's' : ''}`, W - MARGIN, y + DIFF_BAR_H / 2);
+
+  if (difficulty === 'all') {
+    const legend = [
+      ['BAS', 'basic'], ['ADV', 'advanced'], ['EXP', 'expert'],
+      ['MAS', 'master'], ['Re:MAS', 'remaster']
+    ];
+    let lx = MARGIN + 250;
+    ctx.textAlign = 'left';
+    ctx.font = `700 12px ${FONT}`;
+    for (const [legendLabel, legendDifficulty] of legend) {
+      ctx.fillStyle = DIFF_COLOR[legendDifficulty];
+      ctx.fillRect(lx, y + DIFF_BAR_H / 2 - 6, 4, 12);
+      ctx.fillText(legendLabel, lx + 9, y + DIFF_BAR_H / 2);
+      lx += ctx.measureText(legendLabel).width + 34;
+    }
+  }
   ctx.restore();
 }
 
@@ -480,7 +499,7 @@ async function drawCard(ctx, entry, x, y, v) {
   ctx.restore();
 
   ctx.save();
-  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = 0.60;
+  ctx.strokeStyle = color; ctx.lineWidth = 3; ctx.globalAlpha = 0.95;
   rr(ctx, x, y, CARD_SZ, CARD_SZ, 8); ctx.stroke();
   ctx.restore();
 
@@ -545,16 +564,13 @@ async function drawRankRow(ctx, y, tier, cards, v) {
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
-export async function renderLevelSummaryGraphic({ account, scores, difficulty, levelBracket, songCatalog }) {
-  await registerFonts();
-
-  const gameVersion = Number(account?.gameVersion) || 13;
-  const v = Math.min(Math.max(Math.floor(gameVersion), 10), 14);
-
+export function selectLevelSummaryEntries({ scores, difficulty, levelBracket, songCatalog }) {
   const inBracket = parseLevelBracket(levelBracket);
-  const diff = String(difficulty || 'master').toLowerCase();
+  const diff = String(difficulty || 'all').toLowerCase();
 
-  // Filter scores to this difficulty + level bracket and enrich with chart/catalog data.
+  // Filter scores to the requested difficulty and level bracket, then enrich them
+  // with current chart/catalog data. "all" preserves each chart's difficulty so
+  // the combined renderer can distinguish cards by their border color.
   const enriched = scores.map(s => {
     const { song, chart } = resolveScoreSongAndChart(songCatalog, s);
     const chartInternalLevelValue = Number(chart?.internalLevelValue);
@@ -580,20 +596,16 @@ export async function renderLevelSummaryGraphic({ account, scores, difficulty, l
     };
   });
 
-  const filtered = enriched.filter(s => {
+  return enriched.filter(s => {
     const d = getScoreDifficulty(s);
     const ilv = s.internalLevelValue;
-    return d === diff && ilv != null && inBracket(ilv);
+    return (diff === 'all' ? DIFF_ORDER.includes(d) : d === diff) && ilv != null && inBracket(ilv);
   });
+}
 
-  if (filtered.length === 0) {
-    const label = DIFF_LABEL[diff] || diff.toUpperCase();
-    throw new Error(`No ${label} scores found for level ${levelBracket}. Make sure your account is synced.`);
-  }
-
-  // Group by internal level descending, then by rank tier within each level
+function buildLevelSections(entries) {
   const byLevel = new Map();
-  for (const entry of filtered) {
+  for (const entry of entries) {
     const levelKey = Number(entry.internalLevelValue).toFixed(1);
     if (!byLevel.has(levelKey)) byLevel.set(levelKey, []);
     byLevel.get(levelKey).push(entry);
@@ -602,10 +614,10 @@ export async function renderLevelSummaryGraphic({ account, scores, difficulty, l
   const sortedLevels = [...byLevel.keys()].sort((a, b) => Number(b) - Number(a));
   const tierOrder = RANK_TIERS.map(t => t.name);
 
-  const sections = sortedLevels.map(levelKey => {
-    const entries = byLevel.get(levelKey);
+  return sortedLevels.map(levelKey => {
+    const levelEntries = byLevel.get(levelKey);
     const byRank = new Map();
-    for (const entry of entries) {
+    for (const entry of levelEntries) {
       const tierName = getRankTier(entry.achievement).name;
       if (!byRank.has(tierName)) byRank.set(tierName, []);
       byRank.get(tierName).push(entry);
@@ -618,6 +630,22 @@ export async function renderLevelSummaryGraphic({ account, scores, difficulty, l
       }));
     return { levelKey, sortedTiers };
   });
+}
+
+export async function renderLevelSummaryGraphic({ account, scores, difficulty, levelBracket, songCatalog }) {
+  await registerFonts();
+
+  const gameVersion = Number(account?.gameVersion) || 13;
+  const v = Math.min(Math.max(Math.floor(gameVersion), 10), 14);
+  const diff = String(difficulty || 'all').toLowerCase();
+  const filtered = selectLevelSummaryEntries({ scores, difficulty: diff, levelBracket, songCatalog });
+
+  if (filtered.length === 0) {
+    const label = DIFF_LABEL[diff] || diff.toUpperCase();
+    throw new Error(`No ${label} scores found for level ${levelBracket}. Make sure your account is synced.`);
+  }
+
+  const sections = buildLevelSections(filtered);
 
   // Compute total canvas height
   const contentH = sections.reduce((sum, { sortedTiers }, i) => {
