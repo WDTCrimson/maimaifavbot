@@ -33,6 +33,7 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 - `/song info query:<text>`
 - `/song pattern tag:<text> [level] [difficulty]`
 - `/song random [level] [difficulty] [unplayed]`
+- `/song simulate query:<text>`
 - `/account link`
 - `/account import provider:<auto|manual|maimaijson|tomomai|mimixd> data:<json-or-base64>`
 - `/account status`
@@ -51,6 +52,8 @@ Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus
 `/song search` searches internal chart levels only. Examples: `12.3`, `13.7 mas`, `11.8 dx`, `12.3-12.8`, `12.0-12.4 dx`.
 Use `/song info` for title, artist, ID, and alias lookup.
 
+`/song simulate` opens a public interactive calculator. Pick the chart, note type, and judgment from dropdowns, then adjust the count with −10, −1, +1, and +10 buttons; the achievement, rank, and DX Score update immediately. Only the person who opened it can use its controls. Counts are retained separately while switching charts. Every judgment you leave out is treated as CRITICAL PERFECT. BREAK PERFECT/GREAT inputs produce a range because those displayed judgments contain scoring sub-tiers.
+
 `/playlist set-target` stores an achievement target per playlist song. `/playlist graphic` renders a DXRating-style target board from those targets.
 
 To cache DXRating rank badges locally for the target board:
@@ -59,7 +62,7 @@ To cache DXRating rank badges locally for the target board:
 npm run import:dxrating-ranks
 ```
 
-Most bot replies are ephemeral (private). `/song info`, `/song pattern`, and `/song random` are public so their song cards can be shared in the channel.
+Most bot replies are ephemeral (private). `/song info`, `/song pattern`, `/song random`, and `/song simulate` are public so their song cards or results can be shared in the channel.
 
 ## Chart patterns
 

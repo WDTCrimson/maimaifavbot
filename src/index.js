@@ -44,6 +44,12 @@ import { createSongFeatureHandlers } from './song-feature-handlers.js';
 import { LoadoutStore } from './store.js';
 import { buildHelpEmbed } from './help.js';
 import { pruneUsageLogs, removeUserFromUsageLogs, usageLogRetentionDays } from './log-retention.js';
+import {
+  buildScoreSimulatorView,
+  parseScoreSimulatorCustomId,
+  ScoreSimulatorSessions,
+  simulatableChartsForSong
+} from './score-simulator-view.js';
 
 const store = new LoadoutStore(
   {
@@ -106,6 +112,7 @@ if (loadoutStorageStatus.legacySongIdsRemaining > 0) {
 
 const gapRecommendationSessions = new GapRecommendationSessions();
 const recentCreditSessions = new RecentCreditSessions();
+const scoreSimulatorSessions = new ScoreSimulatorSessions();
 const songFeatureHandlers = createSongFeatureHandlers({
   chartFacts,
   songCatalog,
@@ -228,13 +235,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
-  if (interaction.isButton()) {
+  if (interaction.isButton() || interaction.isStringSelectMenu()) {
     const gapControl = parseGapRecommendationCustomId(interaction.customId);
     const recentControl = parseRecentCreditCustomId(interaction.customId);
     const patternControl = songFeatureHandlers.parseButton(interaction.customId);
-    if (!gapControl && !recentControl && !patternControl) return;
+    const scoreSimulatorControl = parseScoreSimulatorCustomId(interaction.customId);
+    if (!gapControl && !recentControl && !patternControl && !scoreSimulatorControl) return;
     try {
-      if (gapControl) {
+      if (scoreSimulatorControl) {
+        await handleScoreSimulatorControl(interaction, scoreSimulatorControl);
+      } else if (gapControl) {
         await handleGapRecommendationButton(interaction, gapControl);
       } else if (patternControl) {
         await songFeatureHandlers.handleButton(interaction, patternControl);
@@ -1922,6 +1932,37 @@ async function handleSongCommand(interaction) {
         payload.files = [artwork.attachment];
       }
       await replyPublicPayload(interaction, payload);
+      return;
+    }
+
+    case 'simulate': {
+      const query = interaction.options.getString('query', true);
+      const song = songCatalog.resolveSong(query);
+
+      if (!song) {
+        await replySafely(interaction, `No song found for "${query}".`);
+        return;
+      }
+
+      const charts = simulatableChartsForSong(song);
+      if (!charts.length) {
+        await replySafely(
+          interaction,
+          'This song does not have a complete note breakdown, so its achievement cannot be simulated.'
+        );
+        return;
+      }
+
+      const preferredChart = resolveSongCalculatorChart(song);
+      const preferredIndex = charts.indexOf(preferredChart);
+      const sessionId = randomBytes(9).toString('base64url');
+      const session = scoreSimulatorSessions.create(sessionId, {
+        ownerId: interaction.user.id,
+        song,
+        charts,
+        chartIndex: preferredIndex >= 0 ? preferredIndex : charts.length - 1
+      });
+      await replyPublicPayload(interaction, buildScoreSimulatorView(sessionId, session));
       return;
     }
 
@@ -3893,6 +3934,29 @@ async function handleGapRecommendationButton(interaction, { sessionId, action })
     ...payload,
     attachments: []
   });
+}
+
+async function handleScoreSimulatorControl(interaction, { sessionId, action }) {
+  const session = scoreSimulatorSessions.get(sessionId);
+  if (!session) {
+    await interaction.reply({
+      content: 'These score-simulator controls have expired. Run `/song simulate` again.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+  if (interaction.user.id !== session.ownerId) {
+    await interaction.reply({
+      content: 'Only the person who opened this simulator can use its controls.',
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  const value = interaction.isStringSelectMenu() ? interaction.values?.[0] : null;
+  scoreSimulatorSessions.apply(sessionId, action, value);
+  await interaction.deferUpdate();
+  await interaction.editReply(buildScoreSimulatorView(sessionId, session));
 }
 
 async function buildRecentCreditPayload(sessionId, session) {

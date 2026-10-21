@@ -376,6 +376,18 @@ export const songCommand = new SlashCommandBuilder()
   )
   .addSubcommand((subcommand) =>
     subcommand
+      .setName('simulate')
+      .setDescription('Build a simulated achievement with clickable controls')
+      .addStringOption((option) =>
+        option
+          .setName('query')
+          .setDescription('Song title, artist, or numeric ID')
+          .setRequired(true)
+          .setAutocomplete(true)
+      )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
       .setName('score')
       .setDescription('Show your personal best score card for a song')
       .addStringOption((option) =>
