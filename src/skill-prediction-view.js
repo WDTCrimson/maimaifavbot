@@ -68,7 +68,10 @@ export function buildSkillPredictionEmbed({ song, chart, best, prediction, image
       : 'MaiDeck first-pass model';
   const chartLabel = `${String(chart.type || '').toUpperCase()} ${DIFFICULTY_LABELS[normalizePart(chart.difficulty)] || chart.difficulty} ${chart.internalLevel || chart.level || '?'} · internal ${formatInternalLevel(chart)}`;
   const targets = RANK_THRESHOLDS
-    .map(({ name }) => `**${name}** — ${titleCase(formatOdds(prediction.oddsByRank[name], false))}`)
+    .map(({ name, achievement }) => {
+      if (best && best.achievement >= achievement) return `**${name}** — Achieved`;
+      return `**${name}** — ${titleCase(formatOdds(prediction.oddsByRank[name], false))}`;
+    })
     .join('\n');
 
   const embed = new EmbedBuilder()
@@ -86,7 +89,7 @@ export function buildSkillPredictionEmbed({ song, chart, best, prediction, image
         value: `About **${formatAchievement(prediction.expected)}** · **${prediction.rank}**`,
         inline: true
       },
-      { name: 'Target outlook', value: targets },
+      { name: 'Rank status and next-run outlook', value: targets },
       { name: 'Model', value: source }
     )
     .setFooter({ text: 'Qualitative preview — estimates are not guarantees. Exact odds stay hidden until calibration passes.' });

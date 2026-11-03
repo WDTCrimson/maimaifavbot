@@ -81,14 +81,36 @@ test('prediction embed exposes qualitative target bands without numeric odds', (
     },
     imageUrl: 'attachment://jacket.png'
   }).toJSON();
-  const outlook = json.fields.find((field) => field.name === 'Target outlook').value;
+  const outlook = json.fields.find((field) => field.name === 'Rank status and next-run outlook').value;
 
   assert.match(json.title, /Next-play estimate/);
-  assert.match(outlook, /Likely/);
-  assert.match(outlook, /Possible/);
+  assert.match(outlook, /\*\*SS\*\* — Achieved/);
+  assert.match(outlook, /\*\*SS\+\*\* — Stretch/);
   assert.match(outlook, /Stretch/);
   assert.match(outlook, /Unlikely/);
   assert.doesNotMatch(outlook, /\d+%|1 in \d+/);
   assert.match(json.fields.find((field) => field.name === 'Model').value, /Rasmai-derived/);
   assert.equal(json.thumbnail.url, 'attachment://jacket.png');
+});
+
+test('rank targets at or below the personal best are marked achieved', () => {
+  const json = buildSkillPredictionEmbed({
+    song,
+    chart,
+    best: { achievement: 99.7206, playCount: 2 },
+    prediction: {
+      expected: 99.35,
+      rank: 'SS',
+      modelSource: 'rasmai-repeat',
+      oddsByRank: { S: 0.99, 'S+': 0.95, SS: 0.68, 'SS+': 0.42, SSS: 0.19, 'SSS+': 0.03 }
+    }
+  }).toJSON();
+  const outlook = json.fields.find((field) => field.name === 'Rank status and next-run outlook').value;
+
+  assert.match(outlook, /\*\*S\*\* — Achieved/);
+  assert.match(outlook, /\*\*S\+\*\* — Achieved/);
+  assert.match(outlook, /\*\*SS\*\* — Achieved/);
+  assert.match(outlook, /\*\*SS\+\*\* — Achieved/);
+  assert.match(outlook, /\*\*SSS\*\* — Stretch/);
+  assert.match(outlook, /\*\*SSS\+\*\* — Unlikely/);
 });
