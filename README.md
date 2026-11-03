@@ -88,7 +88,7 @@ The score and rating research code also has a fixture-based backtest. It is **no
 - [Terms of Service](docs/legal/terms-of-service.md) and [Privacy Policy](docs/legal/privacy-policy.md)
 - [Contributing](CONTRIBUTING.md), [Security policy](SECURITY.md), and [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-MaiDeck is an independent community project, not affiliated with or endorsed by SEGA. It has no paid features. The repository's license covers its original code, not third-party songs, images, fonts, or game assets. Review the relevant service rules before using website automation.
+MaiDeck is an independent community project, not affiliated with or endorsed by SEGA. It has no paid features. The repository's license covers its original code, not third-party songs, images, fonts, or game assets. Review the relevant service rules before using website automation. Use test accounts and synthetic data when developing; don't use another player's account or data.
 
 ## Command reference
 
