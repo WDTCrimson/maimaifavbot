@@ -158,6 +158,7 @@ export function normalizeSkillModelChartRow(row, catalog = null) {
   return {
     ...row,
     key,
+    songId,
     song,
     chart,
     type,

@@ -15,7 +15,7 @@ const chart = {
 const song = { songId: 'song-1', title: 'Test Song', difficultyLevels: [chart] };
 const catalog = {
   getByStoredId(id) { return id === song.songId ? song : null; },
-  getUniqueByNormalizedTitle() { return null; },
+  getUniqueByNormalizedTitle(title) { return title === song.title ? song : null; },
   getByAlias() { return null; }
 };
 
@@ -31,6 +31,20 @@ test('prediction chart and personal best resolution use the exact chart identity
     playCount: 4
   }], catalog, song, chart);
   assert.equal(best.achievement, 99.1234);
+  assert.equal(best.constant, 13.7);
+});
+
+test('title-only legacy scores recover the canonical song ID before best matching', () => {
+  const best = findPredictionBest([{
+    title: song.title,
+    type: 'dx',
+    difficulty: 'master',
+    achievement: 99.7206,
+    playCount: 2
+  }], catalog, song, chart);
+
+  assert.equal(best.songId, song.songId);
+  assert.equal(best.achievement, 99.7206);
   assert.equal(best.constant, 13.7);
 });
 
