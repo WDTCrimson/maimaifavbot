@@ -40,6 +40,22 @@ The private comparison used an earlier account snapshot as training data and onl
 
 Rasmai also produced a lower new-best Brier score (`0.2143` versus `0.4642`) and a higher exact-rank rate (`27.8%` versus `9.4%`) on this small held-out set. These figures justify the hybrid candidate, not production activation: the cohort is small and is not fresh external validation.
 
+## Repeatable shadow backtest
+
+Run the privacy-safe time-forward evaluation against a read-only database and matching catalog:
+
+```bash
+npm run backtest:hybrid -- \
+  --db ./data/loadouts.sqlite \
+  --catalog ./data/import/songs.normalized.json
+```
+
+The generated report contains aggregate metrics, anonymized profile labels, and a dataset-shape fingerprint. It excludes Discord IDs, profile names, raw plays, and individual prediction rows. Add `--json` for aggregate machine-readable output.
+
+The 2026-11-03 shadow run used three profiles and 108 held-out plays. The hybrid used MaiDeck for 65 first plays and Rasmai for 43 repeat plays. Its overall MAE was `1.9092`, versus `2.2985` for MaiDeck alone. Its repeat-play MAE was `1.0343`, versus `1.9940`, and its repeat exact-rank rate was `44.2%`, versus `11.6%`.
+
+This remains development evidence from the profiles used to choose the hybrid. Re-run the same command as new plays arrive, but do not treat those profiles as fresh cross-player validation.
+
 ## Remaining gate
 
 Before switching any command to the hybrid model:
