@@ -2,6 +2,10 @@
 
 Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus automation helpers to apply a playlist on maimaidxnet.
 
+[![License: AGPL v3 or later](https://img.shields.io/badge/License-AGPL_v3_or_later-blue.svg)](LICENSE)
+
+MaiDeck is an independent community project and is not affiliated with, sponsored by, or endorsed by SEGA. Do not use production credentials or another player's data when developing or testing it.
+
 ## What this MVP does
 
 - Create, list, show, and delete per-user playlists.
@@ -95,6 +99,14 @@ These features were inspired by Rasmai and rebuilt independently without using i
 - [Legal operations checklist](docs/legal/publishing-checklist.md)
 
 The published documents are available at [maideck.xyz/terms](https://maideck.xyz/terms) and [maideck.xyz/privacy](https://maideck.xyz/privacy). The checklist records operational controls, external-platform issues, and items that still require qualified legal advice.
+
+## Open-source license
+
+MaiDeck's original source code is available under the [GNU Affero General Public License v3.0 or later](LICENSE). If you operate a modified version as a network service, the AGPL requires you to offer the corresponding source code to users of that service.
+
+The AGPL does **not** grant rights to third-party names, logos, song jackets, game artwork, fonts, datasets, or other material that MaiDeck does not own. Those items remain subject to their respective owners' terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) before redistributing a build or asset pack.
+
+Security reports should follow [SECURITY.md](SECURITY.md). Contributions are welcome under [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Skill model backtest
 
