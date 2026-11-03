@@ -58,7 +58,7 @@ This remains development evidence from the profiles used to choose the hybrid. R
 
 ## Private command boundary
 
-`/song predict query:<song> type:<dx|std> difficulty:<difficulty>` uses the linked profile to estimate the next run. It shows the predicted achievement and rank, plus qualitative target bands (`Likely`, `Possible`, `Stretch`, or `Unlikely`). The response is ephemeral and can include the song jacket. It never displays numeric target probabilities.
+`/song predict query:<song> difficulty:<difficulty> [type:<dx|std>]` uses the linked profile to estimate the next run. Chart type is resolved automatically when omitted; an unavailable requested type falls back to the available chart. When both types exist, MaiDeck prefers a played chart and otherwise defaults to DX. It shows the predicted achievement and rank, plus qualitative target bands (`Likely`, `Possible`, `Stretch`, or `Unlikely`). The response is ephemeral and can include the song jacket. It never displays numeric target probabilities.
 
 Repeat charts use the Rasmai-derived estimator. Unplayed charts use MaiDeck's first-pass estimator. A prediction is refused when the profile has fewer than 50 usable best scores or fewer than 20 scores within one internal-level point of the selected chart.
 

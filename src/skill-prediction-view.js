@@ -27,13 +27,26 @@ function titleCase(value) {
   return text ? `${text[0].toUpperCase()}${text.slice(1)}` : text;
 }
 
-export function findPredictionChart(song, type, difficulty) {
-  const normalizedType = normalizePart(type);
+export function findPredictionChart(song, type, difficulty, scores = [], catalog = null) {
+  const requestedType = normalizePart(type);
   const normalizedDifficulty = normalizePart(difficulty);
-  return (song?.difficultyLevels || []).find((chart) =>
-    normalizePart(chart.type) === normalizedType
-      && normalizePart(chart.difficulty) === normalizedDifficulty
-  ) || null;
+  const candidates = (song?.difficultyLevels || []).filter((chart) =>
+    normalizePart(chart.difficulty) === normalizedDifficulty
+  );
+  if (!candidates.length) return null;
+
+  const requested = requestedType
+    ? candidates.find((chart) => normalizePart(chart.type) === requestedType)
+    : null;
+  if (requested) return requested;
+  if (candidates.length === 1) return candidates[0];
+
+  const played = candidates
+    .map((chart) => ({ chart, best: findPredictionBest(scores, catalog, song, chart) }))
+    .filter((entry) => entry.best)
+    .sort((left, right) => (right.best.playCount || 0) - (left.best.playCount || 0));
+  if (played.length) return played[0].chart;
+  return candidates.find((chart) => normalizePart(chart.type) === 'dx') || candidates[0];
 }
 
 export function findPredictionBest(scores, catalog, song, chart) {

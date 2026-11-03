@@ -21,7 +21,7 @@ const catalog = {
 
 test('prediction chart and personal best resolution use the exact chart identity', () => {
   assert.equal(findPredictionChart(song, 'DX', 'MASTER'), chart);
-  assert.equal(findPredictionChart(song, 'std', 'master'), null);
+  assert.equal(findPredictionChart(song, 'std', 'master'), chart);
 
   const best = findPredictionBest([{
     songId: song.songId,
@@ -32,6 +32,26 @@ test('prediction chart and personal best resolution use the exact chart identity
   }], catalog, song, chart);
   assert.equal(best.achievement, 99.1234);
   assert.equal(best.constant, 13.7);
+});
+
+test('prediction chart resolution repairs unavailable types and prefers a played chart', () => {
+  const standard = { ...chart, type: 'std' };
+  const standardOnly = { ...song, difficultyLevels: [standard] };
+  assert.equal(findPredictionChart(standardOnly, 'dx', 'master'), standard);
+  assert.equal(findPredictionChart(standardOnly, null, 'master'), standard);
+
+  const dualSong = { ...song, difficultyLevels: [standard, chart] };
+  const standardScore = {
+    songId: song.songId,
+    type: 'std',
+    difficulty: 'master',
+    achievement: 98.5,
+    playCount: 8
+  };
+  const dualCatalog = { ...catalog, getByStoredId(id) { return id === song.songId ? dualSong : null; } };
+  assert.equal(findPredictionChart(dualSong, null, 'master', [standardScore], dualCatalog), standard);
+  assert.equal(findPredictionChart(dualSong, 'dx', 'master', [standardScore], dualCatalog), chart);
+  assert.equal(findPredictionChart(dualSong, null, 'master', [], dualCatalog), chart);
 });
 
 test('prediction embed exposes qualitative target bands without numeric odds', () => {

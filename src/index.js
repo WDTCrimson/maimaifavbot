@@ -1728,13 +1728,21 @@ async function handleSongCommand(interaction) {
         await replySafely(interaction, `No song matched **${escapeMarkdown(query)}**.`);
         return;
       }
+      const scores = store.getAccountScores(userId);
+      if (!scores.length) {
+        await replySafely(interaction, 'No score data is available. Run `/account sync` first.');
+        return;
+      }
+      const requestedType = interaction.options.getString('type');
       const chart = findPredictionChart(
         song,
-        interaction.options.getString('type', true),
-        interaction.options.getString('difficulty', true)
+        requestedType,
+        interaction.options.getString('difficulty', true),
+        scores,
+        songCatalog
       );
       if (!chart) {
-        await replySafely(interaction, 'That song does not have the selected chart in the International catalog.');
+        await replySafely(interaction, 'That song does not have the selected difficulty in the International catalog.');
         return;
       }
       if (!Number.isFinite(Number(chart.internalLevelValue))) {
@@ -1742,11 +1750,6 @@ async function handleSongCommand(interaction) {
         return;
       }
 
-      const scores = store.getAccountScores(userId);
-      if (!scores.length) {
-        await replySafely(interaction, 'No score data is available. Run `/account sync` first.');
-        return;
-      }
       const best = findPredictionBest(scores, songCatalog, song, chart);
       const profile = buildHybridSkillProfile(
         scores,
@@ -1770,7 +1773,12 @@ async function handleSongCommand(interaction) {
       }
 
       const artwork = await resolveArtworkAttachment(song, 'prediction');
+      const resolvedType = String(chart.type || '').toLowerCase();
+      const typeNote = requestedType && requestedType !== resolvedType
+        ? `${requestedType.toUpperCase()} is not available for that difficulty, so MaiDeck selected **${resolvedType.toUpperCase()}** automatically.`
+        : undefined;
       await replyPayload(interaction, {
+        content: typeNote,
         embeds: [buildSkillPredictionEmbed({ song, chart, best, prediction, imageUrl: artwork?.imageUrl })],
         files: artwork ? [artwork.attachment] : undefined
       });
