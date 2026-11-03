@@ -39,7 +39,7 @@ test('storage report measures snapshots and history without modifying the databa
   const fixture = fixtureDatabase();
   try {
     const before = statSync(fixture.path);
-    const report = collectStorageReport(fixture.path);
+    const report = collectStorageReport(fixture.path, { lowDiskPercent: 0 });
     const after = statSync(fixture.path);
 
     assert.equal(report.status, 'ok');
@@ -60,7 +60,8 @@ test('storage report warns at configured size and profile thresholds', () => {
   try {
     const report = collectStorageReport(fixture.path, {
       dbThresholdGib: 0.000001,
-      profileThreshold: 2
+      profileThreshold: 2,
+      lowDiskPercent: 0
     });
     assert.equal(report.status, 'warning');
     assert.equal(report.warnings.length, 2);

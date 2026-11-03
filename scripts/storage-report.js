@@ -99,6 +99,7 @@ export function collectStorageReport(path, options = {}) {
   const databasePath = resolve(path);
   const dbThresholdBytes = (options.dbThresholdGib ?? DEFAULT_DB_THRESHOLD_GIB) * 1024 ** 3;
   const profileThreshold = options.profileThreshold ?? DEFAULT_PROFILE_THRESHOLD;
+  const lowDiskPercent = options.lowDiskPercent ?? LOW_DISK_PERCENT;
   const fileBytes = statSync(databasePath).size;
   const database = new Database(databasePath, { readonly: true, fileMustExist: true });
   try {
@@ -131,8 +132,8 @@ export function collectStorageReport(path, options = {}) {
       warnings.push(`database allocation reached ${options.dbThresholdGib ?? DEFAULT_DB_THRESHOLD_GIB} GiB`);
     }
     if (profiles >= profileThreshold) warnings.push(`profile count reached ${profileThreshold}`);
-    if (disk.freePercent != null && disk.freePercent < LOW_DISK_PERCENT) {
-      warnings.push(`filesystem free space is below ${LOW_DISK_PERCENT}%`);
+    if (disk.freePercent != null && disk.freePercent < lowDiskPercent) {
+      warnings.push(`filesystem free space is below ${lowDiskPercent}%`);
     }
     const snapshotAnnualBytes = annualProjection(snapshots);
     const historyAnnualBytes = annualProjection(recentHistory);
@@ -143,7 +144,7 @@ export function collectStorageReport(path, options = {}) {
       thresholds: {
         databaseBytes: dbThresholdBytes,
         profiles: profileThreshold,
-        lowDiskPercent: LOW_DISK_PERCENT
+        lowDiskPercent
       },
       database: { fileBytes, allocatedBytes, reclaimableBytes },
       disk,
