@@ -44,11 +44,11 @@
     "node": ">=20"
   },
   "dependencies": {
-    "better-sqlite3": "^12.9.0",
-    "cheerio": "1.0.0-rc.12",
-    "discord.js": "^14.25.1",
-    "dotenv": "^17.2.3",
-    "skia-canvas": "^3.0.8"
+    "better-sqlite3": "^13.0.3",
+    "cheerio": "1.2.0",
+    "discord.js": "^14.28.0",
+    "dotenv": "^18.0.9",
+    "skia-canvas": "^4.0.0"
   },
   "devDependencies": {
     "tailwindcss": "^3.4.19"
