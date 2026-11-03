@@ -23,7 +23,7 @@ Some features depend on imported catalog data or an account-link service. The bo
 
 Commands are exposed as Discord slash commands. A few starting points:
 
-\`\`\`text
+```text
 /help
 /song info query:<song title>
 /song search query:12.3-12.8
@@ -31,7 +31,7 @@ Commands are exposed as Discord slash commands. A few starting points:
 /playlist add-song name:<playlist name> song_query:<song title>
 /playlist graphic name:<playlist name>
 /account status
-\`\`\`
+```
 
 Most responses are private to the person running the command. Song information and some discovery tools post public results that can be shared in a channel. The [full command reference](#command-reference) is below.
 
@@ -40,10 +40,10 @@ Most responses are private to the person running the command. Song information a
 You need **Node.js 20 or newer** and a Discord application with a bot token and application client ID.
 
 1. Clone the repository and install dependencies.
-2. Copy \`.env.example\` to \`.env\` and set \`DISCORD_TOKEN\` and \`DISCORD_CLIENT_ID\`. For development, set \`DISCORD_GUILD_ID\` to register changes in a test server.
+2. Copy `.env.example` to `.env` and set `DISCORD_TOKEN` and `DISCORD_CLIENT_ID`. For development, set `DISCORD_GUILD_ID` to register changes in a test server.
 3. Register slash commands and start the bot.
 
-\`\`\`bash
+```bash
 git clone https://github.com/WDTCrimson/maimaifavbot.git
 cd maimaifavbot
 npm install
@@ -51,27 +51,27 @@ cp .env.example .env
 # Edit .env before continuing.
 npm run register
 npm start
-\`\`\`
+```
 
 For local song search, import the song catalog and related assets:
 
-\`\`\`bash
+```bash
 npm run import:data
 npm run import:aliases
-\`\`\`
+```
 
 These importers retrieve data from third-party sources. Read the [third-party notices](THIRD_PARTY_NOTICES.md) and source terms before distributing any downloaded assets.
 
 To run the tests and source checks:
 
-\`\`\`bash
+```bash
 npm test
 npm run check
-\`\`\`
+```
 
 ## Technical notes
 
-MaiDeck runs on Node.js and \`discord.js\`, with JSON storage by default and an optional SQLite backend. Song data is normalized to internal IDs so playlists do not depend on a particular source's numeric identifiers. The catalog refresh workflow validates updates and retains the previous data if a refresh looks malformed.
+MaiDeck runs on Node.js and `discord.js`, with JSON storage by default and an optional SQLite backend. Song data is normalized to internal IDs so playlists do not depend on a particular source's numeric identifiers. The catalog refresh workflow validates updates and retains the previous data if a refresh looks malformed.
 
 The optional browser-link flow uses signed, short-lived URLs and an authenticated callback. Linked-account sync authorization is encrypted at rest when configured. It is separate from ordinary playlist and song-lookup use. Details are in [Account linking](#account-linking-groundwork) and the [privacy policy](docs/legal/privacy-policy.md).
 
