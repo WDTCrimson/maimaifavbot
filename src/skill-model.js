@@ -62,7 +62,7 @@ function normalizePart(value) {
   return String(value || '').normalize('NFKC').trim().toLowerCase().replace(/^re:master$/, 'remaster');
 }
 
-function achievementPercent(value) {
+export function achievementPercent(value) {
   const numeric = finiteNumber(value);
   if (numeric == null) return null;
   return numeric > 101.0001 ? numeric / 10000 : numeric;
@@ -143,7 +143,7 @@ function catalogSongFor(row, catalog) {
   return typeof catalog.getByAlias === 'function' ? catalog.getByAlias(row.title) : null;
 }
 
-function normalizeChartRow(row, catalog) {
+export function normalizeSkillModelChartRow(row, catalog = null) {
   const type = normalizePart(row?.type || row?.chartType || row?.chart_type || 'std');
   const difficulty = normalizePart(row?.difficulty);
   const song = catalogSongFor(row || {}, catalog);
@@ -171,7 +171,7 @@ function normalizeChartRow(row, catalog) {
 function normalizeBests(scores, catalog) {
   const byKey = new Map();
   for (const raw of Array.isArray(scores) ? scores : []) {
-    const row = normalizeChartRow(raw, catalog);
+    const row = normalizeSkillModelChartRow(raw, catalog);
     if (!row) continue;
     const previous = byKey.get(row.key);
     if (!previous || row.achievement > previous.achievement) byKey.set(row.key, row);
@@ -266,7 +266,7 @@ function detrendedResiduals(plays) {
 
 export function estimateRunSigma(history, catalog, options = {}) {
   const normalized = (Array.isArray(history) ? history : []).map((raw) => {
-    const row = normalizeChartRow(raw, catalog);
+    const row = normalizeSkillModelChartRow(raw, catalog);
     const playedAt = raw?.playedAtIso || raw?.playedAt || raw?.played_at_iso;
     const timestamp = Date.parse(String(playedAt || ''));
     return row && Number.isFinite(timestamp) ? { ...row, timestamp, day: new Date(timestamp).toISOString().slice(0, 10) } : null;
@@ -362,14 +362,14 @@ function sigmaInAchievementPoints(centerLatent, sigmaLatent) {
 
 export function predictChart(profile, rawChart, rawBest = null) {
   const params = { ...DEFAULT_MODEL_PARAMS, ...(profile?.params || {}) };
-  const chart = normalizeChartRow({ ...rawChart, achievement: 0 }, null);
+  const chart = normalizeSkillModelChartRow({ ...rawChart, achievement: 0 }, null);
   if (!profile || !chart) throw new Error('A skill profile and a chart with an internal constant are required.');
   const nearby = profile.bests.filter((best) => Math.abs(best.constant - chart.constant) <= params.nearbyConstantWindow).length;
   if (profile.total < params.minTotalBests || nearby < params.minNearbyBests) {
     return { insufficient: true, nearby, total: profile.total };
   }
 
-  const best = rawBest ? normalizeChartRow({ ...rawBest, constant: chart.constant }, null) : null;
+  const best = rawBest ? normalizeSkillModelChartRow({ ...rawBest, constant: chart.constant }, null) : null;
   const dropped = best && best.playCount <= 2 && profile.curve.droppedKeys.includes(best.key);
   const firstPass = !best || dropped;
   let bestLatent = predictCurveLatent(profile.curve, chart.constant, chart.difficulty);

@@ -36,4 +36,16 @@ MaiDeck is an independent community project. It is not affiliated with, sponsore
 
 ## Rasmai
 
-Rasmai inspired parts of MaiDeck's product and modeling research. MaiDeck's current implementation states that it was independently rebuilt without Rasmai source code. If Rasmai code is incorporated later, retain the applicable GPL notices, identify the copied or modified files here, and comply with both projects' license terms.
+MaiDeck includes an adapted JavaScript port of Rasmai's prediction model in `src/rasmai-skill-model.js`. The adapter in `src/hybrid-skill-model.js` is original MaiDeck code.
+
+The port was made on 2026-11-03 from Rasmai commit `52d8002b643f97ee3a73265dbef50cc5899b023a`, using these upstream files:
+
+- `rasmai/engine/analysis/profile/fit.py`
+- `rasmai/engine/analysis/profile/model.py`
+- `rasmai/engine/analysis/profile/build.py`
+- `rasmai/engine/analysis/planning/predict.py`
+- `rasmai/engine/insights/calibration.py`
+
+Rasmai is available at <https://github.com/Ne-k/Rasmai> under GPL-3.0-only. The adapted file remains GPL-3.0-only; its license is reproduced in [`LICENSES/GPL-3.0.txt`](LICENSES/GPL-3.0.txt). MaiDeck's original code remains AGPL-3.0-or-later. GPLv3 section 13 permits linking or combining GPLv3 and AGPLv3 works, while preserving the GPL terms for the covered Rasmai-derived portion and applying the AGPL network-source requirement to the combination.
+
+The selected prediction files do not include the alias, chart-pattern, scoring-loss, or image assets described in Rasmai's own third-party notice. No such Rasmai-bundled data or assets were copied into MaiDeck.

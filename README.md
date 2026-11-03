@@ -90,7 +90,7 @@ npm run review:patterns
 
 Open `data/reports/pattern-translation-review.html`, use **Watch pattern** to launch the source simulator, and enter the terminology global players use. Draft names stay in browser local storage and **Export names** downloads them as JSON. The generated review board is local and gitignored.
 
-These features were inspired by Rasmai and rebuilt independently without using its source code. MaiDeck will have no paid features, ever.
+These chart-pattern features were inspired by Rasmai and were independently implemented. MaiDeck will have no paid features, ever.
 
 ## Legal documents
 
@@ -134,6 +134,8 @@ npm run backtest -- --db ./data/loadouts.sqlite \
 ```
 
 The parameter artifact contains salted profile fingerprints and automatically excludes the tuning cohort, even when old and fresh profiles share one database. It does not contain Discord IDs or profile names, and evaluation fails closed when no eligible fresh profile remains. A fixture pass only validates the pipeline—it does not establish real-player accuracy or odds calibration. The model is not connected to Discord commands yet: its first real-data held-out run failed the Phase 2 acceptance gate. Future estimator surfaces will use odds bands until a history replay has at least 500 usable plays and meets the reliability criteria; numeric odds remain disabled until then.
+
+An attributed GPL-3.0-only JavaScript port of Rasmai's repeat-play estimator is available in `src/rasmai-skill-model.js`, with an opt-in hybrid adapter in `src/hybrid-skill-model.js`. The hybrid deliberately retains MaiDeck's estimator for first plays and selects Rasmai only for charts with an existing best. It is not the production default. See [the evaluation record](docs/deploy/phase-2-rasmai-model.md) and [third-party notices](THIRD_PARTY_NOTICES.md).
 
 ## Song aliases
 
