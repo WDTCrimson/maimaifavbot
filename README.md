@@ -114,6 +114,7 @@ MaiDeck is an independent community project, not affiliated with or endorsed by 
 - `/song pattern tag:<text> [level] [difficulty]`
 - `/song random [level] [difficulty] [unplayed]`
 - `/song simulate query:<text>`
+- `/song predict query:<text> type:<dx|std> difficulty:<difficulty>`
 - `/account link`
 - `/account import provider:<auto|manual|maimaijson|tomomai|mimixd> data:<json-or-base64>`
 - `/account status`

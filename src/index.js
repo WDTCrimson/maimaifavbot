@@ -50,6 +50,8 @@ import {
   ScoreSimulatorSessions,
   simulatableChartsForSong
 } from './score-simulator-view.js';
+import { buildHybridSkillProfile, predictHybridChart } from './hybrid-skill-model.js';
+import { buildSkillPredictionEmbed, findPredictionBest, findPredictionChart } from './skill-prediction-view.js';
 
 const store = new LoadoutStore(
   {
@@ -1713,6 +1715,68 @@ async function handleSongCommand(interaction) {
   }
 
   switch (subcommand) {
+    case 'predict': {
+      const userId = interaction.user.id;
+      const account = store.getAccount(userId);
+      if (!account) {
+        await replySafely(interaction, 'No linked account snapshot found. Use `/account link` first.');
+        return;
+      }
+      const query = interaction.options.getString('query', true);
+      const song = songCatalog.resolveSong(query);
+      if (!song) {
+        await replySafely(interaction, `No song matched **${escapeMarkdown(query)}**.`);
+        return;
+      }
+      const chart = findPredictionChart(
+        song,
+        interaction.options.getString('type', true),
+        interaction.options.getString('difficulty', true)
+      );
+      if (!chart) {
+        await replySafely(interaction, 'That song does not have the selected chart in the International catalog.');
+        return;
+      }
+      if (!Number.isFinite(Number(chart.internalLevelValue))) {
+        await replySafely(interaction, 'That chart is missing the internal level needed for a prediction.');
+        return;
+      }
+
+      const scores = store.getAccountScores(userId);
+      if (!scores.length) {
+        await replySafely(interaction, 'No score data is available. Run `/account sync` first.');
+        return;
+      }
+      const best = findPredictionBest(scores, songCatalog, song, chart);
+      const profile = buildHybridSkillProfile(
+        scores,
+        store.getAccountRecentHistory(userId, { limit: 5000 }),
+        songCatalog
+      );
+      const prediction = predictHybridChart(profile, {
+        songId: song.songId,
+        title: song.title,
+        type: chart.type,
+        difficulty: chart.difficulty,
+        internalLevelValue: chart.internalLevelValue,
+        constant: chart.internalLevelValue
+      }, best);
+      if (prediction.insufficient) {
+        await replySafely(
+          interaction,
+          `There is not enough nearby score data for this chart yet (${prediction.nearby}/${profile.maideck.params.minNearbyBests} nearby, ${prediction.total}/${profile.maideck.params.minTotalBests} total). Sync more scores and try again.`
+        );
+        return;
+      }
+
+      const artwork = await resolveArtworkAttachment(song, 'prediction');
+      await replyPayload(interaction, {
+        embeds: [buildSkillPredictionEmbed({ song, chart, best, prediction, imageUrl: artwork?.imageUrl })],
+        files: artwork ? [artwork.attachment] : undefined
+      });
+      return;
+    }
+
     case 'suggest': {
       const userId = interaction.user.id;
       const account = store.getAccount(userId);

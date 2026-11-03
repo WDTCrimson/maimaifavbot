@@ -48,6 +48,10 @@ test('critical Discord options retain bounds, choices, and autocomplete contract
   const simulate = song.options.find((option) => option.name === 'simulate');
   assert.equal(simulate.options.find((option) => option.name === 'query').autocomplete, true);
   assert.deepEqual(simulate.options.map((option) => option.name), ['query']);
+  const predict = song.options.find((option) => option.name === 'predict');
+  assert.deepEqual(predict.options.map((option) => option.name), ['query', 'type', 'difficulty']);
+  assert.equal(predict.options.find((option) => option.name === 'query').autocomplete, true);
+  assert.ok(predict.options.every((option) => option.required));
 
   const playlist = commands.find((command) => command.name === 'playlist');
   const addSong = playlist.options.find((option) => option.name === 'add-song');

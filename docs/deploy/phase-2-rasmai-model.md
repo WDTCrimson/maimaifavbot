@@ -1,6 +1,6 @@
 # Rasmai prediction-model port
 
-Status: implemented as an opt-in model; not connected to production commands.
+Status: implemented with a qualitative private-test command; numeric odds remain gated.
 
 Last updated: 2026-11-03.
 
@@ -13,7 +13,7 @@ The hybrid policy is intentionally narrow:
 - charts with an existing best use Rasmai's repeat-play estimator;
 - unseen charts continue to use MaiDeck's first-pass estimator;
 - MaiDeck's original estimator remains available as the fallback;
-- no live command uses the hybrid until the public-data acceptance gates pass;
+- `/song predict` uses the hybrid for a private next-play estimate;
 - numeric probability output remains disabled until the existing 500-replayable-play calibration and reliability gates pass.
 
 ## Port parity
@@ -56,12 +56,18 @@ The 2026-11-03 shadow run used three profiles and 108 held-out plays. The hybrid
 
 This remains development evidence from the profiles used to choose the hybrid. Re-run the same command as new plays arrive, but do not treat those profiles as fresh cross-player validation.
 
-## Remaining gate
+## Private command boundary
 
-Before switching any command to the hybrid model:
+`/song predict query:<song> type:<dx|std> difficulty:<difficulty>` uses the linked profile to estimate the next run. It shows the predicted achievement and rank, plus qualitative target bands (`Likely`, `Possible`, `Stretch`, or `Unlikely`). The response is ephemeral and can include the song jacket. It never displays numeric target probabilities.
+
+Repeat charts use the Rasmai-derived estimator. Unplayed charts use MaiDeck's first-pass estimator. A prediction is refused when the profile has fewer than 50 usable best scores or fewer than 20 scores within one internal-level point of the selected chart.
+
+## Remaining numeric-odds gate
+
+Before displaying calibrated numeric odds:
 
 1. Collect fresh, consented, replayable plays not used for model selection.
 2. Run a frozen time-forward comparison by first-play and repeat-play segment.
 3. Verify rank accuracy, MAE, new-best Brier score, and reliability buckets.
 4. Keep outputs as qualitative odds bands until at least 500 replayable plays exist and every documented calibration bucket passes.
-5. Only then wire the chosen model into a user-visible command and perform Discord presentation QA.
+5. Only then enable numeric odds and describe them as calibrated.

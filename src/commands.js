@@ -460,6 +460,29 @@ export const songCommand = new SlashCommandBuilder()
       .addBooleanOption((option) =>
         option.setName('unplayed').setDescription('Only choose charts missing from your linked scores').setRequired(false)
       )
+  )
+  .addSubcommand((subcommand) =>
+    subcommand
+      .setName('predict')
+      .setDescription('Estimate your next result on a chart')
+      .addStringOption((option) =>
+        option.setName('query').setDescription('Song title, artist, or numeric ID').setRequired(true).setAutocomplete(true)
+      )
+      .addStringOption((option) =>
+        option.setName('type').setDescription('Chart type').setRequired(true).addChoices(
+          { name: 'DX', value: 'dx' },
+          { name: 'Standard', value: 'std' }
+        )
+      )
+      .addStringOption((option) =>
+        option.setName('difficulty').setDescription('Chart difficulty').setRequired(true).addChoices(
+          { name: 'BASIC', value: 'basic' },
+          { name: 'ADVANCED', value: 'advanced' },
+          { name: 'EXPERT', value: 'expert' },
+          { name: 'MASTER', value: 'master' },
+          { name: 'Re:MASTER', value: 'remaster' }
+        )
+      )
   );
 
 export const accountCommand = new SlashCommandBuilder()
