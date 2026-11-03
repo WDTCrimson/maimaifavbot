@@ -1,20 +1,96 @@
-# maimai-fav-bot
+# MaiDeck
 
-Discord bot to manage maimai favorite-song playlists (up to 30 songs each), plus automation helpers to apply a playlist on maimaidxnet.
+MaiDeck is a Discord bot for **maimai DX**, an arcade rhythm game. It started as a way to manage favorite-song lists and has grown into a set of tools for finding charts, checking scores, and keeping track of player progress.
 
-[![License: AGPL v3 or later](https://img.shields.io/badge/License-AGPL_v3_or_later-blue.svg)](LICENSE)
+You can use it to look up a song without remembering its exact title, save playlists for different sessions, and inspect score or rating targets. Optional account linking adds profile snapshots and recent-play information.
 
-MaiDeck is an independent community project and is not affiliated with, sponsored by, or endorsed by SEGA. Do not use production credentials or another player's data when developing or testing it.
+**Project site:** [maideck.xyz](https://maideck.xyz)  
+**Source code:** [GitHub](https://github.com/WDTCrimson/maimaifavbot)  
+**License:** [AGPL-3.0-or-later](LICENSE)
 
-## What this MVP does
+## Features
 
-- Create, list, show, and delete per-user playlists.
-- Add/remove songs per playlist (max 30).
-- Generate a compact payload string for a playlist.
-- Provide a bookmarklet installer string.
-- Include a Chrome-compatible extension (`extension/`) that applies payloads on maimai pages.
+- **Playlists:** Create, share, import, and export favorite-song lists of up to 30 songs. Set achievement targets and render playlist graphics.
+- **Chart lookup:** Search by song, difficulty, internal level, or alias. Browse chart-pattern tags, find random charts, and inspect chart details.
+- **Score tools:** Use an interactive achievement/DX Score simulator and look up charts relevant to rating improvement.
+- **Player profiles:** Import account data manually or use the optional account-link flow to view top scores, recent plays, progress, and rating history.
+- **Browser integration:** Apply a playlist to maimai DX NET favorites through an extension, bookmarklet, or supported linked-account flow.
+- **Catalog maintenance:** Merge song data and aliases from multiple sources, keep regional availability distinct, and refresh the running catalog without restarting the bot.
 
-## Bot commands
+Some features depend on imported catalog data or an account-link service. The bot can run without those optional integrations.
+
+## Using the bot
+
+Commands are exposed as Discord slash commands. A few starting points:
+
+\`\`\`text
+/help
+/song info query:<song title>
+/song search query:12.3-12.8
+/playlist create name:<playlist name>
+/playlist add-song name:<playlist name> song_query:<song title>
+/playlist graphic name:<playlist name>
+/account status
+\`\`\`
+
+Most responses are private to the person running the command. Song information and some discovery tools post public results that can be shared in a channel. The [full command reference](#command-reference) is below.
+
+## Run your own instance
+
+You need **Node.js 20 or newer** and a Discord application with a bot token and application client ID.
+
+1. Clone the repository and install dependencies.
+2. Copy \`.env.example\` to \`.env\` and set \`DISCORD_TOKEN\` and \`DISCORD_CLIENT_ID\`. For development, set \`DISCORD_GUILD_ID\` to register changes in a test server.
+3. Register slash commands and start the bot.
+
+\`\`\`bash
+git clone https://github.com/WDTCrimson/maimaifavbot.git
+cd maimaifavbot
+npm install
+cp .env.example .env
+# Edit .env before continuing.
+npm run register
+npm start
+\`\`\`
+
+For local song search, import the song catalog and related assets:
+
+\`\`\`bash
+npm run import:data
+npm run import:aliases
+\`\`\`
+
+These importers retrieve data from third-party sources. Read the [third-party notices](THIRD_PARTY_NOTICES.md) and source terms before distributing any downloaded assets.
+
+To run the tests and source checks:
+
+\`\`\`bash
+npm test
+npm run check
+\`\`\`
+
+## Technical notes
+
+MaiDeck runs on Node.js and \`discord.js\`, with JSON storage by default and an optional SQLite backend. Song data is normalized to internal IDs so playlists do not depend on a particular source's numeric identifiers. The catalog refresh workflow validates updates and retains the previous data if a refresh looks malformed.
+
+The optional browser-link flow uses signed, short-lived URLs and an authenticated callback. Linked-account sync authorization is encrypted at rest when configured. It is separate from ordinary playlist and song-lookup use. Details are in [Account linking](#account-linking-groundwork) and the [privacy policy](docs/legal/privacy-policy.md).
+
+The score and rating research code also has a fixture-based backtest. It is **not** being presented as a validated player-skill predictor; the current limitations are documented in [Skill model backtest](#skill-model-backtest).
+
+## Documentation
+
+- [Command reference](#command-reference)
+- [Account linking and imports](#account-linking-groundwork)
+- [Bookmarklet and browser extension](#using-bookmarklet-flow)
+- [Storage and backups](#playlist-storage)
+- [Catalog refresh](#automatic-catalog-refresh)
+- [Running as a systemd service](#run-as-a-systemd-service)
+- [Terms of Service](docs/legal/terms-of-service.md) and [Privacy Policy](docs/legal/privacy-policy.md)
+- [Contributing](CONTRIBUTING.md), [Security policy](SECURITY.md), and [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+MaiDeck is an independent community project, not affiliated with or endorsed by SEGA. It has no paid features. The repository's license covers its original code, not third-party songs, images, fonts, or game assets. Review the relevant service rules before using website automation.
+
+## Command reference
 
 - `/help`
 - `/playlist create name:<text>`
@@ -183,23 +259,6 @@ By default it merges:
 
 It also preserves any existing hand-added aliases already present in `data/reference/song-aliases.json`.
 The Yuzu source defaults to `https://www.yuzuchan.moe/api/maimaidx/maimaidxalias`; the older documented `api.yuzuchan.moe` host may return 403 from some networks.
-
-## Quick start
-
-1. Create a Discord application and bot in the Discord Developer Portal.
-2. Copy `.env.example` to `.env` and fill values.
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
-4. Register slash commands:
-   ```bash
-   npm run register
-   ```
-5. Start bot:
-   ```bash
-   npm start
-   ```
 
 ## Tests
 
